@@ -1,0 +1,30 @@
+import { Module, MiddlewareConsumer, NestModule, RequestMethod } from '@nestjs/common'
+import { ConfigModule } from '@nestjs/config'
+import configuration from './config/configuration'
+import { PrismaModule } from './database/prisma.module'
+import { AuthModule } from './common/auth/auth.module'
+import { HealthModule } from './modules/health/health.module'
+import { TenantsModule } from './modules/tenants/tenants.module'
+import { TenantMiddleware } from './common/tenant/tenant.middleware'
+
+/**
+ * 根模块：装配全局配置、数据库、鉴权、健康检查与业务模块（方案 §0/§11）。
+ * 租户解析中间件对所有 /api 路由生效，确保请求级租户上下文注入（§0/§17）。
+ */
+@Module({
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true, load: [configuration] }),
+    PrismaModule,
+    AuthModule,
+    HealthModule,
+    TenantsModule,
+  ],
+})
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer): void {
+    // 租户解析：从子域名/请求头解析并注入 AsyncLocalStorage（§0/§17）
+    consumer
+      .apply(TenantMiddleware)
+      .forRoutes({ path: '*', method: RequestMethod.ALL })
+  }
+}

@@ -1,0 +1,21 @@
+# CI 基线（方案 §31.4）：lint + 类型检查卡点，PR 不过不合并。
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dependencies (monorepo, 含 web/vite)
+        run: npm install
+      - run: npm run lint --workspaces --if-present
+      - run: npm run typecheck --workspace server
+      - run: npm run prisma:generate --workspace server

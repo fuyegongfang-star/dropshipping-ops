@@ -1,0 +1,42 @@
+{
+  "name": "dropshipping-ops",
+  "version": "0.1.0",
+  "private": true,
+  "description": "一件代发货代运营 SaaS —— Node 全栈（NestJS + Vue3），多租户 + 全渠道 + 国际物流",
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "lint": "npm run lint --workspaces --if-present",
+    "lint:fix": "npm run lint:fix --workspaces --if-present",
+    "format": "prettier --write \"**/*.{ts,vue,js,cjs,json,md}\"",
+    "typecheck": "npm run typecheck --workspace server",
+    "build": "npm run build --workspace server",
+    "prisma:generate": "npm run prisma:generate --workspace server",
+    "prepare": "husky install || true"
+  },
+  "lint-staged": {
+    "*.{ts,vue}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,css,scss}": [
+      "prettier --write"
+    ]
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.3.0",
+    "@commitlint/config-conventional": "^19.2.2",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "husky": "^9.1.4",
+    "lint-staged": "^15.2.7",
+    "prettier": "^3.3.3",
+    "stylelint": "^17.16.0",
+    "stylelint-config-recommended-vue": "^2.0.0",
+    "stylelint-config-standard": "^40.0.0"
+  }
+}

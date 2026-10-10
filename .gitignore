@@ -1,0 +1,25 @@
+# 依赖与构建产物
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+
+# 环境变量与密钥（切勿提交真实密钥，见方案 §17）
+.env
+.env.*
+!.env.example
+
+# 日志
+logs/
+*.log
+
+# 编辑器 / 系统
+.DS_Store
+.idea/
+.vscode/
+
+# Prisma 生成产物
+server/node_modules/.prisma/
+
+# 测试覆盖
+coverage/

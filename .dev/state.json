@@ -1,0 +1,19 @@
+{
+  "project": "dropshipping-ops",
+  "plan_version": "v1.5",
+  "plan_path": "D:/Workbuddy/2026-10-10-17-18-35/dropshipping-fulfillment-architecture-plan.md",
+  "schedule_path": "D:/Workbuddy/2026-10-10-17-18-35/dropshipping-ops/dev-schedule.md",
+  "log_path": "D:/Workbuddy/2026-10-10-17-18-35/dropshipping-ops/progress-log.md",
+  "error_log": "D:/Workbuddy/2026-10-10-17-18-35/dropshipping-ops/.dev/errors.log",
+  "current_phase": "阶段0",
+  "task_index": 7,
+  "last_completed_task": "0.6",
+  "next_task": "1.1",
+  "last_commit": "baseline-阶段0-scaffold",
+  "last_run": "2026-10-10T18:50:00+08:00",
+  "blocked_tasks": [],
+  "skipped_tasks": [],
+  "notes": "2026-10-10 人工起头：阶段0 脚手架已落地并验证（server typecheck+lint 通过）。0.3 鉴权部分完成（JWT+Passport），CASL 策略待阶段4。下一步由夜间自动化从 1.1 接力。看门狗：429/5xx/异常→指数退避重试(2/4/8/16/32s,5次)→记录跳过→转下一任务。",
+  "created_at": "2026-10-10T18:48:00+08:00",
+  "updated_at": "2026-10-10T18:50:00+08:00"
+}
