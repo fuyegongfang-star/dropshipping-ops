@@ -43,7 +43,7 @@ onMounted(async () => {
   tenantStore.loadFromStorage()
   try {
     // 拉取租户列表（演示用，生产需超管鉴权，§22）
-    const list = await http.get('/tenants')
+    const list = await http.get<{ code: string; name: string }[]>('/tenants')
     tenantStore.tenants = list ?? []
   } catch {
     tenantStore.tenants = []
