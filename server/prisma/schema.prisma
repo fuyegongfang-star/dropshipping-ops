@@ -169,6 +169,7 @@ model ReverseOrder {
   orderId   String
   type      String // cancel（撤单）| intercept（拦截）| redirect（改址）| return（退货退款）
   status    String // pending | processing | done | failed
+  cause     String? // 逆向原因（排查/审计，§13.2）
   createdAt DateTime @default(now())
 
   @@index([tenantId])

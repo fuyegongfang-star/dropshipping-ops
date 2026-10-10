@@ -6,6 +6,10 @@ import { AuthModule } from './common/auth/auth.module'
 import { HealthModule } from './modules/health/health.module'
 import { TenantsModule } from './modules/tenants/tenants.module'
 import { TenantMiddleware } from './common/tenant/tenant.middleware'
+import { HttpModule } from './common/http/http.module'
+import { ChannelsModule } from './modules/channels/channels.module'
+import { OrdersModule } from './modules/orders/orders.module'
+import { CatalogModule } from './modules/catalog/catalog.module'
 
 /**
  * 根模块：装配全局配置、数据库、鉴权、健康检查与业务模块（方案 §0/§11）。
@@ -18,6 +22,10 @@ import { TenantMiddleware } from './common/tenant/tenant.middleware'
     AuthModule,
     HealthModule,
     TenantsModule,
+    HttpModule,
+    ChannelsModule,
+    OrdersModule,
+    CatalogModule,
   ],
 })
 export class AppModule implements NestModule {
