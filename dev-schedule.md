@@ -39,7 +39,7 @@
 | 1.7 | 阶段1 | 商品/SKU 中心 | 平台↔内部↔供应商映射（§1） | 0.2 | 1.5d | ✅ |
 | 1.8 | 阶段1 | 运费试算最小版 | 重量/体积→计费重→选渠道（§4） | 1.1 | 1.5d | ⬜ |
 | 1.9 | 阶段1 | 供应商代发链路(基础) | 推单→回传→转平台运单（§21） | 1.1 | 1d | ⬜ |
-| 1.10 | 阶段1 | Amazon SP-API 评估 | FBA/FBM/LWA 可行性（§29） | 1.1 | 0.5d | ⬜ |
+| 1.10 | 阶段1 | Amazon SP-API 评估 | FBA/FBM/LWA 可行性（§29） | 1.1 | 0.5d | ✅ |
 | 2.1 | 阶段2 | 国内渠道(淘宝/抖音) | 验证多平台适配（§3） | 1.2 | 1.5d | ⬜ |
 | 2.2 | 阶段2 | WMS 入库/库存/拣货 | ASN/上架/锁定/拣货波次（§15） | 0.4 | 2d | ⬜ |
 | 2.3 | 阶段2 | 海外仓模型 | `warehouses`/`inventory`/海外仓备货（§15） | 2.2 | 1.5d | ⬜ |
@@ -131,10 +131,21 @@
 - **进行中（🔵）**：无（本批任务全部完成）。
 - **受阻**：无。
 - **测试结果**：`tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（29 passed / 4 suites）。
-- **提交**：见 `feat(channels/orders/catalog): 阶段1 MVP 履约框架 1.1-1.4 + 商品SKU中心 1.7`（与本批代码同批提交）。
+- **提交**：见 `7714434`（`feat(channels/orders/catalog): 阶段1 MVP 履约框架 1.1-1.4 + 商品SKU中心 1.7`）。
 - **下一步（次日接力）**：1.5 履约路由（模式A 自动选渠道 / 1.6 物流回传+轨迹基础 / 1.8 运费试算最小版 / 1.9 供应商代发链路 / 1.10 Amazon SP-API 评估）。注意 1.5/1.6/1.8/1.9 依赖阶段3 承运商适配器与费率卡（§3/§4），1.10 为评估类可作下一步；1.7 已完成，1.4 库存校验占位可在 §15 WMS 落地后接 `CatalogService` 真实校验。
 - **关键工程事实（同步夜间自动化）**：
   1. 新增 `server/src/common/http/`：全局 `RetryableHttpService` + `HttpModule`（全局提供），渠道/承运商适配器共用；退避基准 2000ms（2/4/8/16/32s，5 次）。
   2. 渠道注册表 `ChannelRegistryService` 支持 `registerAdapter`（无状态实例，如 Mock）与 `registerFactory`（按店铺凭证构建，如 Shopify），`resolveForShop` 工厂优先。
   3. 本仓已落地 Jest + ts-jest（`server/jest.config.cjs`），`npm test` 可用；新增模块均配套单测。
   4. 环境同上轮：npm workspaces monorepo，依赖提升到根；`.prisma/client` 已重新生成（ReverseOrder 增 `cause` 字段）。
+
+---
+
+### 进度更新 · 2026-10-10（续跑 · Amazon SP-API 评估）
+- **完成（✅）**：
+  - **1.10 Amazon SP-API 评估（§29）** —— `AmazonLwaClient`（LWA OAuth2 认证闸门：client_credentials / refresh_token 双 grant + 令牌缓存，复用 `RetryableHttpService` 超时/重试/退避 §2.1）+ `AmazonAdapter`（落入 §3 `ChannelAdapter` 框架：拉单 Orders v0 归一化 + 二次 `getOrderItems` 补明细 + 状态映射 + LWA 鉴权头）+ `AmazonRequestSigner` 接口（`NoopAmazonSigner` 占位，SigV4 待阶段5）+ `AmazonAdapterFactory`（按店铺凭证构建，注册进渠道注册表）。**评估结论**：LWA 认证闸门已可独立验证（无需 SigV4）；SP-API 读写端点需 AWS SigV4 签名 + 开发者账号审核（周期数天~数周），**FBA/FBM 推单/轨迹明确标记为阶段5 完整对接（任务 5.3）**。
+- **进行中（🔵）**：无。
+- **受阻**：无。
+- **测试结果**：`tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（33 passed / 5 suites）。
+- **提交**：原夜间批次漏提交，已于 2026-10-11 随文档/检查点一并补提交（见 `feat(channels/amazon): 阶段1 Amazon SP-API 评估 1.10`）。
+- **下一步（次日接力）**：1.5 履约路由 / 1.6 物流回传+轨迹 / 1.8 运费试算最小版 / 1.9 供应商代发链路（均依赖阶段3 承运商适配器与费率卡 §3/§4，待阶段3 后补）；阶段1 MVP 主干「拉单→审单→SKU映射」已闭环，1.10 评估落地，剩余多为阶段3 依赖项。

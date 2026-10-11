@@ -23,3 +23,6 @@ server/node_modules/.prisma/
 
 # 测试覆盖
 coverage/
+
+# WorkBuddy 项目记忆（非仓库产物）
+.workbuddy/

@@ -38,5 +38,19 @@
 - **受阻**：无。
 - **测试结果**：`tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（29 passed / 4 suites）。
 - **下一步**：1.5 履约路由 / 1.6 物流回传+轨迹 / 1.8 运费试算最小版 / 1.9 供应商代发链路 / 1.10 Amazon SP-API 评估。1.5/1.6/1.8/1.9 依赖阶段3 承运商适配器与费率卡（§3/§4）；1.7 已完成，待 §15 WMS 落地后 1.4 库存校验占位可接 `CatalogService` 真实校验。
-- **提交**：`feat(channels/orders/catalog): 阶段1 MVP 履约框架 1.1-1.4 + 商品SKU中心 1.7`（与本批代码同批提交；前端脚手架验证另见 `chore(web)`）。
+- **提交**：`7714434`（`feat(channels/orders/catalog): 阶段1 MVP 履约框架 1.1-1.4 + 商品SKU中心 1.7`）；前端脚手架验证另见 `6868660`（`chore(web)`）。
 - **用户汇总**：本夜跑通「拉单→审单→状态机→逆向」MVP 主干，并续补商品/SKU 中心（平台↔内部↔供应商三段映射 + 计费重）：Shopify 渠道拉单归一化落库并按平台 SKU 回填内部 `skuId`，审单引擎校验，状态机驱动流转，全程行级隔离 + 统一响应/异常/日志；新增 13 个单测覆盖映射解析/计费重/归属校验/供应商关联/落库回填，合计 29 个单测全绿。
+
+---
+
+## 2026-10-10（续跑 · Amazon SP-API 评估）
+
+- **完成**：
+  - **1.10 Amazon SP-API 评估** ✅（§29）—— `AmazonLwaClient`：LWA OAuth2 认证闸门（client_credentials/refresh_token 双 grant + 令牌缓存，复用 RetryableHttpService 重试/退避）。`AmazonAdapter`：落入 §3 ChannelAdapter 框架，拉单 Orders v0 归一化 + 二次 `getOrderItems` 补明细 + 状态映射 + LWA 鉴权头；`AmazonRequestSigner` 接口（Noop 占位）+ `AmazonAdapterFactory`（按店铺凭证构建，注册进渠道注册表）。
+  - **评估结论**：LWA 认证闸门已可独立验证（无需 SigV4）；SP-API 读写端点需 AWS SigV4 签名 + 开发者账号/应用审核（周期数天~数周），FBA/FBM 推单/轨迹/撤单明确标记为阶段5 完整对接（任务 5.3）；FBA 由 Amazon 履约、FBM 自发货。
+- **进行中**：无。
+- **受阻**：无。
+- **测试结果**：`tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（33 passed / 5 suites）。
+- **下一步**：1.5 履约路由 / 1.6 物流回传+轨迹 / 1.8 运费试算最小版 / 1.9 供应商代发链路（依赖阶段3 承运商适配器与费率卡 §3/§4）；阶段1 MVP 主干 + SKU 中心 + Amazon 评估均已落地，剩余多为阶段3 依赖项。
+- **提交**：原夜间批次漏提交，已于 2026-10-11 随文档/检查点一并补提交（见 `feat(channels/amazon): 阶段1 Amazon SP-API 评估 1.10`）。
+- **用户汇总**：本续跑完成 Amazon SP-API 可行性评估并落地了可验证的认证闸门（LWA）与框架贴合的拉单归一化骨架；明确 SigV4 与 FBA/FBM 推单为阶段5 完整对接，避免生产误用（其余端点抛 NOT_IMPLEMENTED）。合计单测增至 33 个、5 个套件全绿。
