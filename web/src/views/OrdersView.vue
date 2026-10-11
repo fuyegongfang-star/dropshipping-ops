@@ -1,103 +1,183 @@
 <template>
   <div class="orders">
+    <PageHeader
+      title="订单中心"
+      subtitle="订单归集 · 审单引擎 · 状态机流转 · 逆向流程"
+      icon="orders"
+      accent="brand"
+    >
+      <template #actions>
+        <el-select
+          v-model="statusFilter"
+          class="filter-select"
+          placeholder="全部状态"
+          clearable
+          @change="load"
+        >
+          <el-option v-for="(label, val) in statusLabels" :key="val" :label="label" :value="val" />
+        </el-select>
+        <el-button @click="load">
+          <AppIcon name="refresh" :size="15" class="btn-ico" />
+          刷新
+        </el-button>
+      </template>
+    </PageHeader>
+
     <el-card>
       <template #header>
-        <div class="head">
-          <span>订单中心</span>
-          <div class="filters">
-            <el-select v-model="statusFilter" placeholder="全部状态" clearable @change="load">
-              <el-option v-for="(label, val) in statusLabels" :key="val" :label="label" :value="val" />
-            </el-select>
-            <el-button @click="load">刷新</el-button>
-          </div>
+        <div class="card-head">
+          <span class="section-title">订单列表</span>
+          <span class="count-pill">共 {{ orders.length }} 条</span>
         </div>
       </template>
 
-      <el-table v-loading="loading" :data="orders" stripe>
-        <el-table-column prop="platformOrderNo" label="平台单号" min-width="160" />
-        <el-table-column label="店铺" min-width="140">
-          <template #default="{ row }">{{ row.shop?.name || row.shopId }}</template>
-        </el-table-column>
-        <el-table-column label="状态" width="120">
+      <el-table v-loading="loading" :data="orders">
+        <el-table-column prop="platformOrderNo" label="平台单号" min-width="165">
           <template #default="{ row }">
-            <el-tag :type="statusTag(row.status)" size="small">{{ statusLabels[row.status] || row.status }}</el-tag>
+            <span class="mono">{{ row.platformOrderNo }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="金额" width="120">
+        <el-table-column label="店铺" min-width="145">
           <template #default="{ row }">
-            {{ row.totalAmount != null ? Number(row.totalAmount).toFixed(2) : '-' }}
-            {{ row.currency || '' }}
+            <span class="cell-shop">
+              <AppIcon name="shop" :size="14" />
+              {{ row.shop?.name || row.shopId }}
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column label="状态" width="130">
+          <template #default="{ row }">
+            <span class="tag-soft" :class="statusClass(row.status)">
+              {{ statusLabels[row.status] || row.status }}
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column label="金额" width="125">
+          <template #default="{ row }">
+            <span class="money">
+              {{ row.totalAmount != null ? Number(row.totalAmount).toFixed(2) : '-' }}
+              <em>{{ row.currency || '' }}</em>
+            </span>
           </template>
         </el-table-column>
         <el-table-column label="创建时间" min-width="170">
-          <template #default="{ row }">{{ fmt(row.createdAt) }}</template>
+          <template #default="{ row }"><span class="muted">{{ fmt(row.createdAt) }}</span></template>
         </el-table-column>
-        <el-table-column label="操作" width="90" fixed="right">
+        <el-table-column label="操作" width="95" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="openDetail(row.id)">详情</el-button>
+            <el-button link type="primary" @click="openDetail(row.id)">
+              详情
+              <AppIcon name="arrowRight" :size="14" class="btn-ico-xs" />
+            </el-button>
           </template>
         </el-table-column>
+
+        <template #empty>
+          <div class="app-empty">
+            <span class="app-empty-ico"><AppIcon name="orders" :size="26" /></span>
+            <span class="app-empty-text">暂无订单，可到「渠道 / 店铺」对 Mock 店点拉单生成</span>
+          </div>
+        </template>
       </el-table>
     </el-card>
 
     <!-- 订单详情抽屉 -->
-    <el-drawer v-model="drawer" :title="`订单详情 · ${current?.platformOrderNo || ''}`" size="46%">
-      <template v-if="current">
-        <el-descriptions :column="2" border size="small">
-          <el-descriptions-item label="状态">
-            <el-tag :type="statusTag(current.status)" size="small">
-              {{ statusLabels[current.status] || current.status }}
-            </el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="店铺">{{ current.shop?.name || current.shopId }}</el-descriptions-item>
-          <el-descriptions-item label="金额">
-            {{ current.totalAmount != null ? Number(current.totalAmount).toFixed(2) : '-' }} {{ current.currency }}
-          </el-descriptions-item>
-          <el-descriptions-item label="平台单号">{{ current.platformOrderNo }}</el-descriptions-item>
-          <el-descriptions-item label="收件人" :span="2">
-            {{ recipientText(current.recipient) }}
-          </el-descriptions-item>
-        </el-descriptions>
-
-        <el-divider>订单明细</el-divider>
-        <el-table :data="current.items || []" size="small" border>
-          <el-table-column label="内部SKU">
-            <template #default="{ row }">{{ row.sku?.code || '—' }}</template>
-          </el-table-column>
-          <el-table-column label="平台SKU">
-            <template #default="{ row }">{{ row.sku?.platformSku || '—' }}</template>
-          </el-table-column>
-          <el-table-column label="供应商SKU">
-            <template #default="{ row }">{{ row.sku?.supplierSku || '—' }}</template>
-          </el-table-column>
-          <el-table-column prop="quantity" label="数量" width="70" />
-        </el-table>
-
-        <el-divider>状态流转轨迹</el-divider>
-        <el-timeline>
-          <el-timeline-item
-            v-for="e in current.events || []"
-            :key="e.id"
-            :timestamp="fmt(e.createdAt)"
-            placement="top"
-          >
-            <span>{{ e.type }}</span>
-            <span v-if="e.operator" class="op">· {{ e.operator }}</span>
-          </el-timeline-item>
-        </el-timeline>
-
-        <el-divider>操作</el-divider>
-        <div class="actions">
-          <el-button type="primary" @click="doReview">审单</el-button>
-          <el-button type="success" @click="transitionVisible = true">状态转移</el-button>
-          <el-button type="warning" @click="reverseVisible = true">逆向</el-button>
+    <el-drawer v-model="drawer" size="48%" class="order-drawer">
+      <template #header>
+        <div class="drawer-title">
+          <span class="dt-ico"><AppIcon name="package" :size="18" /></span>
+          <span class="dt-main">订单详情</span>
+          <span class="dt-sub">{{ current?.platformOrderNo || '' }}</span>
         </div>
+      </template>
+
+      <template v-if="current">
+        <el-card class="sec">
+          <div class="sec-head">
+            <span class="section-title">基本信息</span>
+            <span class="tag-soft" :class="statusClass(current.status)">
+              {{ statusLabels[current.status] || current.status }}
+            </span>
+          </div>
+          <el-descriptions :column="2" border size="small">
+            <el-descriptions-item label="店铺">
+              {{ current.shop?.name || current.shopId }}
+            </el-descriptions-item>
+            <el-descriptions-item label="平台单号">
+              <span class="mono">{{ current.platformOrderNo }}</span>
+            </el-descriptions-item>
+            <el-descriptions-item label="金额">
+              <span class="money">
+                {{ current.totalAmount != null ? Number(current.totalAmount).toFixed(2) : '-' }}
+                <em>{{ current.currency }}</em>
+              </span>
+            </el-descriptions-item>
+            <el-descriptions-item label="创建时间">{{ fmt(current.createdAt) }}</el-descriptions-item>
+            <el-descriptions-item label="收件人" :span="2">
+              {{ recipientText(current.recipient) }}
+            </el-descriptions-item>
+          </el-descriptions>
+        </el-card>
+
+        <el-card class="sec">
+          <div class="sec-head"><span class="section-title">订单明细（三段映射）</span></div>
+          <el-table :data="current.items || []" size="small" border empty-text="暂无明细">
+            <el-table-column label="内部SKU">
+              <template #default="{ row }">{{ row.sku?.code || '—' }}</template>
+            </el-table-column>
+            <el-table-column label="平台SKU">
+              <template #default="{ row }">{{ row.sku?.platformSku || '—' }}</template>
+            </el-table-column>
+            <el-table-column label="供应商SKU">
+              <template #default="{ row }">{{ row.sku?.supplierSku || '—' }}</template>
+            </el-table-column>
+            <el-table-column prop="quantity" label="数量" width="74" />
+          </el-table>
+        </el-card>
+
+        <el-card class="sec">
+          <div class="sec-head"><span class="section-title">状态流转轨迹</span></div>
+          <el-timeline v-if="(current.events || []).length" class="tl">
+            <el-timeline-item
+              v-for="e in current.events || []"
+              :key="e.id"
+              :timestamp="fmt(e.createdAt)"
+              placement="top"
+              color="var(--brand-500)"
+              :size="10"
+            >
+              <span class="tl-type">{{ e.type }}</span>
+              <span v-if="e.operator" class="tl-op">· {{ e.operator }}</span>
+            </el-timeline-item>
+          </el-timeline>
+          <div v-else class="app-empty small">
+            <span class="app-empty-text">暂无流转记录</span>
+          </div>
+        </el-card>
+
+        <el-card class="sec">
+          <div class="sec-head"><span class="section-title">操作</span></div>
+          <div class="actions">
+            <el-button type="primary" @click="doReview">
+              <AppIcon name="check" :size="15" class="btn-ico" />审单
+            </el-button>
+            <el-button type="success" @click="transitionVisible = true">
+              <AppIcon name="swap" :size="15" class="btn-ico" />状态转移
+            </el-button>
+            <el-button type="warning" @click="reverseVisible = true">
+              <AppIcon name="warning" :size="15" class="btn-ico" />逆向
+            </el-button>
+          </div>
+          <p class="text-hint mt">
+            审单=地址/黑名单/库存/合规校验；状态转移按状态机候选；逆向=取消 / 退货 / 拦截 / 退件。
+          </p>
+        </el-card>
 
         <!-- 状态转移 -->
-        <el-dialog v-model="transitionVisible" title="状态转移" width="380">
-          <el-form label-width="80">
+        <el-dialog v-model="transitionVisible" title="状态转移" width="400" append-to-body>
+          <el-form label-width="84">
             <el-form-item label="目标状态">
-              <el-select v-model="transitionTo" placeholder="选择目标状态">
+              <el-select v-model="transitionTo" placeholder="选择目标状态" class="full">
                 <el-option
                   v-for="t in allowedNext"
                   :key="t"
@@ -114,15 +194,15 @@
         </el-dialog>
 
         <!-- 逆向 -->
-        <el-dialog v-model="reverseVisible" title="发起逆向流程" width="420">
-          <el-form label-width="80">
+        <el-dialog v-model="reverseVisible" title="发起逆向流程" width="440" append-to-body>
+          <el-form label-width="84">
             <el-form-item label="类型">
-              <el-select v-model="reverseType" placeholder="选择逆向类型">
+              <el-select v-model="reverseType" placeholder="选择逆向类型" class="full">
                 <el-option v-for="(label, val) in reverseTypes" :key="val" :label="label" :value="val" />
               </el-select>
             </el-form-item>
             <el-form-item label="原因">
-              <el-input v-model="reverseCause" type="textarea" :rows="2" />
+              <el-input v-model="reverseCause" type="textarea" :rows="2" placeholder="如：客户取消订单" />
             </el-form-item>
           </el-form>
           <template #footer>
@@ -145,6 +225,8 @@ import {
   REVERSE_TYPES,
   type Order,
 } from '@/api/orders'
+import PageHeader from '@/components/PageHeader.vue'
+import AppIcon from '@/components/AppIcon.vue'
 
 const statusLabels = ORDER_STATUS_LABELS
 const reverseTypes = REVERSE_TYPES
@@ -165,12 +247,15 @@ const allowedNext = computed(() =>
   current.value ? ORDER_ALLOWED_TRANSITIONS[current.value.status] || [] : [],
 )
 
-function statusTag(status: string): 'success' | 'warning' | 'danger' | 'info' | 'primary' {
-  if (['completed'].includes(status)) return 'success'
-  if (['exception'].includes(status)) return 'warning'
-  if (['rejected', 'cancelled'].includes(status)) return 'danger'
-  if (['pending_review', 'approved'].includes(status)) return 'info'
-  return 'primary'
+/** 状态 → 柔和标签配色类 */
+function statusClass(status: string): string {
+  if (status === 'completed') return 'tag-green'
+  if (status === 'exception') return 'tag-orange'
+  if (status === 'rejected' || status === 'cancelled') return 'tag-red'
+  if (status === 'approved') return 'tag-brand'
+  if (['fulfilled', 'shipped', 'in_transit'].includes(status)) return 'tag-teal'
+  if (status === 'pending_review') return 'tag-amber'
+  return 'tag-gray'
 }
 
 function fmt(ts: string): string {
@@ -250,21 +335,120 @@ onMounted(load)
 </script>
 
 <style scoped>
-.head {
+.filter-select {
+  width: 150px;
+}
+.btn-ico {
+  margin-right: 5px;
+}
+.btn-ico-xs {
+  margin-left: 2px;
+}
+.card-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  width: 100%;
 }
-.filters {
+.card-head .section-title {
+  margin: 0;
+}
+.count-pill {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--brand-700);
+  background: var(--brand-soft);
+  padding: 4px 10px;
+  border-radius: var(--r-pill);
+}
+.mono {
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  color: var(--ink-800);
+}
+.muted {
+  color: var(--ink-500);
+}
+.cell-shop {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-700);
+}
+.money {
+  font-weight: 600;
+  color: var(--ink-900);
+}
+.money em {
+  font-style: normal;
+  color: var(--ink-400);
+  font-weight: 500;
+  font-size: 12px;
+  margin-left: 3px;
+}
+
+/* 抽屉 */
+.drawer-title {
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 10px;
+}
+.dt-ico {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--brand-soft);
+  color: var(--brand-600);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.dt-main {
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--ink-900);
+}
+.dt-sub {
+  font-size: 13px;
+  color: var(--ink-400);
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+}
+.order-drawer :deep(.el-drawer__body) {
+  padding: 20px;
+  background: var(--bg);
+}
+.sec {
+  margin-bottom: 14px;
+}
+.sec-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.sec-head .section-title {
+  margin: 0;
+}
+.tl-type {
+  font-weight: 600;
+  color: var(--ink-800);
+}
+.tl-op {
+  color: var(--ink-400);
+  margin-left: 4px;
+}
+.app-empty.small {
+  padding: 20px 0;
 }
 .actions {
   display: flex;
-  gap: 8px;
+  gap: 10px;
+  flex-wrap: wrap;
 }
-.op {
-  color: #909399;
-  margin-left: 4px;
+.mt {
+  margin: 12px 0 0;
+}
+.full {
+  width: 100%;
 }
 </style>

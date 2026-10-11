@@ -1,41 +1,92 @@
 <template>
   <div class="catalog">
+    <PageHeader
+      title="商品 / SKU 中心"
+      subtitle="平台 ↔ 内部 ↔ 供应商 三段映射 · 计费重自动派生"
+      icon="catalog"
+      accent="violet"
+    >
+      <template #actions>
+        <el-button @click="reload">
+          <AppIcon name="refresh" :size="15" class="btn-ico" />刷新
+        </el-button>
+      </template>
+    </PageHeader>
+
     <el-card>
-      <template #header>商品 / SKU 中心（平台↔内部↔供应商映射）</template>
-      <el-tabs v-model="tab">
-        <el-tab-pane label="商品（SPU）" name="products">
-          <el-table v-loading="loadingP" :data="products" stripe>
-            <el-table-column prop="title" label="标题" min-width="180" />
-            <el-table-column prop="spu" label="SPU" width="140" />
-            <el-table-column label="创建时间" min-width="170">
-              <template #default="{ row }">{{ fmt(row.createdAt) }}</template>
+      <el-tabs v-model="tab" class="tabs">
+        <el-tab-pane name="products">
+          <template #label>
+            <span class="tab-label">
+              <AppIcon name="layers" :size="15" />商品（SPU）
+              <em>{{ products.length }}</em>
+            </span>
+          </template>
+          <el-table v-loading="loadingP" :data="products">
+            <el-table-column prop="title" label="标题" min-width="200">
+              <template #default="{ row }"><span class="t-title">{{ row.title }}</span></template>
             </el-table-column>
+            <el-table-column prop="spu" label="SPU" width="150">
+              <template #default="{ row }"><span class="mono">{{ row.spu }}</span></template>
+            </el-table-column>
+            <el-table-column label="创建时间" min-width="175">
+              <template #default="{ row }"><span class="muted">{{ fmt(row.createdAt) }}</span></template>
+            </el-table-column>
+            <template #empty>
+              <div class="app-empty">
+                <span class="app-empty-ico"><AppIcon name="layers" :size="26" /></span>
+                <span class="app-empty-text">暂无商品数据</span>
+              </div>
+            </template>
           </el-table>
         </el-tab-pane>
 
-        <el-tab-pane label="内部 SKU" name="skus">
-          <el-table v-loading="loadingS" :data="skus" stripe>
-            <el-table-column prop="code" label="内部SKU" width="140" />
-            <el-table-column prop="platformSku" label="平台SKU" width="160" />
-            <el-table-column prop="supplierSku" label="供应商SKU" width="160" />
-            <el-table-column label="实重(g)" width="90" prop="weightG" />
-            <el-table-column label="体积重(g)" width="100">
-              <template #default="{ row }">{{ volWeight(row) }}</template>
+        <el-tab-pane name="skus">
+          <template #label>
+            <span class="tab-label">
+              <AppIcon name="box" :size="15" />内部 SKU
+              <em>{{ skus.length }}</em>
+            </span>
+          </template>
+          <el-table v-loading="loadingS" :data="skus">
+            <el-table-column prop="code" label="内部SKU" width="145">
+              <template #default="{ row }"><span class="mono">{{ row.code }}</span></template>
             </el-table-column>
-            <el-table-column label="计费重(g)" width="100">
+            <el-table-column prop="platformSku" label="平台SKU" width="165">
+              <template #default="{ row }"><span class="muted">{{ row.platformSku }}</span></template>
+            </el-table-column>
+            <el-table-column prop="supplierSku" label="供应商SKU" width="165">
+              <template #default="{ row }"><span class="muted">{{ row.supplierSku }}</span></template>
+            </el-table-column>
+            <el-table-column label="实重(g)" width="95" prop="weightG" />
+            <el-table-column label="体积重(g)" width="105">
+              <template #default="{ row }"><span class="muted">{{ volWeight(row) }}</span></template>
+            </el-table-column>
+            <el-table-column label="计费重(g)" width="110">
               <template #default="{ row }">
-                <strong>{{ billable(row) }}</strong>
+                <span class="weight-pill">{{ billable(row) }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="尺寸(cm)" min-width="140">
+            <el-table-column label="尺寸(cm)" min-width="145">
               <template #default="{ row }">
-                {{ [row.lengthCm, row.widthCm, row.heightCm].filter((v) => v != null).join('×') || '-' }}
+                <span class="muted">{{ dims(row) }}</span>
               </template>
             </el-table-column>
+            <template #empty>
+              <div class="app-empty">
+                <span class="app-empty-ico"><AppIcon name="box" :size="26" /></span>
+                <span class="app-empty-text">暂无 SKU 数据</span>
+              </div>
+            </template>
           </el-table>
-          <p class="hint">
-            计费重 = max(实重, 体积重)，体积重 = 长×宽×高 / 抛比系数(5000)。拉单落库时按平台 SKU 自动回填内部 skuId（见订单明细）。
-          </p>
+
+          <div class="formula">
+            <AppIcon name="warning" :size="15" class="f-ico" />
+            <span>
+              计费重 = max(实重, 体积重)，体积重 = 长×宽×高 / 抛比系数(5000)。
+              拉单落库时按平台 SKU 自动回填内部 skuId（见订单明细）。
+            </span>
+          </div>
         </el-tab-pane>
       </el-tabs>
     </el-card>
@@ -45,6 +96,8 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { catalogApi, type Product, type Sku } from '@/api/catalog'
+import PageHeader from '@/components/PageHeader.vue'
+import AppIcon from '@/components/AppIcon.vue'
 
 const tab = ref('products')
 const products = ref<Product[]>([])
@@ -54,6 +107,10 @@ const loadingS = ref(false)
 
 function fmt(ts: string): string {
   return ts ? new Date(ts).toLocaleString('zh-CN', { hour12: false }) : '-'
+}
+
+function dims(row: Sku): string {
+  return [row.lengthCm, row.widthCm, row.heightCm].filter((v) => v != null).join(' × ') || '-'
 }
 
 function volWeight(row: Sku): number | string {
@@ -84,16 +141,71 @@ async function loadSkus(): Promise<void> {
   }
 }
 
-onMounted(() => {
+function reload(): void {
   loadProducts()
   loadSkus()
-})
+}
+
+onMounted(reload)
 </script>
 
 <style scoped>
-.hint {
-  color: #909399;
-  font-size: 12px;
-  margin-top: 12px;
+.btn-ico {
+  margin-right: 5px;
+}
+.tabs :deep(.el-tabs__header) {
+  margin-bottom: 16px;
+}
+.tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.tab-label em {
+  font-style: normal;
+  background: var(--violet-soft);
+  color: #6d28d9;
+  border-radius: var(--r-pill);
+  padding: 1px 7px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.t-title {
+  font-weight: 500;
+  color: var(--ink-800);
+}
+.mono {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+}
+.muted {
+  color: var(--ink-500);
+}
+.weight-pill {
+  display: inline-block;
+  min-width: 52px;
+  text-align: center;
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  background: var(--violet-soft);
+  color: #6d28d9;
+  font-weight: 700;
+  font-size: 12.5px;
+}
+.formula {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 12px 14px;
+  background: var(--line-soft);
+  border-radius: var(--r-md);
+  color: var(--ink-500);
+  font-size: 12.5px;
+  line-height: 1.7;
+}
+.f-ico {
+  color: var(--amber-500);
+  margin-top: 2px;
 }
 </style>

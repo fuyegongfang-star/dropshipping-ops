@@ -32,6 +32,24 @@ dropshipping-ops/
 └── dev-schedule.md         # 开发进度表（唯一进度真相源）
 ```
 
+## UI 设计体系
+
+> 前端遵循统一设计系统，所有页面共用同一套设计令牌（集中在 `web/src/styles/theme.css`）。
+> 采用纯 CSS 方案：在 Element Plus 官方样式**之后**覆盖其 CSS 变量，因此无需引入 sass 或额外构建插件。
+
+- **品牌主色**：靛蓝渐变家族（`#4F6EF7 → #3047C4`），辅以青 / 橘 / 紫作语义强调；中性灰阶采用现代 Slate 色板。
+- **布局**：深色渐变侧边栏（图标菜单 + 可折叠）＋ 白底轻阴影顶栏 ＋ 浅灰主内容区，层级分明。
+- **圆角与阴影**：卡片 16px 圆角、柔和分层阴影、悬停上浮，摒弃 Element Plus 默认扁平观感。
+- **状态分级**：订单 / 租户 / 平台状态统一使用柔和胶囊标签（绿 / 琥珀 / 红 / 蓝 / 青），语义清晰不刺眼。
+- **图标**：`web/src/components/AppIcon.vue` 提供零依赖内联 SVG 线性图标集（不引入图标字体包）。
+- **统一页头**：`web/src/components/PageHeader.vue`（图标徽章 + 标题/副标题 + 右侧操作插槽），五张业务页共用。
+- **动效**：路由切换 fade-slide 过渡、按钮与卡片悬停位移，克制统一。
+
+改版涉及文件：`styles/theme.css`、`layouts/BasicLayout.vue`、`components/AppIcon.vue`、
+`components/PageHeader.vue`、`views/{Dashboard,Orders,Catalog,Channels,Tenants}View.vue`。
+
+> 约定：新增页面请沿用上述令牌（颜色用 `var(--*)` 变量），避免散落的硬编码色值。
+
 ## 快速开始（需联网安装依赖）
 
 ```bash

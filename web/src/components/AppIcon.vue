@@ -1,0 +1,88 @@
+<template>
+  <!-- 零依赖内联 SVG 线性图标集（物流 / 货代后台场景）。
+       颜色继承 currentColor，尺寸由 size 控制，stroke 风格统一。 -->
+  <svg
+    :width="size"
+    :height="size"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    :stroke-width="strokeWidth"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    class="app-icon"
+    aria-hidden="true"
+  >
+    <!-- path 来自本文件内的 ICONS 常量字典（非用户输入，无 XSS 风险），
+         故此处豁免 vue/no-v-html 以注入 SVG 子片段。 -->
+    <!-- eslint-disable-next-line vue/no-v-html -->
+    <g v-html="path" />
+  </svg>
+</template>
+
+<script setup lang="ts">
+import { computed } from 'vue'
+
+const props = withDefaults(
+  defineProps<{
+    name: string
+    size?: number
+    strokeWidth?: number
+  }>(),
+  { size: 18, strokeWidth: 1.8 },
+)
+
+// 每个图标为 SVG 内部片段（path / circle 等）。统一线性风格。
+const ICONS: Record<string, string> = {
+  dashboard:
+    '<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>',
+  orders:
+    '<path d="M9 4h7a2 2 0 0 1 2 2v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a2 2 0 0 1 2-2z"/><path d="M9 4v3h7V4"/><path d="M8.5 12h7M8.5 16h5"/>',
+  catalog:
+    '<path d="M3.5 7.5 12 4l8.5 3.5v9L12 20l-8.5-3.5z"/><path d="M3.5 7.5 12 11l8.5-3.5M12 11v9"/>',
+  channels:
+    '<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><circle cx="18" cy="6" r="2.5"/><path d="M8.5 6h7M6 8.5v7a2 2 0 0 0 2 2h7"/>',
+  tenants:
+    '<circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M16 6.5a3 3 0 0 1 0 5.8M17.5 19a5.3 5.3 0 0 0-2.4-4.4"/>',
+  refresh:
+    '<path d="M20 11a8 8 0 1 0-2.3 5.6"/><path d="M20 5v6h-6"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  bell:
+    '<path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6z"/><path d="M10.5 19a1.5 1.5 0 0 0 3 0"/>',
+  check: '<path d="M5 13l4 4L19 7"/>',
+  search: '<circle cx="11" cy="11" r="6"/><path d="M20 20l-3.5-3.5"/>',
+  box: '<path d="M3.5 7.5 12 4l8.5 3.5v9L12 20l-8.5-3.5z"/><path d="M3.5 7.5 12 11l8.5-3.5M12 11v9"/>',
+  truck:
+    '<path d="M3 6h11v9H3z"/><path d="M14 9h4l3 3v3h-7z"/><circle cx="7" cy="18" r="1.6"/><circle cx="17.5" cy="18" r="1.6"/>',
+  money:
+    '<circle cx="12" cy="12" r="8"/><path d="M12 8v8M9.5 10.2c0-1.2 1.1-1.8 2.5-1.8s2.5.6 2.5 1.8-1.1 1.6-2.5 1.6-2.5.5-2.5 1.7 1.1 1.9 2.5 1.9 2.5-.7 2.5-1.9"/>',
+  shop:
+    '<path d="M4 9h16l-1-4H5z"/><path d="M5 9v10h14V9"/><path d="M9 19v-5h6v5"/>',
+  arrowRight: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+  close: '<path d="M6 6l12 12M18 6 6 18"/>',
+  user: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/>',
+  building:
+    '<rect x="4" y="3" width="16" height="18" rx="1.5"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2M10 21v-3h4v3"/>',
+  package:
+    '<path d="M3.5 7.5 12 4l8.5 3.5v9L12 20l-8.5-3.5z"/><path d="M3.5 7.5 12 11l8.5-3.5M12 11v9"/>',
+  filter: '<path d="M3 5h18l-7 8v6l-4 2v-8z"/>',
+  swap:
+    '<path d="M7 7h11l-3-3M17 17H6l3 3"/>',
+  globe:
+    '<circle cx="12" cy="12" r="8"/><path d="M4 12h16M12 4c2.5 2.5 2.5 13 0 16M12 4c-2.5 2.5-2.5 13 0 16"/>',
+  layers:
+    '<path d="M12 3 3 8l9 5 9-5z"/><path d="M3 13l9 5 9-5"/>',
+  warning: '<path d="M12 3 2 20h20z"/><path d="M12 9v5M12 17h.01"/>',
+  menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
+}
+
+const path = computed(() => ICONS[props.name] ?? ICONS.box)
+</script>
+
+<style scoped>
+.app-icon {
+  display: inline-block;
+  vertical-align: middle;
+  flex: none;
+}
+</style>

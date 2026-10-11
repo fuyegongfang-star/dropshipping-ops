@@ -1,0 +1,366 @@
+/* =========================================================================
+ * 设计系统 · 一件代发货代运营平台
+ * 纯 CSS（项目无 sass）。在 element-plus/dist/index.css 之后引入以覆盖主题。
+ * 视觉语言：专业可信的货代 SaaS —— 靛蓝品牌色 + 现代灰阶 + 柔和分层阴影 +
+ *          大圆角 + 克制动效。
+ * ========================================================================= */
+
+:root {
+  /* ---- 品牌主色（靛蓝渐变家族） ---- */
+  --brand-300: #A9BBFB;
+  --brand-400: #7E96F9;
+  --brand-500: #4f6ef7;
+  --brand-600: #3d5be0;
+  --brand-700: #3047c4;
+  --brand-soft: #eef2ff;
+
+  /* ---- 辅助 / 语义色 ---- */
+  --teal-500: #12b5a5;
+  --teal-soft: #e6faf7;
+  --orange-500: #ff8a3d;
+  --orange-soft: #fff3e9;
+  --red-500: #f04438;
+  --red-soft: #fef3f2;
+  --green-500: #16a34a;
+  --green-soft: #ecfdf3;
+  --amber-500: #f79009;
+  --amber-soft: #fffaeb;
+  --violet-500: #7c5cfc;
+  --violet-soft: #f3effe;
+
+  /* ---- 中性灰阶 ---- */
+  --ink-900: #0f172a;
+  --ink-800: #1e293b;
+  --ink-700: #334155;
+  --ink-600: #475569;
+  --ink-500: #64748b;
+  --ink-400: #94a3b8;
+  --ink-300: #cbd5e1;
+  --line: #e8edf5;
+  --line-soft: #f1f5f9;
+  --bg: #f5f7fb;
+  --surface: #ffffff;
+
+  /* ---- 圆角 ---- */
+  --r-xs: 6px;
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 20px;
+  --r-pill: 999px;
+
+  /* ---- 阴影（柔和分层） ---- */
+  --sh-1: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --sh-2: 0 4px 16px rgba(16, 24, 40, 0.08);
+  --sh-3: 0 12px 32px rgba(16, 24, 40, 0.12);
+  --sh-brand: 0 6px 18px rgba(79, 110, 247, 0.35);
+
+  /* ---- 动效 ---- */
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ====================== 覆盖 Element Plus 主题变量 ====================== */
+:root {
+  --el-color-primary: var(--brand-500);
+  --el-color-primary-light-3: var(--brand-400);
+  --el-color-primary-light-5: var(--brand-300);
+  --el-color-primary-light-7: #d3dbff;
+  --el-color-primary-light-8: #e6ebfe;
+  --el-color-primary-light-9: #f2f5fe;
+  --el-color-primary-dark-2: var(--brand-600);
+
+  --el-color-success: var(--green-500);
+  --el-color-success-light-3: #4cb36b;
+  --el-color-success-light-9: var(--green-soft);
+  --el-color-success-dark-2: #128a3c;
+
+  --el-color-warning: var(--amber-500);
+  --el-color-warning-light-3: #f9ac4a;
+  --el-color-warning-light-9: var(--amber-soft);
+  --el-color-warning-dark-2: #c67407;
+
+  --el-color-danger: var(--red-500);
+  --el-color-danger-light-3: #f47368;
+  --el-color-danger-light-9: var(--red-soft);
+  --el-color-danger-dark-2: #c3342a;
+  --el-color-error: var(--red-500);
+
+  --el-color-info: var(--ink-500);
+
+  --el-text-color-primary: var(--ink-800);
+  --el-text-color-regular: var(--ink-700);
+  --el-text-color-secondary: var(--ink-500);
+  --el-text-color-placeholder: var(--ink-400);
+
+  --el-border-color: var(--line);
+  --el-border-color-light: var(--line-soft);
+  --el-border-color-lighter: var(--line-soft);
+  --el-border-color-extra-light: var(--line-soft);
+  --el-fill-color-blank: var(--surface);
+
+  --el-border-radius-base: 8px;
+  --el-border-radius-small: 6px;
+  --el-border-radius-round: var(--r-pill);
+
+  --el-font-size-base: 14px;
+  --el-bg-color: var(--surface);
+  --el-bg-color-overlay: var(--surface);
+}
+
+/* ====================== 全局基础 ====================== */
+html,
+body,
+#app {
+  height: 100%;
+}
+body {
+  background: var(--bg);
+  color: var(--ink-800);
+  font-family: -apple-system, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 滚动条美化 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--ink-300);
+  border-radius: var(--r-pill);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-400);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ====================== 卡片 ====================== */
+.el-card {
+  --el-card-border-color: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-2);
+  transition: box-shadow 0.25s var(--ease), transform 0.25s var(--ease);
+  overflow: hidden;
+}
+.el-card__header {
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--line);
+  font-weight: 600;
+  color: var(--ink-800);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.el-card__body {
+  padding: 20px;
+}
+.el-card.is-always-shadow,
+.el-card[shadow='hover']:hover {
+  box-shadow: var(--sh-3);
+}
+
+/* ====================== 按钮 ====================== */
+.el-button {
+  border-radius: var(--r-sm);
+  font-weight: 500;
+  transition: all 0.18s var(--ease);
+}
+.el-button--primary {
+  box-shadow: 0 2px 8px rgba(79, 110, 247, 0.32);
+}
+.el-button--primary:hover {
+  box-shadow: 0 4px 14px rgba(79, 110, 247, 0.42);
+  transform: translateY(-1px);
+}
+.el-button.is-link {
+  font-weight: 500;
+}
+
+/* ====================== 表格 ====================== */
+.el-table {
+  --el-table-border-color: var(--line);
+  --el-table-header-bg-color: #f8fafc;
+  --el-table-row-hover-bg-color: var(--brand-soft);
+  font-size: 13px;
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.el-table th.el-table__cell {
+  background: #f8fafc;
+  color: var(--ink-700);
+  font-weight: 600;
+}
+.el-table .el-table__cell {
+  padding: 11px 0;
+}
+.el-table .cell {
+  line-height: 1.5;
+}
+
+/* ====================== 标签（状态分级，自定义类） ====================== */
+.tag-soft {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: var(--r-pill);
+  font-size: 12px;
+  font-weight: 600;
+  border: none;
+  line-height: 1;
+}
+.tag-soft::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.tag-brand {
+  color: var(--brand-700);
+  background: var(--brand-soft);
+}
+.tag-green {
+  color: #15803d;
+  background: var(--green-soft);
+}
+.tag-amber {
+  color: #b45309;
+  background: var(--amber-soft);
+}
+.tag-red {
+  color: #b42318;
+  background: var(--red-soft);
+}
+.tag-gray {
+  color: var(--ink-600);
+  background: #f1f5f9;
+}
+.tag-teal {
+  color: #0f766e;
+  background: var(--teal-soft);
+}
+.tag-violet {
+  color: #6d28d9;
+  background: var(--violet-soft);
+}
+.tag-orange {
+  color: #c2410c;
+  background: var(--orange-soft);
+}
+
+/* ====================== 统计卡（仪表盘） ====================== */
+.stat-card {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  padding: 20px;
+  box-shadow: var(--sh-2);
+  overflow: hidden;
+  transition: box-shadow 0.25s var(--ease), transform 0.25s var(--ease);
+}
+.stat-card:hover {
+  box-shadow: var(--sh-3);
+  transform: translateY(-3px);
+}
+.stat-card .stat-ico {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  margin-bottom: 14px;
+}
+.stat-card .stat-num {
+  font-size: 30px;
+  font-weight: 700;
+  color: var(--ink-900);
+  line-height: 1.1;
+  letter-spacing: -0.5px;
+}
+.stat-card .stat-label {
+  margin-top: 6px;
+  color: var(--ink-500);
+  font-size: 13px;
+}
+.stat-card .stat-deco {
+  position: absolute;
+  right: -24px;
+  top: -24px;
+  width: 110px;
+  height: 110px;
+  border-radius: 50%;
+  opacity: 0.1;
+  pointer-events: none;
+}
+
+/* ====================== 空状态 ====================== */
+.app-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 0;
+  color: var(--ink-400);
+  gap: 12px;
+}
+.app-empty .app-empty-ico {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--line-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-400);
+}
+.app-empty .app-empty-text {
+  font-size: 14px;
+}
+
+/* ====================== 分区标题小标 ====================== */
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink-800);
+  margin: 0 0 14px;
+}
+.section-title::before {
+  content: '';
+  width: 4px;
+  height: 15px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--brand-500), var(--brand-700));
+}
+
+/* ====================== 路由切换过渡 ====================== */
+.fade-slide-enter-active,
+.fade-slide-leave-active {
+  transition: opacity 0.22s var(--ease), transform 0.22s var(--ease);
+}
+.fade-slide-enter-from {
+  opacity: 0;
+  transform: translateY(12px);
+}
+.fade-slide-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+/* ====================== 提示语小字 ====================== */
+.text-hint {
+  color: var(--ink-400);
+  font-size: 12px;
+  line-height: 1.6;
+}
