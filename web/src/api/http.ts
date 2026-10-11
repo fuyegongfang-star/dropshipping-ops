@@ -1,5 +1,16 @@
 import axios, { type AxiosRequestConfig, type AxiosResponse } from 'axios'
 import { useTenantStore } from '@/stores/tenant'
+import { mockRouter } from './mock-data'
+
+/**
+ * 演示模式开关（见 src/env.d.ts）。
+ * - true：所有请求由 src/api/mock-data.ts 在纯前端返回数据，无需后端 / 数据库，
+ *   便于本地直接预览成果（默认开启，见 web/.env）。
+ * - 生产 / 接入真实后端时设为 false（或删除 web/.env 的该变量），走下方 axios 真实请求。
+ */
+// 默认开启演示模式：未设置该变量（如全新克隆、未建 .env）时直接走 mock，
+// 保证 `npm install && npm run dev` 即可看到成果；接真实后端时显式设为 false。
+const USE_MOCK = (import.meta.env.VITE_USE_MOCK ?? 'true') === 'true'
 
 /**
  * 统一 HTTP 客户端（方案 §11/§31）。
@@ -49,13 +60,22 @@ export interface TypedHttp {
 
 // 说明：响应拦截器已将 AxiosResponse 解包为数据体，
 // 此处用一次类型断言把 axios 的 AxiosResponse<T> 抹平为 T。
+// 演示模式（USE_MOCK）下绕过 axios，由 mockRouter 直接返回数据体。
 export const http: TypedHttp = {
-  get: <T>(url: string, config?: AxiosRequestConfig) => instance.get(url, config) as unknown as Promise<T>,
+  get: <T>(url: string, config?: AxiosRequestConfig) =>
+    USE_MOCK ? (mockRouter('GET', url) as unknown as Promise<T>) : (instance.get(url, config) as unknown as Promise<T>),
   post: <T>(url: string, data?: unknown, config?: AxiosRequestConfig) =>
-    instance.post(url, data, config) as unknown as Promise<T>,
+    USE_MOCK
+      ? (mockRouter('POST', url) as unknown as Promise<T>)
+      : (instance.post(url, data, config) as unknown as Promise<T>),
   put: <T>(url: string, data?: unknown, config?: AxiosRequestConfig) =>
-    instance.put(url, data, config) as unknown as Promise<T>,
-  delete: <T>(url: string, config?: AxiosRequestConfig) => instance.delete(url, config) as unknown as Promise<T>,
+    USE_MOCK
+      ? (mockRouter('PUT', url) as unknown as Promise<T>)
+      : (instance.put(url, data, config) as unknown as Promise<T>),
+  delete: <T>(url: string, config?: AxiosRequestConfig) =>
+    USE_MOCK
+      ? (mockRouter('DELETE', url) as unknown as Promise<T>)
+      : (instance.delete(url, config) as unknown as Promise<T>),
 }
 
 export default http

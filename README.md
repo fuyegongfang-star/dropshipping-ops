@@ -51,6 +51,26 @@ npm run start:dev --workspace server
 npm run dev --workspace web
 ```
 
+## 零依赖快速预览（演示模式，推荐先看这个）
+
+> 只想**立刻在浏览器看到成果**、先不装 Docker / 数据库？用演示模式即可。
+> 前端内置一套 mock 数据（`web/src/api/mock-data.ts`），由 `web/.env` 的 `VITE_USE_MOCK=true` 开启，
+> 所有页面（订单 / 商品SKU / 渠道 / 租户 / 看板）纯前端渲染，且审单 / 状态转移 / 逆向 / 拉单都可交互。
+
+```bash
+# 1. 安装依赖（已装可跳过）
+npm install --ignore-scripts
+
+# 2. 启动前端（演示模式默认开启，无需后端 / 数据库）
+npm run dev --workspace web
+# 或构建后用静态服务预览：npm run build --workspace web && npm run preview --workspace web
+```
+
+打开 **http://localhost:5173** 即可。顶部右上角已默认选中 `demo` 租户。
+确认无误后，想接真实后端再看「本地跑起来看成果」章节（需 Docker + PostgreSQL）。
+
+> 关闭演示模式：删除 `web/.env` 或将其改为 `VITE_USE_MOCK=false`，此时前端走真实 `/api` 代理到后端。
+
 ## 本地跑起来看成果（含演示数据）
 
 > 目标：在你本机把前后端跑起来，打开浏览器直观看到「订单中心 / 商品SKU / 渠道 / 租户」与状态机、审单、逆向等能力。
