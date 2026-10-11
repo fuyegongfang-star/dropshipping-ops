@@ -54,3 +54,16 @@
 - **下一步**：1.5 履约路由 / 1.6 物流回传+轨迹 / 1.8 运费试算最小版 / 1.9 供应商代发链路（依赖阶段3 承运商适配器与费率卡 §3/§4）；阶段1 MVP 主干 + SKU 中心 + Amazon 评估均已落地，剩余多为阶段3 依赖项。
 - **提交**：原夜间批次漏提交，已于 2026-10-11 随文档/检查点一并补提交（见 `feat(channels/amazon): 阶段1 Amazon SP-API 评估 1.10`）。
 - **用户汇总**：本续跑完成 Amazon SP-API 可行性评估并落地了可验证的认证闸门（LWA）与框架贴合的拉单归一化骨架；明确 SigV4 与 FBA/FBM 推单为阶段5 完整对接，避免生产误用（其余端点抛 NOT_IMPLEMENTED）。合计单测增至 33 个、5 个套件全绿。
+
+---
+
+## 2026-10-11（夜间自动化 23:10 启动 · CarrierAdapter 框架 3.1）
+
+- **完成**：
+  - **3.1 CarrierAdapter 框架** ✅（§3，镜像 ChannelAdapter）—— 承运商侧可插拔适配器体系：统一六能力接口 `CarrierAdapter`（比价/建单/面单/轨迹/取消/订阅）、抽象基类（复用 `RetryableHttpService` 重试退避 + `AppLogger`）、`CarrierCode`/`CarrierCapability`/`CarrierHealth` 常量、计费重/抛重计算 `weight.ts`（§4.2 核心）、归一化 DTO（比价/建单/报关§19/轨迹）、**实例+工厂双模式注册表**（含租户 `CarrierAccount` 凭证分发 §2.2）、`MockCarrierAdapter` 自测桩、`CarriersService`+`CarriersController`（REST 入口 `/carriers/...`）+ `CarriersModule`（已接入 `AppModule`）。
+- **进行中**：无。
+- **受阻**：无。
+- **测试结果**：`tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（新增 20 / 全仓 53 passed / 8 suites）。
+- **下一步**：3.2 云途接入（SDK 优先，OAuth2+HMAC）→ 3.3 DHL → 3.4 4PX/燕文（MD5）→ 3.5 比价引擎4层 → 3.6 加价规则引擎。3.1 已打通工厂注册与租户账号分发通道，3.2~3.4 注册工厂即接入。阶段1 收口任务 1.5/1.6/1.8/1.9 顺延至 3.5/3.6 后补。
+- **提交**：`feat(carriers): 阶段3 CarrierAdapter 框架 3.1（接口/注册表/Mock/REST/单测）`。
+- **用户汇总**：今夜完成阶段3 开局——承运商适配器框架 CarrierAdapter，与渠道侧 ChannelAdapter 完全对称：统一六能力接口 + 抽象基类（共享重试/日志）+ 实例/工厂双模式注册表（工厂按租户账号凭证构建，§2.2）+ 计费重计算（§4.2 货代试算核心）+ 归一化 DTO（比价/建单/报关/轨迹）+ Mock 自测桩 + REST 入口。已接入应用并补齐 20 个单测，全仓 53 单测全绿、类型检查与零警告 Lint 通过。下一步顺推云途/DHL/4PX/燕文真实适配器与比价引擎。

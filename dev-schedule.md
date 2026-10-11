@@ -43,7 +43,7 @@
 | 2.1 | 阶段2 | 国内渠道(淘宝/抖音) | 验证多平台适配（§3） | 1.2 | 1.5d | ⬜ |
 | 2.2 | 阶段2 | WMS 入库/库存/拣货 | ASN/上架/锁定/拣货波次（§15） | 0.4 | 2d | ⬜ |
 | 2.3 | 阶段2 | 海外仓模型 | `warehouses`/`inventory`/海外仓备货（§15） | 2.2 | 1.5d | ⬜ |
-| 3.1 | 阶段3 | CarrierAdapter 框架 | 镜像 ChannelAdapter（§3） | 0.3 | 1d | ⬜ |
+| 3.1 | 阶段3 | CarrierAdapter 框架 | 镜像 ChannelAdapter（§3） | 0.3 | 1d | ✅ |
 | 3.2 | 阶段3 | 云途接入(SDK优先) | `yunexpress-sdk` OAuth2+HMAC（§3 调研） | 3.1 | 1d | ⬜ |
 | 3.3 | 阶段3 | DHL 接入 | OAuth2 + 沙箱审批（§3 调研） | 3.1 | 1.5d | ⬜ |
 | 3.4 | 阶段3 | 4PX / 燕文 接入 | MD5 签名（§3 调研） | 3.1 | 1.5d | ⬜ |
@@ -149,3 +149,24 @@
 - **测试结果**：`tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（33 passed / 5 suites）。
 - **提交**：原夜间批次漏提交，已于 2026-10-11 随文档/检查点一并补提交（见 `feat(channels/amazon): 阶段1 Amazon SP-API 评估 1.10`）。
 - **下一步（次日接力）**：1.5 履约路由 / 1.6 物流回传+轨迹 / 1.8 运费试算最小版 / 1.9 供应商代发链路（均依赖阶段3 承运商适配器与费率卡 §3/§4，待阶段3 后补）；阶段1 MVP 主干「拉单→审单→SKU映射」已闭环，1.10 评估落地，剩余多为阶段3 依赖项。
+
+---
+
+### 进度更新 · 2026-10-11（夜间自动化 23:10 启动 · CarrierAdapter 框架）
+- **完成（✅）**：
+  - **3.1 CarrierAdapter 框架（§3，镜像 ChannelAdapter）** —— 与 1.1 对称落地承运商侧可插拔适配器体系：
+    - `carrier.constants.ts`：`CarrierCode`（yunexpress/dhl/fourpx/yanwen/aggregator/mock）、`CarrierAuthType`（oauth2/hmac/md5）、`CarrierCapability`（rate/ship/label/track/cancel/subscribe 六能力声明）、`CarrierHealth`。
+    - `carrier-adapter.interface.ts`：`CarrierAdapter` 统一六能力接口（getRates / createShipment / getLabel / getTracking / cancelShipment / subscribeTracking）。
+    - `abstract-carrier.adapter.ts`：抽象基类，复用 `RetryableHttpService`（§2.1 超时/429·5xx 指数退避）+ `AppLogger` + 默认健康探测（带能力声明）。
+    - `weight.ts`：计费重/抛重计算（§4.2 核心：计费重=max(实重,体积重)，多箱 Σ，抛比系数默认 5000，除零保护）。
+    - 归一化 DTO：`dto/rate.dto.ts`（`GetRatesRequest`/`RateQuote`/`SurchargeItem`/`CargoType`/`LegType`，class-validator 入参）、`dto/shipment.dto.ts`（`CreateShipmentRequest`/`CreateShipmentResult`/`CarrierLabel`/收件人/报关字段 §19）、`dto/tracking.dto.ts`（`CarrierTrackingStatus` 归一化 + `CarrierTrackingResult`）。
+    - `carrier-registry.service.ts`：**实例 + 工厂双模式**（镜像 ChannelRegistryService）——`registerAdapter` / `registerFactory` / `resolveForAccount`（工厂优先，含租户账号凭证 §2.2）/ `isFactory` / `getAdapter` / `has` / `listCodes`；未注册优雅抛 `BusinessException`。
+    - `adapters/mock-carrier.adapter.ts`：`MockCarrierAdapter` 自测桩（比价计费重逻辑 / 建单 / 面单 / 轨迹 / 取消 / 订阅），使框架无真实凭证可单测。
+    - `carriers.service.ts` + `carriers.controller.ts`：REST 入口（`GET /carriers`、`GET /carriers/:code/health`、`POST /carriers/:code/rates`、`POST /carriers/:code/shipments`、`GET /carriers/:code/tracking/:no`、`POST /carriers/:code/cancel/:no`、`POST /carriers/:code/subscribe/:no`）；服务读 `Carrier` 目录（空则回退枚举）+ 经注册表分发；工厂型已预留「查租户 CarrierAccount → 工厂构建」路径（§2.2，待 3.2+ 注册工厂）。
+    - `carriers.module.ts`：装配 + `onModuleInit` 注册 Mock；已接入 `AppModule`。
+- **进行中（🔵）**：无。
+- **受阻**：无。
+- **测试结果**：`tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（20 新增 / 全仓 53 passed / 8 suites）。
+- **提交**：见 `feat(carriers): 阶段3 CarrierAdapter 框架 3.1（接口/注册表/Mock/REST/单测）`。
+- **下一步（次日接力）**：3.2 云途接入（SDK 优先，OAuth2+HMAC，§1.1）→ 3.3 DHL → 3.4 4PX/燕文（MD5）→ 3.5 比价引擎4层 → 3.6 加价规则引擎。3.1 已解锁"工厂注册"通道，3.2~3.4 注册工厂即接入 `CarriersModule.onModuleInit` 与 `CarriersService.resolve` 的租户账号分发。阶段1 收口任务 1.5/1.6/1.8/1.9 仍可顺延至 3.5/3.6 后补。
+- **关键工程事实**：承运商 `Carrier`/`CarrierAccount`/相关表已在 Prisma 落定（无需改 schema）；新增模块全程零网络/安装依赖，看门狗未触发。编码纪律 §31 严守（中文注释/字段带单位与业务含义/TODO 带责任人+日期/函数精简/无 magic number/统一响应与异常）。
