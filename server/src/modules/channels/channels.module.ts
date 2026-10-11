@@ -10,6 +10,8 @@ import { Module, OnModuleInit } from '@nestjs/common'
 import { ChannelRegistryService } from './channel-registry.service'
 import { ChannelSyncService } from './channel-sync.service'
 import { ChannelSyncController } from './channel-sync.controller'
+import { ShopsController } from './shops.controller'
+import { ShopsService } from './shops.service'
 import { MockChannelAdapter } from './adapters/mock-channel.adapter'
 import { ShopifyAdapterFactory } from './adapters/shopify/shopify-adapter'
 import { AmazonAdapterFactory } from './adapters/amazon/amazon-adapter'
@@ -17,10 +19,11 @@ import { ChannelPlatform } from './channel.constants'
 import { CatalogModule } from '../catalog/catalog.module'
 
 @Module({
-  controllers: [ChannelSyncController],
+  controllers: [ChannelSyncController, ShopsController],
   providers: [
     ChannelRegistryService,
     ChannelSyncService,
+    ShopsService,
     MockChannelAdapter,
     ShopifyAdapterFactory,
     AmazonAdapterFactory,

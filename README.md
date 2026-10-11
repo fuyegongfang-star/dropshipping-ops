@@ -51,6 +51,44 @@ npm run start:dev --workspace server
 npm run dev --workspace web
 ```
 
+## 本地跑起来看成果（含演示数据）
+
+> 目标：在你本机把前后端跑起来，打开浏览器直观看到「订单中心 / 商品SKU / 渠道 / 租户」与状态机、审单、逆向等能力。
+> 本机需已安装 **Docker**（用于 PG/Redis/MinIO）与 **Node 20+**。
+
+```bash
+# 0. 仓库根目录安装依赖（workspaces 一并装 server / web；esbuild 在 Windows Git Bash 下需 --ignore-scripts）
+npm install --ignore-scripts
+
+# 1. 生成 Prisma Client
+npm run prisma:generate --workspace server
+
+# 2. 启动基础设施（PostgreSQL / Redis / MinIO）
+docker compose -f deploy/docker-compose.yml up -d
+
+# 3. 建表（按 schema 直接推送，无需迁移历史，适合本地演示）
+cd server && cp .env.example .env && npx prisma db push && cd ..
+
+# 4. 写入演示数据：租户 demo + 店铺(Shopify/Amazon/Mock) + 商品/SKU + 多状态订单
+npm run seed --workspace server
+
+# 5. 启动后端（:3000）
+npm run start:dev --workspace server
+
+# 6. 另开终端启动前端（:5173）
+npm run dev --workspace web
+```
+
+打开浏览器访问 **http://localhost:5173** 即可。顶部右上角已默认选中 `demo` 租户，所有数据按租户隔离展示。
+
+**建议体验路径**
+- **订单中心**：点「详情」→ 试「审单」（待审单会转 approved / rejected）、「状态转移」（按合法转移表候选目标态）、「逆向」（撤单/拦截/改址/退货）。
+- **渠道中心**：对 **Mock 演示店** 点「拉单」，会实时生成 `pending_review` 订单（Shopify/Amazon 需配置真实凭证，否则返回错误，可观察异常处理）。
+- **商品/SKU**：查看平台↔内部↔供应商三段映射与「计费重」（实重 vs 体积重取大）。
+- **租户管理**：新建租户并「切换查看」，验证行级隔离。
+
+> 生产部署请用 `npx prisma migrate dev --name init` 管理迁移，而非 `db push`；并收紧 CORS 与 `x-tenant-id` 校验（见方案 §17）。
+
 ## 多租户约定
 
 - 所有业务表带 `tenantId`（行级隔离，见方案 §0 / §17）。

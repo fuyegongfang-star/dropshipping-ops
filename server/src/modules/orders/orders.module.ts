@@ -9,6 +9,7 @@ import { Module } from '@nestjs/common'
 import { OrderStateMachineService } from './order-state-machine.service'
 import { OrderController } from './order.controller'
 import { OrderReviewService } from './review/order-review.service'
+import { OrdersQueryService } from './orders-query.service'
 import { BlacklistService } from './review/blacklist.service'
 import { AddressCompletenessCheck } from './review/checks/address-completeness.check'
 import { BlacklistCheck } from './review/checks/blacklist.check'
@@ -20,12 +21,13 @@ import { ComplianceCheck } from './review/checks/compliance.check'
   providers: [
     OrderStateMachineService,
     OrderReviewService,
+    OrdersQueryService,
     BlacklistService,
     AddressCompletenessCheck,
     BlacklistCheck,
     InventoryCheck,
     ComplianceCheck,
   ],
-  exports: [OrderStateMachineService, OrderReviewService],
+  exports: [OrderStateMachineService, OrderReviewService, OrdersQueryService],
 })
 export class OrdersModule {}

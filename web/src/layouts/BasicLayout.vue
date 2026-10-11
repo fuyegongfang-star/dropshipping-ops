@@ -4,6 +4,10 @@
       <div class="logo">代发·货代运营</div>
       <el-menu :default-active="route.path" router>
         <el-menu-item index="/">仪表盘</el-menu-item>
+        <el-menu-item index="/orders">订单中心</el-menu-item>
+        <el-menu-item index="/catalog">商品 / SKU</el-menu-item>
+        <el-menu-item index="/channels">渠道 / 店铺</el-menu-item>
+        <el-menu-item index="/tenants">租户管理</el-menu-item>
       </el-menu>
     </el-aside>
     <el-container>
@@ -42,9 +46,12 @@ const route = useRoute()
 onMounted(async () => {
   tenantStore.loadFromStorage()
   try {
-    // 拉取租户列表（演示用，生产需超管鉴权，§22）
     const list = await http.get<{ code: string; name: string }[]>('/tenants')
     tenantStore.tenants = list ?? []
+    // 未选租户时默认选中第一个（演示用），确保数据可见
+    if (!tenantStore.currentTenantCode && tenantStore.tenants.length) {
+      tenantStore.setTenant(tenantStore.tenants[0].code)
+    }
   } catch {
     tenantStore.tenants = []
   }
