@@ -85,3 +85,19 @@
 **提交**：`64223ba`（3.2-3.4 适配器）、`1bbafca`（3.5 比价引擎）、`4ff82d3`（检查点）。
 
 **下一步**：3.6 加价规则引擎 + 币种归一（§9/§10，填充 `RateQuote.sellPrice` 与利润核算基础）。阶段1 收口 1.5/1.6/1.8/1.9 可在 3.5/3.6 后补。
+
+---
+
+## 2026-10-12（续跑 · 3.6 加价规则引擎 + 币种归一）
+
+**完成**：3.6 加价规则引擎 + 币种归一（§10 双价列 / 加价层 / 币种归一）。
+- **FxService**：币种归一，内存汇率种子 USD/EUR/GBP→CNY（7.2/7.8/9.1）；缺失汇率诚实抛错（不静默 1:1）；TODO Redis + 真实 FX 源。
+- **MarkupRulesService**：规则解析，作用域 GLOBAL/CARRIER/PRODUCT/ROUTE_ZONE/TENANT；跨作用域叠加 + 同(作用域,类型)最具体/高 priority 胜出；默认全局 15% + 最低毛利 ¥5。
+- **MarkupEngineService**：比价 L4 后执行 carrier_cost→基准币种→加价叠加（PERCENT/FIXED/TIERED）→最低毛利保护→双价列（sell_price/margin/fx 快照）。
+- **接入比价引擎**：`PricingModule` 装配三服务；`PricingEngineService` 注入 `MarkupEngineService`，L4 后 `enrichQuotes` 回填 quotes，`selected` 改按 sellPrice 锁价（报价即实收）。`RateQuote` 增 `margin?`/`fxRateSnapshot?`。
+
+**测试结果**：`tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（117 passed / 16 suites，新增 18 条 markup 单测）。
+
+**提交**：`af93581`（3.6 加价规则引擎 + 币种归一）。
+
+**下一步**：3.7 运费试算门户(正式)（§4：商户自助试算 + 渠道自选 + quote 锁定；`POST /pricing/compare` 引擎已就绪，需补门户 API/页与 quote 有效期/成本快照）。
