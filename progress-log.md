@@ -101,3 +101,18 @@
 **提交**：`af93581`（3.6 加价规则引擎 + 币种归一）。
 
 **下一步**：3.7 运费试算门户(正式)（§4：商户自助试算 + 渠道自选 + quote 锁定；`POST /pricing/compare` 引擎已就绪，需补门户 API/页与 quote 有效期/成本快照）。
+
+---
+
+## 2026-10-12（续跑 · 3.7 运费试算门户正式）
+
+**完成**：3.7 运费试算门户(正式)（§4 运费试算与渠道自选）。
+- **QuotesService**：试算结果落库（`quote_id` UUID + 24h 有效期 + 租户隔离 + `selectedProductCode` 渠道自选）；过期标记 `EXPIRED` 并诚实抛 `QUOTE_EXPIRED`。
+- **QuotesController**：`POST /pricing/quotes`（试算 + trial 落库）、`GET /pricing/quotes/:id`（租户隔离 + 过期校验）、`PATCH /pricing/quotes/:id/select`（渠道自选，仅限列表内产品）。
+- 复用比价引擎(trial) + 加价层，试算价与真实下单价口径一致（§4.1/§4.6 试算即所见）。
+
+**测试结果**：`tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（122 passed / 17 suites，新增 5 条 quote 单测）。
+
+**提交**：`cb04b4c`（3.7 运费试算门户正式）。
+
+**下一步**：3.8 头程/尾程两段式（`shipment_legs` leg_type first/last；建单可拆分两段运单，轨迹带 leg 维度，§14）。
