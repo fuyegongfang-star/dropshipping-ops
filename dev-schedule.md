@@ -44,10 +44,10 @@
 | 2.2 | 阶段2 | WMS 入库/库存/拣货 | ASN/上架/锁定/拣货波次（§15） | 0.4 | 2d | ⬜ |
 | 2.3 | 阶段2 | 海外仓模型 | `warehouses`/`inventory`/海外仓备货（§15） | 2.2 | 1.5d | ⬜ |
 | 3.1 | 阶段3 | CarrierAdapter 框架 | 镜像 ChannelAdapter（§3） | 0.3 | 1d | ✅ |
-| 3.2 | 阶段3 | 云途接入(SDK优先) | `yunexpress-sdk` OAuth2+HMAC（§3 调研） | 3.1 | 1d | ⬜ |
-| 3.3 | 阶段3 | DHL 接入 | OAuth2 + 沙箱审批（§3 调研） | 3.1 | 1.5d | ⬜ |
-| 3.4 | 阶段3 | 4PX / 燕文 接入 | MD5 签名（§3 调研） | 3.1 | 1.5d | ⬜ |
-| 3.5 | 阶段3 | 比价引擎 4 层 + 试算模式 | 预热/可达性/实时池/护栏 + 试算开关（§5/§4） | 1.5/3.1 | 2d | ⬜ |
+| 3.2 | 阶段3 | 云途接入(SDK优先) | `yunexpress-sdk` OAuth2+HMAC（§3 调研） | 3.1 | 1d | ✅ |
+| 3.3 | 阶段3 | DHL 接入 | OAuth2 + 沙箱审批（§3 调研） | 3.1 | 1.5d | ✅ |
+| 3.4 | 阶段3 | 4PX / 燕文 接入 | MD5 签名（§3 调研） | 3.1 | 1.5d | ✅ |
+| 3.5 | 阶段3 | 比价引擎 4 层 + 试算模式 | 预热/可达性/实时池/护栏 + 试算开关（§5/§4） | 1.5/3.1 | 2d | ✅ |
 | 3.6 | 阶段3 | 加价规则引擎 + 币种归一 | 双价列/Markup/FX（§9/§10） | 3.5 | 1.5d | ⬜ |
 | 3.7 | 阶段3 | 运费试算门户(正式) | 商户自助试算+自选（§4） | 3.5 | 1.5d | ⬜ |
 | 3.8 | 阶段3 | 头程/尾程两段式 | `shipment_legs`(leg_type)（§14） | 1.3/3.1 | 1.5d | ⬜ |
@@ -170,3 +170,19 @@
 - **提交**：见 `feat(carriers): 阶段3 CarrierAdapter 框架 3.1（接口/注册表/Mock/REST/单测）`。
 - **下一步（次日接力）**：3.2 云途接入（SDK 优先，OAuth2+HMAC，§1.1）→ 3.3 DHL → 3.4 4PX/燕文（MD5）→ 3.5 比价引擎4层 → 3.6 加价规则引擎。3.1 已解锁"工厂注册"通道，3.2~3.4 注册工厂即接入 `CarriersModule.onModuleInit` 与 `CarriersService.resolve` 的租户账号分发。阶段1 收口任务 1.5/1.6/1.8/1.9 仍可顺延至 3.5/3.6 后补。
 - **关键工程事实**：承运商 `Carrier`/`CarrierAccount`/相关表已在 Prisma 落定（无需改 schema）；新增模块全程零网络/安装依赖，看门狗未触发。编码纪律 §31 严守（中文注释/字段带单位与业务含义/TODO 带责任人+日期/函数精简/无 magic number/统一响应与异常）。
+
+---
+
+### 进度更新 · 2026-10-12（夜间自动化 23:10 启动 · 承运商适配器 3.2-3.4 + 比价引擎 3.5）
+- **完成（✅）**：
+  - **3.2 云途 YunExpress 接入（SDK 优先，OAuth2+HMAC）** —— `yunexpress-auth.config.ts`（prod/sandbox base + 合理占位 endpoints，TODO 2026-11 联调校正）、`yunexpress-sign.service.ts`（canonical=`appId.timestamp.body`，HMAC-SHA256）、`yunexpress-token.service.ts`（client_credentials 换 token + 实例内存缓存，提前 60s 刷新，TODO Redis）、`yunexpress.types.ts`（原生报文映射，信封 `code===0`）、`yunexpress.adapter.ts`（六能力全实现，统一鉴权头 + 信封校验 + 状态归一化 + 计费重映射；`carrierCost` 暂占位 0，待 §9 费用回传）。
+  - **3.3 DHL 接入（OAuth2 Basic + 轮询）** —— `dhl-auth.config.ts`/`dhl-token.service.ts`（Basic=`base64(clientId:clientSecret)` 换 token，内存缓存）/ `dhl.types.ts` / `dhl.adapter.ts`：能力 **RATE/SHIP/LABEL/TRACK**（**无 cancel/subscribe，诚实抛 `NOT_IMPLEMENTED`**，不在能力声明谎称）；`invoke()` 带 `Authorization:Bearer` + `DHL-API-Key`，无 HMAC，直返 data。
+  - **3.4 4PX + 燕文 接入（MD5）** —— 共享 `md5-sign.service.ts`（32 位小写 MD5）；`fourpx.adapter.ts` 能力 RATE/SHIP/LABEL/TRACK/**CANCEL**（无 subscribe）；`yanwen.adapter.ts` 能力 **SHIP/LABEL/TRACK**（**无 rate/cancel/subscribe，均诚实抛 `NOT_IMPLEMENTED`**）；`carriers.module.ts` `onModuleInit` 注册三工厂，`CarriersService.resolve` 工厂优先分发租户 `CarrierAccount` 凭证。
+  - **3.5 比价引擎四层 + 试算模式（§5 / §4.1）** —— `pricing.types.ts`（`CompareRequest`/`CompareResult` 含四层执行痕迹）、`reachability.service.ts`（L2 可达性地图：禁运国 KP/IR/SY + 燕文禁敏感货，<5ms 剔除）、`pricing-engine.service.ts`（L1 预热费率卡接口预留返回空 TODO Redis；L3 有界并行实时池 2s SLA，失败捕获入 `l3Failed` 不中断；L4 诚实护栏：去重 `carrierCode:productCode`→成本升序→截断 `PRICING_MAX_RESULTS=20`；试算模式返回多列表不锁价）、`pricing.controller.ts`（`POST /pricing/compare`，`@TenantId()`）、`pricing.module.ts` 接入 `AppModule`；`CarriersService` 新增公开 `resolveAdapter(tenantId, code)` 供引擎工厂解析。
+- **进行中（🔵）**：无（本批任务全部完成）。
+- **受阻**：无。
+- **诚实原则落地**：不支持的能力（DHL 无 cancel/subscribe、燕文无 rate/cancel/subscribe、4PX 无 subscribe）一律抛 `BusinessException(NOT_IMPLEMENTED)`，不在 `capabilities` 声明里谎称支持；`health()` 工厂型用探针账号仅取能力声明、不真实探测（软失败）。
+- **占位 / 待联调（统一 TODO）**：① 各承运商 API 路径与字段为合理占位（`TODO(ops): 2026-11 联调校正`）；② `carrierCost` 暂占位 0（待 §9 费用回传回填）；③ 令牌缓存为实例内存级（待 Redis 共享）；④ L1 费率卡返回空（待 Redis/合约价卡）。
+- **测试结果**：`tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**99 passed / 13 suites**，新增 8 条比价引擎单测覆盖 L2/L3/L4/试算/截断）。
+- **提交**：`64223ba`（feat(carriers): 3.2 云途/3.3 DHL/3.4 4PX·燕文 适配器接入）、`1bbafca`（feat(pricing): 3.5 比价引擎四层架构 + 试算模式 + L4 诚实护栏）、`4ff82d3`（chore(dev): 检查点 3.2-3.5 完成）。
+- **下一步（次日接力）**：3.6 加价规则引擎 + 币种归一（§9/§10，双价列 Markup/FX，填充 `RateQuote.sellPrice` 与利润核算基础）。阶段1 收口 1.5/1.6/1.8/1.9 可在 3.5/3.6 后补。
