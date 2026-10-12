@@ -60,6 +60,7 @@ describe('PricingEngineService (3.5)', () => {
   let registry: { listCodes: jest.Mock }
   let carriers: { resolveAdapter: jest.Mock }
   let reachability: { isReachable: jest.Mock }
+  let markup: { enrichQuotes: jest.Mock }
   let logger: { debug: jest.Mock; warn: jest.Mock; error: jest.Mock; log: jest.Mock; verbose: jest.Mock }
   let svc: PricingEngineService
 
@@ -67,6 +68,8 @@ describe('PricingEngineService (3.5)', () => {
     registry = { listCodes: jest.fn() }
     carriers = { resolveAdapter: jest.fn() }
     reachability = { isReachable: jest.fn(() => ({ reachable: true })) }
+    // 加价层桩：透传（保持本文件对 L2/L3/L4 护栏的既有断言有效；加价逻辑由 markup 单测覆盖）
+    markup = { enrichQuotes: jest.fn((_t: string, quotes: RateQuote[]) => quotes) }
     logger = {
       debug: jest.fn(),
       warn: jest.fn(),
@@ -78,6 +81,7 @@ describe('PricingEngineService (3.5)', () => {
       registry as unknown as CarrierRegistryService,
       carriers as unknown as CarriersService,
       reachability as unknown as ReachabilityService,
+      markup as unknown as never,
       logger as unknown as never,
     )
   })

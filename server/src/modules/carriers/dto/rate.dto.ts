@@ -110,8 +110,10 @@ export interface RateQuote {
   volumetricWeightKg: number // 体积重（kg，提示抛货）
   isVolumetric: boolean // 是否抛货（体积重 > 实重）
   currency: string // 币种（ISO 4217）
-  carrierCost: number // 承运商成本（仅运营可见，§4.3）
-  sellPrice?: number // 加价后售价（商户可见，§4.3；比价引擎填充于 §10）
+  carrierCost: number // 承运商成本（仅运营可见，§4.3；经 §10 币种归一后为基准币种）
+  sellPrice?: number // 加价后售价（商户可见，基准币种，§4.3/§10；比价引擎填充）
+  margin?: number // 平台利润 = sellPrice − carrierCost（基准币种，§10.1）
+  fxRateSnapshot?: { from: string; to: string; rate: number; effectiveAt?: string } // 币种归一汇率快照（§10.3/§10.6）
   estimatedLeadDaysMin?: number // 预计时效下限（工作日）
   estimatedLeadDaysMax?: number // 预计时效上限（工作日）
   reachable: boolean // 是否可达（不可达需说明原因）

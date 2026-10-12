@@ -10,11 +10,14 @@ import { CarriersModule } from '../carriers/carriers.module'
 import { PricingController } from './pricing.controller'
 import { PricingEngineService } from './pricing-engine.service'
 import { ReachabilityService } from './reachability.service'
+import { FxService } from './markup/fx.service'
+import { MarkupRulesService } from './markup/markup-rules.service'
+import { MarkupEngineService } from './markup/markup-engine.service'
 
 @Module({
   imports: [CarriersModule],
   controllers: [PricingController],
-  providers: [PricingEngineService, ReachabilityService],
-  exports: [PricingEngineService],
+  providers: [PricingEngineService, ReachabilityService, FxService, MarkupRulesService, MarkupEngineService],
+  exports: [PricingEngineService, MarkupEngineService],
 })
 export class PricingModule {}

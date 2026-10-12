@@ -19,6 +19,8 @@ import { CarriersService } from '../carriers/carriers.service'
 import { GetRatesRequest, RateQuote } from '../carriers/dto/rate.dto'
 import { CompareRequest, CompareResult } from './pricing.types'
 import { ReachabilityService } from './reachability.service'
+import { MarkupEngineService } from './markup/markup-engine.service'
+import { MARKUP_BASE_CURRENCY } from './markup/fx.service'
 
 /** 护栏最多返回条数（避免前端过载，§5 L4） */
 export const PRICING_MAX_RESULTS = 20
@@ -29,8 +31,12 @@ export class PricingEngineService {
     private readonly registry: CarrierRegistryService,
     private readonly carriers: CarriersService,
     private readonly reachability: ReachabilityService,
+    private readonly markup: MarkupEngineService,
     private readonly logger: AppLogger,
   ) {}
+
+  /** 平台基准结算币种（§10.3，币种归一目标） */
+  private readonly baseCurrency = MARKUP_BASE_CURRENCY
 
   /**
    * 比价/试算主入口（§5 四层 + §4.1 试算开关）。
@@ -69,11 +75,13 @@ export class PricingEngineService {
 
     // L4 诚实护栏：去重 + 排序 + 截断；非试算模式锁价 selected（§5）
     const guarded = this.guardrail(merged)
-    const selected = req.trial ? undefined : this.pickBest(guarded)
+    // 加价层（§10）：L4 之后、返回商户前，币种归一 + 加价 → 双价列 sell_price/margin
+    const enriched = this.markup.enrichQuotes(tenantId, guarded, this.baseCurrency)
+    const selected = req.trial ? undefined : this.pickBest(enriched)
 
     return {
       trial: req.trial ?? false,
-      quotes: guarded,
+      quotes: enriched,
       selected,
       layers: {
         l1RateCardHits: l1.length,
@@ -121,8 +129,14 @@ export class PricingEngineService {
     return reachable.slice(0, PRICING_MAX_RESULTS)
   }
 
-  /** 锁定最优（成本最低）报价（§5 L4 诚实护栏；报价即实收，平台吸收成本波动，§5/§9） */
+  /** 锁定最优（商户售价最低）报价（§5 L4 诚实护栏；报价即实收，平台吸收成本波动，§5/§9/§10） */
   private pickBest(quotes: RateQuote[]): RateQuote | undefined {
-    return quotes.length > 0 ? quotes[0] : undefined
+    if (quotes.length === 0) return undefined
+    // 优先按加价后售价 sell_price 选最低（锁价给商户），缺失时回退 carrier_cost
+    return quotes.reduce((best, q) => {
+      const bestPrice = best.sellPrice ?? best.carrierCost
+      const qPrice = q.sellPrice ?? q.carrierCost
+      return qPrice < bestPrice ? q : best
+    })
   }
 }
