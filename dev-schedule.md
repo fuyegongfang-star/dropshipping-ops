@@ -48,7 +48,7 @@
 | 3.3 | 阶段3 | DHL 接入 | OAuth2 + 沙箱审批（§3 调研） | 3.1 | 1.5d | ✅ |
 | 3.4 | 阶段3 | 4PX / 燕文 接入 | MD5 签名（§3 调研） | 3.1 | 1.5d | ✅ |
 | 3.5 | 阶段3 | 比价引擎 4 层 + 试算模式 | 预热/可达性/实时池/护栏 + 试算开关（§5/§4） | 1.5/3.1 | 2d | ✅ |
-| 3.6 | 阶段3 | 加价规则引擎 + 币种归一 | 双价列/Markup/FX（§9/§10） | 3.5 | 1.5d | ⬜ |
+| 3.6 | 阶段3 | 加价规则引擎 + 币种归一 | 双价列/Markup/FX（§9/§10） | 3.5 | 1.5d | ✅ |
 | 3.7 | 阶段3 | 运费试算门户(正式) | 商户自助试算+自选（§4） | 3.5 | 1.5d | ⬜ |
 | 3.8 | 阶段3 | 头程/尾程两段式 | `shipment_legs`(leg_type)（§14） | 1.3/3.1 | 1.5d | ⬜ |
 | 3.9 | 阶段3 | 面单 PDF/ZPL | pdf-lib 处理（§3/§11） | 3.2 | 1d | ⬜ |
@@ -186,3 +186,21 @@
 - **测试结果**：`tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**99 passed / 13 suites**，新增 8 条比价引擎单测覆盖 L2/L3/L4/试算/截断）。
 - **提交**：`64223ba`（feat(carriers): 3.2 云途/3.3 DHL/3.4 4PX·燕文 适配器接入）、`1bbafca`（feat(pricing): 3.5 比价引擎四层架构 + 试算模式 + L4 诚实护栏）、`4ff82d3`（chore(dev): 检查点 3.2-3.5 完成）。
 - **下一步（次日接力）**：3.6 加价规则引擎 + 币种归一（§9/§10，双价列 Markup/FX，填充 `RateQuote.sellPrice` 与利润核算基础）。阶段1 收口 1.5/1.6/1.8/1.9 可在 3.5/3.6 后补。
+
+---
+
+### 进度更新 · 2026-10-12（续跑 · 3.6 加价规则引擎 + 币种归一）
+- **完成（✅）**：
+  - **3.6 加价规则引擎 + 币种归一（§10 双价列 / 加价层 / 币种归一）** —— 新增 `pricing/markup/` 子模块：
+    - `fx.service.ts`：`FxService` 币种归一（内存汇率种子 USD/EUR/GBP→CNY=7.2/7.8/9.1；缺失汇率诚实抛错，不静默 1:1；TODO Redis 缓存 + 真实 FX 源）。
+    - `markup-rules.service.ts`：`MarkupRulesService` 规则解析（作用域 GLOBAL/CARRIER/PRODUCT/ROUTE_ZONE/TENANT；**跨作用域叠加 + 同(作用域,类型)最具体/高 priority 胜出**；默认全局 15% + 最低毛利 ¥5，ROUTE_ZONE 待 §18 zone_maps）。
+    - `markup-engine.service.ts`：`MarkupEngineService` 在比价 L4 后执行：carrier_cost→基准币种→加价叠加（PERCENT/FIXED/TIERED）→最低毛利保护→双价列（sell_price/margin/fx_rate_snapshot）。
+    - `pricing.module.ts` 装配三服务；`PricingEngineService` 注入 `MarkupEngineService`，L4 后 `enrichQuotes` 回填 quotes（sellPrice/margin/currency/fxRateSnapshot），`selected` 改按 **sellPrice** 锁价（§5 报价即实收）。
+    - `rate.dto.ts`：`RateQuote` 增 `margin?` / `fxRateSnapshot?`（币种归一汇率快照，§10.6）。
+  - 配套 18 个单测（fx/rules/engine 三套），验证币种归一、作用域叠加与去重、PERCENT/FIXED/TIERED、最低毛利兜底、双价列回填。
+- **进行中（🔵）**：无。
+- **受阻**：无。
+- **占位 / 待联调（统一 TODO）**：① 汇率内存表待 Redis + 真实 FX 源（§10.3）；② 加价规则内存表待 `markup_rules` 持久化 + 运营后台配置（§10.6/§23）；③ ROUTE_ZONE 作用域待 §18 zone_maps 接入。
+- **测试结果**：`tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**117 passed / 16 suites**）。
+- **提交**：`af93581`（feat(pricing): 3.6 加价规则引擎 + 币种归一）。
+- **下一步（次日接力）**：3.7 运费试算门户(正式)（§4：商户自助试算 + 渠道自选 + quote 锁定；`POST /pricing/compare` 引擎已就绪，需补门户 API/页与 quote 有效期/成本快照）。
