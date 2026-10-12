@@ -49,7 +49,7 @@
 | 3.4 | 阶段3 | 4PX / 燕文 接入 | MD5 签名（§3 调研） | 3.1 | 1.5d | ✅ |
 | 3.5 | 阶段3 | 比价引擎 4 层 + 试算模式 | 预热/可达性/实时池/护栏 + 试算开关（§5/§4） | 1.5/3.1 | 2d | ✅ |
 | 3.6 | 阶段3 | 加价规则引擎 + 币种归一 | 双价列/Markup/FX（§9/§10） | 3.5 | 1.5d | ✅ |
-| 3.7 | 阶段3 | 运费试算门户(正式) | 商户自助试算+自选（§4） | 3.5 | 1.5d | ⬜ |
+| 3.7 | 阶段3 | 运费试算门户(正式) | 商户自助试算+自选（§4） | 3.5 | 1.5d | ✅ |
 | 3.8 | 阶段3 | 头程/尾程两段式 | `shipment_legs`(leg_type)（§14） | 1.3/3.1 | 1.5d | ⬜ |
 | 3.9 | 阶段3 | 面单 PDF/ZPL | pdf-lib 处理（§3/§11） | 3.2 | 1d | ⬜ |
 | 3.10 | 阶段3 | 报关/合规字段 | HS/IOSS/EORI/VAT/Section321（§19） | 1.4 | 1.5d | ⬜ |
@@ -204,3 +204,20 @@
 - **测试结果**：`tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**117 passed / 16 suites**）。
 - **提交**：`af93581`（feat(pricing): 3.6 加价规则引擎 + 币种归一）。
 - **下一步（次日接力）**：3.7 运费试算门户(正式)（§4：商户自助试算 + 渠道自选 + quote 锁定；`POST /pricing/compare` 引擎已就绪，需补门户 API/页与 quote 有效期/成本快照）。
+
+---
+
+### 进度更新 · 2026-10-12（续跑 · 3.7 运费试算门户正式）
+- **完成（✅）**：
+  - **3.7 运费试算门户(正式)（§4 运费试算与渠道自选）** —— 新增 `pricing/quote/` 子模块：
+    - `quote.types.ts`：`Quote`/`QuoteStatus`/`QUOTE_TTL_MS`（默认 24h，待 §23 可配）。
+    - `quotes.service.ts`：`QuotesService` 试算结果落库（内存 Map，待 §7/§10.6 `quotes` 表）：生成 `quote_id`（UUID）+ 有效期 + **租户隔离** + `selectedProductCode` 渠道自选；过期标记 `EXPIRED` 并诚实抛 `QUOTE_EXPIRED`（`HttpStatus.GONE`）。
+    - `quotes.controller.ts`：`QuotesController` —— `POST /pricing/quotes`（跑比价引擎 trial + 加价层落库）、`GET /pricing/quotes/:id`（租户隔离 + 过期校验）、`PATCH /pricing/quotes/:id/select`（商户渠道自选，仅限列表内产品）。
+  - 复用比价引擎（trial 模式）+ 加价层（§5/§10），**试算价与真实下单价口径一致**（§4.1/§4.6「试算即所见，下单即所付」）。
+  - 新增 5 单测（创建/租户隔离/渠道自选/过期/有效期）。
+- **进行中（🔵）**：无。
+- **受阻**：无。
+- **占位 / 待联调（统一 TODO）**：① quote 内存表待 `quotes` 表持久化（§7/§10.6）；② 试算门户前端页（渠道自选 UI）待阶段3 前端任务；③ 附加费明细引擎（§4.4 fuel/remote/oversize/关税预付）列为后续「物流增强」项，3.7 报价已含 sell_price 但附加费明细未逐项展开。
+- **测试结果**：`tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**122 passed / 17 suites**）。
+- **提交**：`cb04b4c`（feat(pricing): 3.7 运费试算门户(正式) quote 锁定 + 渠道自选）。
+- **下一步（次日接力）**：3.8 头程/尾程两段式（§14 `shipment_legs`：leg_type first/last；建单可拆分两段运单，轨迹带 leg 维度）。
