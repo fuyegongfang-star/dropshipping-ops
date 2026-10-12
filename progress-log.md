@@ -67,3 +67,21 @@
 - **下一步**：3.2 云途接入（SDK 优先，OAuth2+HMAC）→ 3.3 DHL → 3.4 4PX/燕文（MD5）→ 3.5 比价引擎4层 → 3.6 加价规则引擎。3.1 已打通工厂注册与租户账号分发通道，3.2~3.4 注册工厂即接入。阶段1 收口任务 1.5/1.6/1.8/1.9 顺延至 3.5/3.6 后补。
 - **提交**：`feat(carriers): 阶段3 CarrierAdapter 框架 3.1（接口/注册表/Mock/REST/单测）`。
 - **用户汇总**：今夜完成阶段3 开局——承运商适配器框架 CarrierAdapter，与渠道侧 ChannelAdapter 完全对称：统一六能力接口 + 抽象基类（共享重试/日志）+ 实例/工厂双模式注册表（工厂按租户账号凭证构建，§2.2）+ 计费重计算（§4.2 货代试算核心）+ 归一化 DTO（比价/建单/报关/轨迹）+ Mock 自测桩 + REST 入口。已接入应用并补齐 20 个单测，全仓 53 单测全绿、类型检查与零警告 Lint 通过。下一步顺推云途/DHL/4PX/燕文真实适配器与比价引擎。
+
+---
+
+## 2026-10-12（夜间自动化 · 承运商真实适配器 3.2-3.4 + 比价引擎 3.5）
+
+**完成**：阶段3 承运商真实适配器全部接入 + 比价引擎。
+- **3.2 云途 YunExpress**：OAuth2 client_credentials 换 token（实例内存缓存，提前 60s 刷新，TODO Redis）+ HMAC-SHA256 签名（canonical=`appId.timestamp.body`），六能力全实现；`carrierCost` 暂占位 0（待 §9 费用回传）。
+- **3.3 DHL**：OAuth2 Basic（`base64(clientId:clientSecret)`）+ `DHL-API-Key` 头，能力 RATE/SHIP/LABEL/TRACK；**无 cancel/subscribe，诚实抛 `NOT_IMPLEMENTED`**。
+- **3.4 4PX / 燕文**：共享 MD5 签名（32 位小写）；4PX 5 能力（含 cancel），燕文 3 能力（无 rate/cancel/subscribe，诚实抛 `NOT_IMPLEMENTED`）；CarriersModule 工厂注册四承运商，`CarriersService.resolve` 工厂优先分发租户账号凭证。
+- **3.5 比价引擎**：L1 预热费率卡预留（返回空，TODO Redis）→ L2 可达性地图（禁运国/敏感货）→ L3 有界并行实时池（2s SLA，失败捕获不中断）→ L4 诚实护栏（去重→成本升序→截断 20 条）；试算模式返回多列表不锁价；`CarriersService.resolveAdapter` 公开方法供引擎按租户解析。
+
+**诚实原则**：不支持能力一律抛 `NOT_IMPLEMENTED`，不在 `capabilities` 声明谎称；所有 API 路径/字段为合理占位（`TODO 2026-11 联调校正`）。
+
+**测试结果**：`tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（99 passed / 13 suites，新增 8 条比价引擎单测）。
+
+**提交**：`64223ba`（3.2-3.4 适配器）、`1bbafca`（3.5 比价引擎）、`4ff82d3`（检查点）。
+
+**下一步**：3.6 加价规则引擎 + 币种归一（§9/§10，填充 `RateQuote.sellPrice` 与利润核算基础）。阶段1 收口 1.5/1.6/1.8/1.9 可在 3.5/3.6 后补。
