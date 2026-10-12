@@ -45,12 +45,26 @@ export class CarriersService {
     }))
   }
 
-  /** 承运商健康/能力探测（按 code 取无状态实例；工厂型未注册时软失败） */
+  /** 承运商健康/能力探测（按 code 取无状态实例；工厂型用探针账号构建仅取能力声明，不真实探测） */
   async health(code: CarrierCode): Promise<CarrierHealth> {
     if (!this.registry.has(code)) {
       return { healthy: false, message: `适配器未注册: ${code}（工厂型或尚未实现，任务 3.2+）` }
     }
-    return this.registry.getAdapter(code).healthCheck()
+    try {
+      // 工厂型（需账号凭证）以探针账号构建实例，仅读取能力声明（healthCheck 无网络探测）
+      const adapter = this.registry.isFactory(code)
+        ? this.registry.resolveForAccount({
+            id: '__probe__',
+            tenantId: '__probe__',
+            carrierCode: code,
+            authConfig: {},
+          })
+        : this.registry.getAdapter(code)
+      return await adapter.healthCheck()
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      return { healthy: false, message: `适配器初始化失败: ${msg}` }
+    }
   }
 
   /** 比价：解析适配器 → getRates */
@@ -91,6 +105,11 @@ export class CarriersService {
       return this.buildFromAccount(tenantId, code)
     }
     return this.registry.getAdapter(code)
+  }
+
+  /** 对外暴露：供比价引擎（§5）按租户解析适配器（工厂型无账号时抛错，由引擎捕获跳过） */
+  async resolveAdapter(tenantId: string, code: CarrierCode): Promise<CarrierAdapter> {
+    return this.resolve(tenantId, code)
   }
 
   /** 工厂型：查租户承运商账号并用工厂构建实例（§2.2） */

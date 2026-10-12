@@ -7,10 +7,17 @@
  */
 
 import { Module, OnModuleInit } from '@nestjs/common'
+import { AppLogger } from '../../common/logger/app.logger'
+import { RetryableHttpService } from '../../common/http/retryable-http.service'
+import { CarrierCode } from './carrier.constants'
 import { CarrierRegistryService } from './carrier-registry.service'
 import { CarriersService } from './carriers.service'
 import { CarriersController } from './carriers.controller'
 import { MockCarrierAdapter } from './adapters/mock-carrier.adapter'
+import { YunExpressAdapter } from './adapters/yunexpress/yunexpress.adapter'
+import { DhlAdapter } from './adapters/dhl/dhl.adapter'
+import { FourPxAdapter } from './adapters/fourpx/fourpx.adapter'
+import { YanwenAdapter } from './adapters/yanwen/yanwen.adapter'
 
 @Module({
   controllers: [CarriersController],
@@ -18,11 +25,31 @@ import { MockCarrierAdapter } from './adapters/mock-carrier.adapter'
   exports: [CarrierRegistryService, CarriersService],
 })
 export class CarriersModule implements OnModuleInit {
-  constructor(private readonly registry: CarrierRegistryService, private readonly mock: MockCarrierAdapter) {}
+  constructor(
+    private readonly registry: CarrierRegistryService,
+    private readonly mock: MockCarrierAdapter,
+    private readonly http: RetryableHttpService,
+    private readonly logger: AppLogger,
+  ) {}
 
-  /** 模块初始化时注册无状态 Mock 实例；真实承运商在 3.2+ 注册工厂 */
+  /** 模块初始化时注册无状态 Mock 实例；真实承运商（需账号凭证）注册工厂（§2.2） */
   onModuleInit(): void {
     this.registry.registerAdapter(this.mock)
-    // TODO(ops): 任务 3.2 云途 / 3.3 DHL / 3.4 4PX·燕文 注册工厂（按租户 CarrierAccount 构建，§2.2）
+    // 3.2 云途：注册工厂（按租户 CarrierAccount 凭证构建，OAuth2+HMAC，§1.1）
+    this.registry.registerFactory(CarrierCode.YUNEXPRESS, (account) =>
+      new YunExpressAdapter(account, this.http, this.logger),
+    )
+    // 3.3 DHL：注册工厂（OAuth2 Basic 鉴权 + DHL-API-Key，轮询型无订阅，§1.1/§1.2.2）
+    this.registry.registerFactory(CarrierCode.DHL, (account) =>
+      new DhlAdapter(account, this.http, this.logger),
+    )
+    // 3.4 4PX：注册工厂（MD5 签名，支持比价/建单/面单/轨迹/取消，轮询无订阅，§1.1）
+    this.registry.registerFactory(CarrierCode.FOURPX, (account) =>
+      new FourPxAdapter(account, this.http, this.logger),
+    )
+    // 3.4 燕文：注册工厂（MD5 签名，仅建单/面单/轨迹，§1.1）
+    this.registry.registerFactory(CarrierCode.YANWEN, (account) =>
+      new YanwenAdapter(account, this.http, this.logger),
+    )
   }
 }

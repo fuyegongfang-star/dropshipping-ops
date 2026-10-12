@@ -11,10 +11,14 @@ import { HttpStatus } from '@nestjs/common'
 import { CarriersService } from './carriers.service'
 import { CarrierRegistryService } from './carrier-registry.service'
 import { MockCarrierAdapter } from './adapters/mock-carrier.adapter'
+import { YunExpressAdapter } from './adapters/yunexpress/yunexpress.adapter'
+import { DhlAdapter } from './adapters/dhl/dhl.adapter'
+import { FourPxAdapter } from './adapters/fourpx/fourpx.adapter'
+import { YanwenAdapter } from './adapters/yanwen/yanwen.adapter'
 import { RetryableHttpService } from '../../common/http/retryable-http.service'
 import { AppLogger } from '../../common/logger/app.logger'
 import { PrismaService } from '../../database/prisma.service'
-import { CarrierCode } from './carrier.constants'
+import { CarrierCode, CarrierCapability } from './carrier.constants'
 import { GetRatesRequest } from './dto/rate.dto'
 import { CreateShipmentRequest } from './dto/shipment.dto'
 
@@ -43,6 +47,21 @@ describe('CarriersService', () => {
     svc = moduleRef.get(CarriersService)
     registry = moduleRef.get(CarrierRegistryService)
     registry.registerAdapter(moduleRef.get(MockCarrierAdapter)) // 模拟 onModuleInit 注册
+    // 模拟运行时 CarriersModule.onModuleInit 注册云途工厂（按租户账号构建，§2.2/3.2）
+    registry.registerFactory(CarrierCode.YUNEXPRESS, (account) =>
+      new YunExpressAdapter(account, moduleRef.get(RetryableHttpService), moduleRef.get(AppLogger)),
+    )
+    // 模拟运行时注册 DHL 工厂（§2.2/3.3）
+    registry.registerFactory(CarrierCode.DHL, (account) =>
+      new DhlAdapter(account, moduleRef.get(RetryableHttpService), moduleRef.get(AppLogger)),
+    )
+    // 模拟运行时注册 4PX / 燕文 工厂（§2.2/3.4，MD5 签名）
+    registry.registerFactory(CarrierCode.FOURPX, (account) =>
+      new FourPxAdapter(account, moduleRef.get(RetryableHttpService), moduleRef.get(AppLogger)),
+    )
+    registry.registerFactory(CarrierCode.YANWEN, (account) =>
+      new YanwenAdapter(account, moduleRef.get(RetryableHttpService), moduleRef.get(AppLogger)),
+    )
   })
 
   it('目录：无 Carrier 记录时回退内置枚举（含 MOCK）', async () => {
@@ -55,9 +74,43 @@ describe('CarriersService', () => {
     expect(health.healthy).toBe(true)
   })
 
-  it('健康探测：未注册承运商软失败（不抛异常）', async () => {
+  it('健康探测：工厂型（云途）构建探针返回就绪（能力声明，未做真实探测）', async () => {
     const health = await svc.health(CarrierCode.YUNEXPRESS)
-    expect(health.healthy).toBe(false)
+    expect(health.healthy).toBe(true)
+    expect(health.capabilities).toEqual(Object.values(CarrierCapability))
+  })
+
+  it('健康探测：工厂型（DHL）能力为 RATE/SHIP/LABEL/TRACK（无 cancel/subscribe，§1.2.2）', async () => {
+    const health = await svc.health(CarrierCode.DHL)
+    expect(health.healthy).toBe(true)
+    expect(health.capabilities).toEqual([
+      CarrierCapability.RATE,
+      CarrierCapability.SHIP,
+      CarrierCapability.LABEL,
+      CarrierCapability.TRACK,
+    ])
+  })
+
+  it('健康探测：工厂型（4PX）能力为 RATE/SHIP/LABEL/TRACK/CANCEL（无 subscribe，§1.2.2）', async () => {
+    const health = await svc.health(CarrierCode.FOURPX)
+    expect(health.healthy).toBe(true)
+    expect(health.capabilities).toEqual([
+      CarrierCapability.RATE,
+      CarrierCapability.SHIP,
+      CarrierCapability.LABEL,
+      CarrierCapability.TRACK,
+      CarrierCapability.CANCEL,
+    ])
+  })
+
+  it('健康探测：工厂型（燕文）能力为 SHIP/LABEL/TRACK（无比价/取消/订阅，§1.1/§1.2.2）', async () => {
+    const health = await svc.health(CarrierCode.YANWEN)
+    expect(health.healthy).toBe(true)
+    expect(health.capabilities).toEqual([
+      CarrierCapability.SHIP,
+      CarrierCapability.LABEL,
+      CarrierCapability.TRACK,
+    ])
   })
 
   it('比价：经注册表分发到 Mock 适配器', async () => {
