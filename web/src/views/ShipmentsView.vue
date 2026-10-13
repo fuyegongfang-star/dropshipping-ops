@@ -151,6 +151,92 @@
       </el-col>
     </el-row>
 
+    <!-- 报关/合规校验（§19 守卫） -->
+    <el-card class="customs-card">
+      <template #header>
+        <div class="card-head">
+          <span class="section-title">报关合规校验</span>
+          <span v-if="customs" class="count-pill" :class="customs.valid ? 'ok' : 'bad'">
+            {{ customs.valid ? '校验通过' : '存在阻断项' }} · 建议 {{ dutyLabel }}
+          </span>
+        </div>
+      </template>
+
+      <el-row :gutter="16">
+        <el-col :span="14">
+          <el-form label-position="top" class="customs-form">
+            <el-row :gutter="10">
+              <el-col :span="12">
+                <el-form-item label="目的国">
+                  <el-select v-model="customsForm.destCountry" class="w-full">
+                    <el-option v-for="c in countries" :key="c.code" :label="c.name" :value="c.code" />
+                  </el-select>
+                </el-form-item>
+              </el-col>
+              <el-col :span="12">
+                <el-form-item label="申报价值 (USD)">
+                  <el-input-number v-model="customsForm.declaredValue" class="w-full" :min="0" :max="100000" />
+                </el-form-item>
+              </el-col>
+            </el-row>
+            <el-row :gutter="10">
+              <el-col :span="12">
+                <el-form-item label="HS 编码">
+                  <el-input v-model="customsForm.hsCode" placeholder="6-12 位数字" />
+                </el-form-item>
+              </el-col>
+              <el-col :span="12">
+                <el-form-item label="货物类型">
+                  <el-select v-model="customsForm.cargoType" class="w-full">
+                    <el-option label="普货" value="general" />
+                    <el-option label="带电" value="battery" />
+                    <el-option label="液体" value="liquid" />
+                    <el-option label="敏感货" value="sensitive" />
+                  </el-select>
+                </el-form-item>
+              </el-col>
+            </el-row>
+            <el-row :gutter="10">
+              <el-col :span="12">
+                <el-form-item label="IOSS">
+                  <el-input v-model="customsForm.ioss" placeholder="欧盟 IM+10 位" />
+                </el-form-item>
+              </el-col>
+              <el-col :span="12">
+                <el-form-item label="EORI">
+                  <el-input v-model="customsForm.eori" placeholder="欧盟/英国" />
+                </el-form-item>
+              </el-col>
+            </el-row>
+            <el-form-item label="美国 Section 321（≤$800 T86 免税）">
+              <el-switch v-model="customsForm.section321" />
+            </el-form-item>
+            <el-button type="primary" class="w-full run-btn" :loading="customsLoading" @click="runCustoms">
+              <AppIcon name="shield" :size="15" class="btn-ico" />校验合规
+            </el-button>
+          </el-form>
+        </el-col>
+        <el-col :span="10">
+          <div v-if="customs" class="customs-result">
+            <div
+              v-for="(it, i) in customs.issues"
+              :key="i"
+              class="c-issue"
+              :class="`c-${it.level}`"
+            >
+              <AppIcon :name="it.level === 'error' ? 'warning' : it.level === 'warning' ? 'info' : 'check'" :size="14" />
+              <span>{{ it.message }}</span>
+            </div>
+            <div v-if="!customs.issues.length" class="app-empty"><span class="app-empty-text">暂无可报告项</span></div>
+          </div>
+          <div v-else class="app-empty">
+            <span class="app-empty-ico"><AppIcon name="shield" :size="26" /></span>
+            <span class="app-empty-text">填写报关要素并点击「校验合规」，查看 HS/IOSS/EORI/Section321 校验</span>
+          </div>
+        </el-col>
+      </el-row>
+    </el-card>
+
     <!-- 面单预览对话框（§3/§11 PDF + ZPL 双格式） -->
     <el-dialog v-model="labelVisible" title="面单预览" width="460px" append-to-body>
       <div v-if="labelData" class="label-prev">
@@ -177,7 +263,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { carriersApi, LEG_LABELS, type ComposeLegsResult, type LegType, type ShipmentLeg, type LabelResult } from '@/api/carriers'
+import { carriersApi, LEG_LABELS, type ComposeLegsResult, type LegType, type ShipmentLeg, type LabelResult, type CustomsValidationResult, type CustomsSpec } from '@/api/carriers'
 import type { Carrier } from '@/api/carriers'
 import PageHeader from '@/components/PageHeader.vue'
 import AppIcon from '@/components/AppIcon.vue'
@@ -235,6 +321,35 @@ async function copyZpl(): Promise<void> {
     ElMessage.success('ZPL 已复制')
   } catch {
     ElMessage.warning('复制失败，请手动选择')
+  }
+}
+
+// 报关/合规校验（§19）
+const customs = ref<CustomsValidationResult | null>(null)
+const customsLoading = ref(false)
+const customsForm = reactive<CustomsSpec>({
+  destCountry: 'US',
+  declaredValue: 120,
+  hsCode: '123456',
+  cargoType: 'general',
+  ioss: '',
+  eori: '',
+  section321: true,
+})
+const dutyLabel = computed(() => {
+  const map: Record<string, string> = { T86: 'T86 免税', T01: 'T01 正式申报', DDP: 'DDP 代缴', UNKNOWN: '待定' }
+  return customs.value ? map[customs.value.recommendedDuty] : '—'
+})
+
+async function runCustoms(): Promise<void> {
+  customsLoading.value = true
+  try {
+    customs.value = await carriersApi.validateCustoms({ ...customsForm })
+    ElMessage.success(customs.value.valid ? '合规校验通过' : '存在阻断项，请补全报关要素')
+  } catch (e) {
+    ElMessage.error('校验失败：' + (e as Error).message)
+  } finally {
+    customsLoading.value = false
   }
 }
 
@@ -358,4 +473,18 @@ async function run(): Promise<void> {
 .label-zpl { border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; }
 .zpl-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: var(--bg); font-size: 12px; color: var(--ink-600); border-bottom: 1px solid var(--line); }
 .zpl-code { margin: 0; padding: 10px 12px; font-size: 11.5px; line-height: 1.6; color: var(--ink-700); white-space: pre-wrap; word-break: break-all; max-height: 160px; overflow: auto; }
+
+/* 报关合规校验 */
+.customs-card { margin-top: 16px; }
+.customs-form :deep(.el-card__body) { padding: 18px 20px; }
+.w-full { width: 100%; }
+.run-btn { margin-top: 4px; }
+.count-pill.ok { color: #047857; background: #ecfdf5; }
+.count-pill.bad { color: #b45309; background: #fff4e5; }
+.customs-result { display: flex; flex-direction: column; gap: 8px; padding-top: 4px; }
+.c-issue { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 1.5; padding: 8px 10px; border-radius: var(--r-sm); }
+.c-issue span { flex: 1; }
+.c-error { background: #fef2f2; color: #b91c1c; }
+.c-warning { background: #fff4e5; color: #b45309; }
+.c-info { background: #eff6ff; color: #1d4ed8; }
 </style>

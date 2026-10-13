@@ -13,6 +13,8 @@ import { CarriersService } from './carriers.service'
 import { ShipmentLegsService, ComposeShipmentRequest } from './shipment-legs.service'
 import { LabelService } from './label/label.service'
 import { LabelSpec } from './label/label.types'
+import { CustomsService } from './customs/customs.service'
+import { CustomsSpec } from './customs/customs.types'
 import { CarrierCode } from './carrier.constants'
 import { GetRatesRequest } from './dto/rate.dto'
 import { CreateShipmentRequest } from './dto/shipment.dto'
@@ -23,6 +25,7 @@ export class CarriersController {
     private readonly svc: CarriersService,
     private readonly legs: ShipmentLegsService,
     private readonly label: LabelService,
+    private readonly customs: CustomsService,
   ) {}
 
   /** 承运商目录（运营级，全局） */
@@ -70,6 +73,12 @@ export class CarriersController {
   @Post('labels')
   async labels(@Body() spec: LabelSpec): Promise<ApiResponse<unknown>> {
     return ok(await this.label.build(spec))
+  }
+
+  /** 报关/合规校验（§19 守卫）：booking 前关卡，失败阻断或转人工 */
+  @Post('customs/validate')
+  async customsValidate(@Body() spec: CustomsSpec): Promise<ApiResponse<unknown>> {
+    return ok(await this.customs.validate(spec))
   }
 
   /** 轨迹查询（§3/§6） */

@@ -57,6 +57,36 @@ export const carriersApi = {
     http.post<ComposeLegsResult>('/carriers/shipments/compose', req),
   /** 面单渲染（§3/§11）：把一段运单渲染为 PDF（pdf-lib）+ ZPL（热敏）双格式 */
   createLabel: (spec: LabelSpec) => http.post<LabelResult>('/carriers/labels', spec),
+  /** 报关/合规校验（§19 守卫）：booking 前关卡 */
+  validateCustoms: (spec: CustomsSpec) => http.post<CustomsValidationResult>('/carriers/customs/validate', spec),
+}
+
+/** 报关/合规校验入参（§19） */
+export interface CustomsSpec {
+  destCountry: string
+  hsCode?: string
+  ioss?: string
+  eori?: string
+  vat?: string
+  declaredValue?: number
+  currency?: string
+  cargoType?: string
+  section321?: boolean
+}
+
+/** 合规问题（error 阻断 / warning 提示 / info 建议） */
+export interface CustomsIssue {
+  level: 'error' | 'warning' | 'info'
+  code: string
+  message: string
+}
+
+/** 合规校验结果 */
+export interface CustomsValidationResult {
+  valid: boolean
+  issues: CustomsIssue[]
+  eligibleSection321: boolean
+  recommendedDuty: 'T86' | 'T01' | 'DDP' | 'UNKNOWN'
 }
 
 /** 物流段（§14 头程/尾程/全程） */

@@ -6,9 +6,9 @@
   "log_path": "D:/Workbuddy/2026-10-10-17-18-35/dropshipping-ops/progress-log.md",
   "error_log": "D:/Workbuddy/2026-10-10-17-18-35/dropshipping-ops/.dev/errors.log",
   "current_phase": "阶段3",
-  "task_index": 21,
-  "last_completed_task": "3.9",
-  "next_task": "3.10",
+  "task_index": 22,
+  "last_completed_task": "3.10",
+  "next_task": "3.11",
   "last_commit": "cb04b4c",
   "last_run": "2026-10-13T23:11:00+08:00",
   "blocked_tasks": [],
@@ -20,5 +20,5 @@
   "batch_2026_10_12_37": "2026-10-12 续跑 3.7 运费试算门户(正式)（§4）。新增 quote 子模块：QuotesService（试算结果落库 quote_id UUID + 24h 有效期 + 租户隔离 + selectedProductCode 渠道自选；过期标记 EXPIRED 诚实抛错 QUOTE_EXPIRED）、QuotesController（POST /pricing/quotes 试算+trial 落库 / GET :id 租户隔离+过期 / PATCH :id/select 渠道自选）。复用比价引擎(trial)+加价层，与真实下单价口径一致（§4.1/§4.6 试算即所见）。新增 5 单测。质量门禁：tsc✅/eslint --max-warnings 0 ✅/jest 122 passed(17 suites)。提交 cb04b4c。看门狗未触发。下一步 3.8 头程/尾程两段式（shipment_legs leg_type，§14）：在 carriers dto/shipment 模型与建单结果上引入 leg 维度（first/last），建单可拆分两段运单。",
   "batch_2026_10_12_36": "2026-10-12 续跑 3.6 加价规则引擎+币种归一（§10）。新增 markup 子模块：FxService（币种归一，内存汇率种子 USD/EUR/GBP→CNY=7.2/7.8/9.1，缺失诚实抛错，TODO Redis+真实FX源）、MarkupRulesService（规则解析：作用域 GLOBAL/CARRIER/PRODUCT/ROUTE_ZONE/TENANT，跨作用域叠加+同(作用域,类型)最具体/高priority胜出；默认全局15%+最低毛利¥5）、MarkupEngineService（carrier_cost→基准币种→加价叠加 PERCENT/FIXED/TIERED→最低毛利保护→双价列 sell_price/margin/fx快照）。比价引擎 L4 后接入加价层（pricing.module 装配三服务；PricingEngineService 注入 MarkupEngineService，enrichQuotes 回填 quotes，selected 改按 sellPrice 锁价）；RateQuote 增 margin?/fxRateSnapshot?。质量门禁：tsc✅/eslint --max-warnings 0 ✅/jest 117 passed(16 suites)。提交 af93581。看门狗未触发。下一步 3.7 运费试算门户(正式)：POST /pricing/compare 已具备，需补商户自助试算页/API（多渠道列表+加价后价+时效+附加费+quote锁定，§4）。",
   "created_at": "2026-10-10T18:48:00+08:00",
-  "updated_at": "2026-10-13T23:45:00+08:00"
+  "updated_at": "2026-10-13T00:55:00+08:00"
 }

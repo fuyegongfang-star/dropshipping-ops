@@ -12,7 +12,7 @@
  */
 
 // ===== 类型（镜像后端 DTO 与前端 *Api 模块）=====
-import type { ComposeLegsRequest, ComposeLegsResult, ShipmentLeg, LabelSpec, LabelResult } from './carriers'
+import type { ComposeLegsRequest, ComposeLegsResult, ShipmentLeg, LabelSpec, LabelResult, CustomsSpec, CustomsIssue, CustomsValidationResult } from './carriers'
 
 export interface MockTenant {
   id: string
@@ -416,6 +416,61 @@ function doCreateLabel(body: unknown): LabelResult {
   }
 }
 
+// ===== 报关/合规校验（任务 3.10，方案 §19）=====
+const EU_SET = new Set(['DE', 'FR', 'ES', 'IT', 'NL', 'BE', 'PL', 'SE', 'AT', 'IE', 'PT'])
+const SECTION321_LIMIT = 800
+
+/** 报关/合规校验（§19 守卫）：与后端 CustomsService 同口径的演示实现 */
+function doValidateCustoms(body: unknown): CustomsValidationResult {
+  const spec = body as CustomsSpec
+  const issues: CustomsIssue[] = []
+  const dest = (spec.destCountry || '').toUpperCase()
+  const value = spec.declaredValue ?? NaN
+  const isEu = EU_SET.has(dest)
+  const isGb = dest === 'GB'
+  const isUs = dest === 'US'
+
+  if (!Number.isFinite(value) || value <= 0) {
+    issues.push({ level: 'error', code: 'DECLARED_VALUE_MISSING', message: '申报价值必填且必须大于 0' })
+  }
+  if (!spec.hsCode) {
+    issues.push({ level: 'warning', code: 'HS_MISSING', message: '建议填写 HS 编码以便快速清关' })
+  } else if (!/^\d{6,12}$/.test(spec.hsCode)) {
+    issues.push({ level: 'error', code: 'HS_FORMAT', message: 'HS 编码应为 6-12 位数字' })
+  }
+  if (isEu) {
+    if (!spec.ioss && !spec.eori) {
+      issues.push({ level: 'error', code: 'EU_TAX_ID_MISSING', message: '欧盟进口需提供 IOSS 或 EORI' })
+    } else {
+      if (spec.ioss && !/^IM\d{10}$/.test(spec.ioss)) issues.push({ level: 'warning', code: 'IOSS_FORMAT', message: 'IOSS 格式应为 IM + 10 位数字' })
+      if (spec.eori && !/^[A-Z]{2}[A-Za-z0-9]+$/.test(spec.eori)) issues.push({ level: 'warning', code: 'EORI_FORMAT', message: 'EORI 格式应为 2 位国别 + 字母数字' })
+    }
+  }
+  if (isGb && !spec.eori) issues.push({ level: 'error', code: 'GB_EORI_MISSING', message: '英国进口需提供 EORI' })
+
+  let eligibleSection321 = false
+  let recommendedDuty: CustomsValidationResult['recommendedDuty'] = 'UNKNOWN'
+  if (isUs) {
+    const within = Number.isFinite(value) && value <= SECTION321_LIMIT
+    eligibleSection321 = within
+    if (spec.section321 && !within) {
+      issues.push({ level: 'error', code: 'SECTION321_OVER_LIMIT', message: `Section 321 仅适用 ≤ $${SECTION321_LIMIT}，当前申报 $${value} 超限，需走正式申报` })
+    } else if (within) {
+      issues.push({ level: 'info', code: 'SECTION321_OK', message: `符合 Section 321（≤$${SECTION321_LIMIT}）T86 免税申报` })
+      recommendedDuty = 'T86'
+    } else {
+      issues.push({ level: 'info', code: 'FORMAL_ENTRY', message: '申报价值 > $800，建议走正式申报（T01）' })
+      recommendedDuty = 'T01'
+    }
+  } else if (isEu) {
+    recommendedDuty = spec.ioss ? 'DDP' : 'UNKNOWN'
+  }
+  if (spec.cargoType === 'battery' || spec.cargoType === 'liquid' || spec.cargoType === 'sensitive') {
+    issues.push({ level: 'warning', code: 'SENSITIVE_CARGO', message: '敏感货物（带电/液体/敏感货）部分渠道禁运，需确认承运商可达性' })
+  }
+  return { valid: !issues.some((i) => i.level === 'error'), issues, eligibleSection321, recommendedDuty }
+}
+
 // ===== 路由分发 =====
 /** mock 模式下 http.ts 的唯一入口：按 method + url 返回对应数据或执行状态变更。
  *  body 仅在 POST/PUT 时由 http.ts 透传（用于比价试算等带参请求）。 */
@@ -462,6 +517,7 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     if (url === '/pricing/compare') return delay(260).then(() => doCompare(body))
     if (url === '/carriers/shipments/compose') return delay(300).then(() => doCompose(body))
     if (url === '/carriers/labels') return delay(200).then(() => doCreateLabel(body))
+    if (url === '/carriers/customs/validate') return delay(200).then(() => doValidateCustoms(body))
     if (url === '/pricing/markup-rules') return delay().then(() => createMarkupRule(body))
     if (url === '/settings/tdk-rules') return delay().then(() => createTdkRule(body))
     // 品牌图片上传（LOGO / Favicon）：演示态直接回吐压缩后的 dataURL 地址。

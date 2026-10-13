@@ -57,7 +57,7 @@
 | 3.7 | 阶段3 | 运费试算门户(正式) | 商户自助试算+自选（§4） | 3.5 | 1.5d | ✅ |
 | 3.8 | 阶段3 | 头程/尾程两段式 | `shipment_legs`(leg_type)（§14） | 1.3/3.1 | 1.5d | ✅ |
 | 3.9 | 阶段3 | 面单 PDF/ZPL | pdf-lib 处理（§3/§11） | 3.2 | 1d | ✅ |
-| 3.10 | 阶段3 | 报关/合规字段 | HS/IOSS/EORI/VAT/Section321（§19） | 1.4 | 1.5d | ⬜ |
+| 3.10 | 阶段3 | 报关/合规字段 | HS/IOSS/EORI/VAT/Section321（§19） | 1.4 | 1.5d | ✅ |
 | 3.11 | 阶段3 | 轨迹双通道 + NDR | 推送+轮询兜底 + 异常工单（§3/§20） | 3.2/3.4 | 1.5d | ⬜ |
 | 3.12 | 阶段3 | 地址校验 + 分区 | 脏地址/邮编→zone（§18） | 1.4 | 1d | ⬜ |
 | 3.13 | 阶段3 | 聚合平台兜底 | AfterShip/17track 尾程（§3e） | 3.11 | 0.5d | ⬜ |
@@ -256,5 +256,21 @@
 - **进行中（🔵）**：无。
 - **受阻**：无。
 - **测试结果**：server `tsc --noEmit` ✅ ｜ `jest` ✅（label 3 passed，全仓 128 passed/19 suites）｜ web `vue-tsc --noEmit` ✅ ｜ `vite build` ✅。
-- **提交**：待本批末统一提交（3.9 `feat(carriers): 阶段3 面单 PDF/ZPL 渲染 3.9`）。
-- **下一步（次日接力）**：3.10 报关/合规字段（§19 HS/IOSS/EORI/VAT/Section321）｜ 3.11 轨迹双通道+NDR ｜ 3.12 地址校验+分区 ｜ 3.13 聚合平台兜底。
+- **提交**：`dae84d1`（feat(carriers): 阶段3 面单 PDF/ZPL 渲染 3.9）。
+- **下一步（次日接力）**：3.10 报关/合规字段（§19 HS/IOSS/EORI/VAT/Section321）。
+
+---
+
+### 进度更新 · 2026-10-13（续跑 · 3.10 报关/合规字段）
+- **完成（✅）**：
+  - **3.10 报关/合规字段（§19 申报/合规自动化）** —— 新增 `carriers/customs/` 子模块：
+    - `customs.service.ts`：`CustomsService.validate` 在 booking 前做合规关卡校验（§19 守卫）：申报价值必填与正性、HS 编码 6-12 位格式、欧盟 IOSS(≤150€)/EORI 与格式、英国 EORI、美国 Section 321（≤$800 T86）资格判定、敏感货物（带电/液体）禁运提示；任一 error 即 `valid=false` 阻断/转人工。
+    - `customs.types.ts`：`CustomsSpec` / `CustomsIssue(level=error|warning|info)` / `CustomsValidationResult`（含 eligibleSection321 + recommendedDuty）。
+    - `carriers.controller.ts`：`POST /carriers/customs/validate`；`carriers.module.ts` 装配 `CustomsService`。
+    - 单测 `customs.service.spec.ts`（7 cases：申报价值/欧盟/英国/Section321/超限/HS格式/敏感货）全绿。
+  - **前端可视化（报关合规校验）**：`ShipmentsView.vue` 新增「报关合规校验」卡片（目的国/HS/IOSS/EORI/申报价值/货物类型/Section321 开关）→ 调用 `carriersApi.validateCustoms` 展示分级问题（error 红 / warning 橙 / info 蓝）与建议清关方式；`carriers.ts` 增 `validateCustoms` API 与类型；`mock-data.ts` 增 `doValidateCustoms`（与后端同口径）。
+- **进行中（🔵）**：无。
+- **受阻**：无。
+- **测试结果**：server `tsc --noEmit` ✅ ｜ `jest` ✅（customs 7 passed，全仓 135 passed/20 suites）｜ web `vue-tsc --noEmit` ✅ ｜ `vite build` ✅。
+- **提交**：待本批末统一提交（3.10 `feat(carriers): 阶段3 报关/合规字段 3.10`）。
+- **下一步（次日接力）**：3.11 轨迹双通道+NDR（§3/§20 推送+轮询兜底+异常工单）｜ 3.12 地址校验+分区（§18 脏地址/邮编→zone）｜ 3.13 聚合平台兜底（AfterShip/17track 尾程）。
