@@ -11,6 +11,8 @@ import { ApiResponse, ok } from '../../common/response/api-response'
 import { TenantId } from '../../common/tenant/tenant.decorator'
 import { CarriersService } from './carriers.service'
 import { ShipmentLegsService, ComposeShipmentRequest } from './shipment-legs.service'
+import { LabelService } from './label/label.service'
+import { LabelSpec } from './label/label.types'
 import { CarrierCode } from './carrier.constants'
 import { GetRatesRequest } from './dto/rate.dto'
 import { CreateShipmentRequest } from './dto/shipment.dto'
@@ -20,6 +22,7 @@ export class CarriersController {
   constructor(
     private readonly svc: CarriersService,
     private readonly legs: ShipmentLegsService,
+    private readonly label: LabelService,
   ) {}
 
   /** 承运商目录（运营级，全局） */
@@ -61,6 +64,12 @@ export class CarriersController {
     @Body() req: ComposeShipmentRequest,
   ): Promise<ApiResponse<unknown>> {
     return ok(await this.legs.compose(tenantId, req))
+  }
+
+  /** 面单渲染（§3/§11）：把一段运单渲染为 PDF（pdf-lib）+ ZPL（热敏）双格式 */
+  @Post('labels')
+  async labels(@Body() spec: LabelSpec): Promise<ApiResponse<unknown>> {
+    return ok(await this.label.build(spec))
   }
 
   /** 轨迹查询（§3/§6） */

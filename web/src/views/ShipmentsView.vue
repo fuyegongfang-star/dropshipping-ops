@@ -125,6 +125,9 @@
                 <span class="leg-badge" :class="`tag-${leg.legType}`">{{ LEG_LABELS[leg.legType] }}</span>
                 <span class="leg-carrier">{{ leg.carrierName }}</span>
                 <span class="leg-days"><AppIcon name="clock" :size="13" />{{ leg.estimatedLeadDays }} 天</span>
+                <el-button size="small" type="primary" plain class="leg-print" :loading="labelLoading" @click="openLabel(leg)">
+                  <AppIcon name="print" :size="13" class="btn-ico" />打印面单
+                </el-button>
               </div>
               <div class="leg-grid">
                 <div><span class="lbl">运单号</span><span class="val">{{ leg.waybillNo }}</span></div>
@@ -147,13 +150,34 @@
         </el-card>
       </el-col>
     </el-row>
+
+    <!-- 面单预览对话框（§3/§11 PDF + ZPL 双格式） -->
+    <el-dialog v-model="labelVisible" title="面单预览" width="460px" append-to-body>
+      <div v-if="labelData" class="label-prev">
+        <div class="label-pdf">
+          <iframe :src="pdfSrc" class="label-frame" title="面单 PDF" />
+        </div>
+        <div class="label-meta">
+          <span>运单号：<b>{{ labelData.waybillNo }}</b></span>
+          <a :href="pdfDownload" :download="labelData.fileName" class="label-dl">下载 PDF</a>
+        </div>
+        <div class="label-zpl">
+          <div class="zpl-head">
+            <span>ZPL II（热敏）</span>
+            <el-button size="small" text type="primary" @click="copyZpl">复制</el-button>
+          </div>
+          <pre class="zpl-code">{{ labelData.zpl }}</pre>
+        </div>
+      </div>
+      <div v-else class="app-empty"><span class="app-empty-text">生成中…</span></div>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { carriersApi, LEG_LABELS, type ComposeLegsResult, type LegType } from '@/api/carriers'
+import { carriersApi, LEG_LABELS, type ComposeLegsResult, type LegType, type ShipmentLeg, type LabelResult } from '@/api/carriers'
 import type { Carrier } from '@/api/carriers'
 import PageHeader from '@/components/PageHeader.vue'
 import AppIcon from '@/components/AppIcon.vue'
@@ -171,6 +195,48 @@ const countries = [
 const carriers = ref<Carrier[]>([])
 const loading = ref(false)
 const result = ref<ComposeLegsResult | null>(null)
+
+// 面单预览（§3/§11）
+const labelVisible = ref(false)
+const labelLoading = ref(false)
+const labelData = ref<LabelResult | null>(null)
+const pdfSrc = computed(() =>
+  labelData.value ? `data:application/pdf;base64,${labelData.value.pdfBase64}` : '',
+)
+const pdfDownload = computed(() => pdfSrc.value)
+
+async function openLabel(leg: ShipmentLeg): Promise<void> {
+  labelLoading.value = true
+  labelVisible.value = true
+  labelData.value = null
+  try {
+    labelData.value = await carriersApi.createLabel({
+      carrierCode: leg.carrierCode,
+      carrierName: leg.carrierName,
+      waybillNo: leg.waybillNo,
+      trackingNo: leg.trackingNo,
+      origin: form.origin,
+      destCountry: form.destCountry,
+      transitHub: leg.transitHub,
+      legType: leg.legType,
+      recipient: { name: form.recipientName, country: form.destCountry, city: '—', address1: '—' },
+    })
+  } catch (e) {
+    ElMessage.error('面单生成失败：' + (e as Error).message)
+  } finally {
+    labelLoading.value = false
+  }
+}
+
+async function copyZpl(): Promise<void> {
+  if (!labelData.value) return
+  try {
+    await navigator.clipboard.writeText(labelData.value.zpl)
+    ElMessage.success('ZPL 已复制')
+  } catch {
+    ElMessage.warning('复制失败，请手动选择')
+  }
+}
 
 const form = reactive({
   firstCarrierCode: 'yunexpress',
@@ -280,4 +346,16 @@ async function run(): Promise<void> {
 .leg-grid .val { font-size: 13px; font-weight: 600; color: var(--ink-800); word-break: break-all; }
 .leg-grid .val.cost { color: var(--brand-600); }
 .result-hint { margin: 6px 0 0; }
+.leg-print { margin-left: 12px; }
+.btn-ico { margin-right: 4px; }
+
+/* 面单预览对话框 */
+.label-prev { display: flex; flex-direction: column; gap: 12px; }
+.label-pdf { border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; background: #fff; }
+.label-frame { width: 100%; height: 220px; border: 0; }
+.label-meta { display: flex; align-items: center; justify-content: space-between; font-size: 13px; color: var(--ink-700); }
+.label-dl { color: var(--brand-600); font-weight: 600; text-decoration: none; }
+.label-zpl { border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; }
+.zpl-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: var(--bg); font-size: 12px; color: var(--ink-600); border-bottom: 1px solid var(--line); }
+.zpl-code { margin: 0; padding: 10px 12px; font-size: 11.5px; line-height: 1.6; color: var(--ink-700); white-space: pre-wrap; word-break: break-all; max-height: 160px; overflow: auto; }
 </style>

@@ -14,6 +14,7 @@ import { CarrierRegistryService } from './carrier-registry.service'
 import { CarriersService } from './carriers.service'
 import { CarriersController } from './carriers.controller'
 import { ShipmentLegsService } from './shipment-legs.service'
+import { LabelService } from './label/label.service'
 import { MockCarrierAdapter } from './adapters/mock-carrier.adapter'
 import { YunExpressAdapter } from './adapters/yunexpress/yunexpress.adapter'
 import { DhlAdapter } from './adapters/dhl/dhl.adapter'
@@ -22,8 +23,8 @@ import { YanwenAdapter } from './adapters/yanwen/yanwen.adapter'
 
 @Module({
   controllers: [CarriersController],
-  providers: [CarrierRegistryService, CarriersService, ShipmentLegsService, MockCarrierAdapter],
-  exports: [CarrierRegistryService, CarriersService, ShipmentLegsService],
+  providers: [CarrierRegistryService, CarriersService, ShipmentLegsService, LabelService, MockCarrierAdapter],
+  exports: [CarrierRegistryService, CarriersService, ShipmentLegsService, LabelService],
 })
 export class CarriersModule implements OnModuleInit {
   constructor(

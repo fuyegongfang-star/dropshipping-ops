@@ -55,6 +55,8 @@ export const carriersApi = {
    */
   composeLegs: (req: ComposeLegsRequest) =>
     http.post<ComposeLegsResult>('/carriers/shipments/compose', req),
+  /** 面单渲染（§3/§11）：把一段运单渲染为 PDF（pdf-lib）+ ZPL（热敏）双格式 */
+  createLabel: (spec: LabelSpec) => http.post<LabelResult>('/carriers/labels', spec),
 }
 
 /** 物流段（§14 头程/尾程/全程） */
@@ -105,4 +107,27 @@ export const LEG_LABELS: Record<LegType, string> = {
   first: '头程',
   last: '尾程',
   direct: '全程',
+}
+
+/** 面单生成入参（§3/§11） */
+export interface LabelSpec {
+  carrierCode: string
+  carrierName?: string
+  waybillNo: string
+  trackingNo?: string
+  recipient?: { name?: string; country?: string; city?: string; address1?: string }
+  origin?: string
+  destCountry?: string
+  weightKg?: number
+  legType?: LegType
+  transitHub?: string
+}
+
+/** 面单生成结果（PDF + ZPL 双格式） */
+export interface LabelResult {
+  waybillNo: string
+  fileName: string
+  pdfBase64: string
+  zpl: string
+  generatedAt: string
 }

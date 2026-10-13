@@ -56,7 +56,7 @@
 | 3.6 | 阶段3 | 加价规则引擎 + 币种归一 | 双价列/Markup/FX（§9/§10） | 3.5 | 1.5d | ✅ |
 | 3.7 | 阶段3 | 运费试算门户(正式) | 商户自助试算+自选（§4） | 3.5 | 1.5d | ✅ |
 | 3.8 | 阶段3 | 头程/尾程两段式 | `shipment_legs`(leg_type)（§14） | 1.3/3.1 | 1.5d | ✅ |
-| 3.9 | 阶段3 | 面单 PDF/ZPL | pdf-lib 处理（§3/§11） | 3.2 | 1d | ⬜ |
+| 3.9 | 阶段3 | 面单 PDF/ZPL | pdf-lib 处理（§3/§11） | 3.2 | 1d | ✅ |
 | 3.10 | 阶段3 | 报关/合规字段 | HS/IOSS/EORI/VAT/Section321（§19） | 1.4 | 1.5d | ⬜ |
 | 3.11 | 阶段3 | 轨迹双通道 + NDR | 推送+轮询兜底 + 异常工单（§3/§20） | 3.2/3.4 | 1.5d | ⬜ |
 | 3.12 | 阶段3 | 地址校验 + 分区 | 脏地址/邮编→zone（§18） | 1.4 | 1d | ⬜ |
@@ -240,5 +240,21 @@
 - **进行中（🔵）**：无。
 - **受阻**：无。
 - **测试结果**：server `tsc --noEmit` ✅ ｜ `jest` ✅（shipment-legs 3 passed，全仓 125 passed/18 suites）｜ web `vue-tsc --noEmit` ✅ ｜ `vite build` ✅。
-- **提交**：待本批末统一提交（3.8 + 后续任务一并 `feat(carriers): 阶段3 头程/尾程两段式 3.8`）。
-- **下一步（次日接力）**：3.9 面单 PDF/ZPL（§3/§11，pdf-lib 渲染，承运商/运单页打印入口）｜ 3.10 报关/合规字段（§19 HS/IOSS/EORI/VAT/Section321）｜ 3.11 轨迹双通道+NDR ｜ 3.12 地址校验+分区 ｜ 3.13 聚合平台兜底。
+- **提交**：`39170b3`（feat(carriers): 阶段3 头程/尾程两段式物流模型 3.8）。
+- **下一步（次日接力）**：3.9 面单 PDF/ZPL（§3/§11，pdf-lib 渲染，承运商/运单页打印入口）。
+
+---
+
+### 进度更新 · 2026-10-13（续跑 · 3.9 面单 PDF/ZPL）
+- **完成（✅）**：
+  - **3.9 面单 PDF/ZPL 渲染（§3 getLabel / §11 面单渲染）** —— 新增 `carriers/label/` 子模块：
+    - `label.service.ts`：`LabelService` 把单段运单渲染为 **PDF（pdf-lib，4x6 标签）** + **ZPL II（热敏指令，含 ^BC 真条码 + ^FD 文本）** 双格式；PDF 用仿条码竖条 + 标准字体（中文承运商名降为 ASCII 回退代码，避免 WinAnsi 编码抛错），ZPL 保留原文。
+    - `label.types.ts`：`LabelSpec` / `LabelResult`（pdfBase64 + zpl + fileName）。
+    - `carriers.controller.ts`：`POST /carriers/labels`（租户隔离）；`carriers.module.ts` 装配 `LabelService`。
+    - 单测 `label.service.spec.ts`（3 cases：PDF 头 %PDF / ZPL ^XA..^XZ / ^BC 条码 / 缺字段回退）全绿。
+  - **前端可视化（打印面单）**：`ShipmentsView.vue` 每段运单新增「打印面单」按钮 → 弹窗预览 **PDF（iframe）+ ZPL 文本（可复制）**；`carriers.ts` 增 `createLabel` API 与类型；`mock-data.ts` 增 `doCreateLabel`（占位 PDF + ZPL）；AppIcon 增 `print` 图标。
+- **进行中（🔵）**：无。
+- **受阻**：无。
+- **测试结果**：server `tsc --noEmit` ✅ ｜ `jest` ✅（label 3 passed，全仓 128 passed/19 suites）｜ web `vue-tsc --noEmit` ✅ ｜ `vite build` ✅。
+- **提交**：待本批末统一提交（3.9 `feat(carriers): 阶段3 面单 PDF/ZPL 渲染 3.9`）。
+- **下一步（次日接力）**：3.10 报关/合规字段（§19 HS/IOSS/EORI/VAT/Section321）｜ 3.11 轨迹双通道+NDR ｜ 3.12 地址校验+分区 ｜ 3.13 聚合平台兜底。

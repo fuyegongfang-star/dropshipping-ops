@@ -99,6 +99,8 @@ const ICONS: Record<string, string> = {
     '<path d="M13.5 4.5c3.5-1 6-0.5 6-0.5s.5 2.5-.5 6c-.8 2.8-2.6 5-5.5 6.5L9 12.5C10.5 9.6 12.7 7.3 13.5 4.5z"/><path d="M9 12.5 6.5 15 5 19l4-1.5 2.5-2.5"/><circle cx="15" cy="9" r="1.4"/>',
   grid:
     '<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>',
+  print:
+    '<path d="M7 8V3h10v5"/><path d="M5 8h14a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><path d="M7 14h10v7H7z"/><path d="M9 11h6"/>',
   settings:
     '<circle cx="12" cy="12" r="3"/><path d="M12 3v2.4M12 18.6V21M3 12h2.4M18.6 12H21M5.6 5.6l1.7 1.7M16.7 16.7l1.7 1.7M5.6 18.4l1.7-1.7M16.7 7.3l1.7-1.7"/>',
   upload: '<path d="M12 16V4"/><path d="M7.5 8.5 12 4l4.5 4.5"/><path d="M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15"/>',

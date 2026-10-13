@@ -12,7 +12,7 @@
  */
 
 // ===== 类型（镜像后端 DTO 与前端 *Api 模块）=====
-import type { ComposeLegsRequest, ComposeLegsResult, ShipmentLeg } from './carriers'
+import type { ComposeLegsRequest, ComposeLegsResult, ShipmentLeg, LabelSpec, LabelResult } from './carriers'
 
 export interface MockTenant {
   id: string
@@ -379,6 +379,43 @@ function doCompose(body: unknown): ComposeLegsResult {
 const reject = (msg: string) => Promise.reject(new Error(msg))
 let seq = 100
 
+// ===== 面单渲染（任务 3.9，方案 §3/§11）=====
+// 演示态 PDF 占位（最小可用 PDF，由 pdf-lib 生成后 base64，仅作展示，非真实承运商面单）。
+const DEMO_LABEL_PDF =
+  'JVBERi0xLjcKJYGBgYEKCjYgMCBvYmoKPDwKL0ZpbHRlciAvRmxhdGVEZWNvZGUKL0xlbmd0aCAyMTIKPj4Kc3RyZWFtCnicrdBLiwIxDADge35Fz4KYpmnawiI40xEPXoTeZA/i+kQPiujfN6MgorvgYQnkUQpf2gNUBdC0cVxBb7TYnRenzXzWDZgiRwwxGcumLIE0j8HerlrjNAmasocv7yRKCihZvDSBCbkWK6RTTUiRWbssQ0p9U7ZQOtAUmMDhExl/l52/y0FsSColqaV2A5WZPWceUva6CGWHGvbfXBvvLgfSFzqpVG4kvMjsias/7AdszQWm39r/PAv6pfP946DN72Nb2uzE7HTHpwa1rqFS6ApoUWRACmVuZHN0cmVhbQplbmRvYmoKCjcgMCBvYmoKPDwKL0ZpbHRlciAvRmxhdGVEZWNvZGUKL1R5cGUgL09ialN0bQovTiA1Ci9GaXJzdCAyNgovTGVuZ3RoIDM2MAo+PgpzdHJlYW0KeJzVUk1Lw0AQve+vmKMeZD/yLaXQNomCFKUVFMXDNllKpOxKspX6751JUksP4lnCY3dm3uy+zTwJAhSEIQSQpBBCFCiIIJESJhPGH78+DPAHvTUd43dN3cErcgSs4I3xhdtbD5JNp+zEXWivd27LhiaQRD4yHlpX7yvTwqQsylKIRAgRh4hYCJXjukBkCIUx1lSKe0QSjsBcEggRzLBWDoiToYfqPTca+wtckRsTJx+4YTrEP/fSXcVwhvpLTzZlfOnqXHsDF/m1EiqWQgYykpmKXy7xd7RGe/d/H9frb5z99YVnc6bx0pBbQx7op8xXpnP7tsKxE690WKHNrdl9Gt9U+ioRWYo6kzRDj43G4M/3m3dT9VQKi4O/WXvSMCQotzR1o+fugO4T+OHLAVWTB2fWOk+u7P1oPaqhKB49eiaZBDG+3m98H1JSMj7XnemlnnSiCFu5urFb4E+NndmuOSboxG8YFsXYCmVuZHN0cmVhbQplbmRvYmoKCjggMCBvYmoKPDwKL1NpemUgOQovUm9vdCAyIDAgUgovSW5mbyAzIDAgUgovRmlsdGVyIC9GbGF0ZURlY29kZQovVHlwZSAvWFJlZgovTGVuZ3RoIDQxCi9XIFsgMSAyIDIgXQovSW5kZXggWyAwIDkgXQo+PgpzdHJlYW0KeJwVxLERACAMA7G3wx0ti7D/cBQJViGg22xISk6Vljgg3Z8fDF4EA3QKZW5kc3RyZWFtCmVuZG9iagoKc3RhcnR4cmVmCjc2MwolJUVPRg=='
+
+/** 面单渲染：演示态返回占位 PDF + ZPL 文本（真实实现见后端 LabelService，§3/§11） */
+function doCreateLabel(body: unknown): LabelResult {
+  const spec = body as LabelSpec
+  const carrier = spec.carrierName ?? spec.carrierCode
+  const barcode = spec.trackingNo ?? spec.waybillNo
+  const r = spec.recipient
+  const shipTo = [r?.name, r?.country, r?.city, r?.address1].filter(Boolean).join('\\&')
+  const route = [spec.origin, spec.transitHub, spec.destCountry].filter(Boolean).join(' > ')
+  const weight = spec.weightKg != null ? `Weight: ${spec.weightKg} kg` : ''
+  const zpl = [
+    '^XA',
+    '^CF0,30',
+    `^FO20,20^FH^FD${carrier}^FS`,
+    '^CF0,20',
+    `^FO20,60^FH^FDWAYBILL: ${spec.waybillNo}^FS`,
+    `^FO20,90^BCN,60,Y,N,N^FD${barcode}^FS`,
+    `^FO20,170^FH^FDSHIP TO: ${shipTo}^FS`,
+    `^FO20,200^FH^FDRoute: ${route}^FS`,
+    weight ? `^FO20,225^FH^FD${weight}^FS` : '',
+    '^XZ',
+  ]
+    .filter(Boolean)
+    .join('\n')
+  return {
+    waybillNo: spec.waybillNo,
+    fileName: `label-${spec.waybillNo}.pdf`,
+    pdfBase64: DEMO_LABEL_PDF,
+    zpl,
+    generatedAt: NOW(),
+  }
+}
+
 // ===== 路由分发 =====
 /** mock 模式下 http.ts 的唯一入口：按 method + url 返回对应数据或执行状态变更。
  *  body 仅在 POST/PUT 时由 http.ts 透传（用于比价试算等带参请求）。 */
@@ -424,6 +461,7 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     if (pull) return delay().then(() => doPull(pull[1]))
     if (url === '/pricing/compare') return delay(260).then(() => doCompare(body))
     if (url === '/carriers/shipments/compose') return delay(300).then(() => doCompose(body))
+    if (url === '/carriers/labels') return delay(200).then(() => doCreateLabel(body))
     if (url === '/pricing/markup-rules') return delay().then(() => createMarkupRule(body))
     if (url === '/settings/tdk-rules') return delay().then(() => createTdkRule(body))
     // 品牌图片上传（LOGO / Favicon）：演示态直接回吐压缩后的 dataURL 地址。
