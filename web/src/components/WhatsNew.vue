@@ -1,5 +1,6 @@
 <template>
-  <div class="whatsnew">
+  <!-- 仅平台运营方可见：卖家租户不应看到「本次更新 / 开发进度」类内部提醒。 -->
+  <div v-if="isSuper" class="whatsnew">
     <el-badge :value="unseen" :hidden="unseen === 0" :offset="[-6, 4]">
       <button class="icon-btn" title="本次更新（最近交付的能力）" @click="open">
         <AppIcon name="bell" :size="18" />
@@ -34,6 +35,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { useUserStore } from '@/stores/user'
 import {
   DEV_TASKS,
   DEV_RECENT_IDS,
@@ -45,6 +47,10 @@ import AppIcon from '@/components/AppIcon.vue'
 // 「本次更新」提醒：以生成器产出的提交号（无 git 时用生成时间）作为版本标记，
 // 与 localStorage 中已读标记比对，从而在每天新产出后于顶栏显示红点，
 // 解决「不知道昨晚自动开发了什么、没法提出调整」的问题。
+// 仅平台运营方（super）可见——卖家租户不应看到开发进度类内部信息。
+const userStore = useUserStore()
+const isSuper = computed(() => userStore.role === 'super')
+
 const KEY = 'dev-whatsnew-seen'
 const marker = DEV_PROGRESS_COMMIT || DEV_PROGRESS_GENERATED_AT
 const recentTasks = DEV_TASKS.filter((t) => DEV_RECENT_IDS.includes(t.id))

@@ -161,3 +161,23 @@
 **验证**：`eslint --max-warnings 0` ✅ ｜ `vue-tsc --noEmit && vite build` ✅ ｜ 浏览器实测：新增规则（幅度 22）落库 + toast ✅、行内改全局 12→20 联动预览并 toast ✅、刷新后仍为改后值 ✅、重置回 12 ✅、进度页 42.2%（19/45）与仪表盘最近交付 4 项 ✅。
 
 **下一步**：3.8 头程/尾程两段式（夜间自动化按 `dev-schedule.md` 接力）。
+
+---
+
+## 2026-10-13（手动 · 交付隔离：角色显隐）
+
+**背景**：用户问「最后交付时这些开发期脚手架怎么处理，是去掉还是？」→ 决策：**不删代码，改用极简角色隔离**（平台运营方可见，卖家租户不可见）。
+
+**完成**：
+
+1. **新增角色 store** `web/src/stores/user.ts`：`super`（平台运营方）/ `seller`（卖家租户），默认 `super`（保证开发期你仍能看到全部），`localStorage` 持久化。
+2. **路由守卫** `web/src/router/index.ts`：`/progress`、`/tenants` 加 `meta.roles: ['super']`，`beforeEach` 拦截非对应角色并重定向首页。
+3. **布局菜单按角色过滤** `web/src/layouts/BasicLayout.vue`：`menus` 加 `roles` 字段 + `visibleMenus` 计算属性；演示模式顶栏新增身份切换下拉（平台运营方 / 卖家租户）便于验证。
+4. **本次更新提醒角色隐藏** `web/src/components/WhatsNew.vue`：仅 `super` 渲染，卖家租户看不到开发进度类内部提醒。
+5. **文档**：README 新增「交付形态与角色隔离」章节，说明 mock/本地持久化/内部视图三者的上线切换方式。
+
+**隔离边界（交付时）**：Mock 演示数据由 `VITE_USE_MOCK` 控制（交付设 `false` 走真实后端）；加价本地持久化仅 mock 生效；开发进度页 / 本次更新提醒 / 租户管理页仅 `super` 可见。前端显隐不替代后端鉴权。
+
+**验证**：`eslint --max-warnings 0` ✅ ｜ `vue-tsc --noEmit && vite build` ✅ ｜ 浏览器实测：super 菜单 9 项（含租户管理/开发进度），seller 菜单 7 项（已隐藏）+ 直接访问 `/progress` 被重定向 `/` + whatsnew 数量 seller=0 / super=1 ✅。
+
+**下一步**：3.8 头程/尾程两段式（夜间自动化按 `dev-schedule.md` 接力）。

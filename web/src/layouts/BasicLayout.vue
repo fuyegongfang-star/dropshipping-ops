@@ -16,7 +16,7 @@
         router
         class="side-menu"
       >
-        <el-menu-item v-for="m in menus" :key="m.path" :index="m.path">
+        <el-menu-item v-for="m in visibleMenus" :key="m.path" :index="m.path">
           <AppIcon :name="m.icon" :size="19" />
           <span>{{ m.title }}</span>
         </el-menu-item>
@@ -28,7 +28,7 @@
     </el-aside>
 
     <el-container>
-      <!-- 顶栏：白底轻阴影 + 折叠按钮 + 面包屑 + 租户切换 + 头像 -->
+      <!-- 顶栏：白底轻阴影 + 折叠按钮 + 面包屑 + 租户切换 + 身份切换 + 头像 -->
       <el-header class="header">
         <div class="h-left">
           <button class="collapse-btn" title="折叠/展开" @click="collapsed = !collapsed">
@@ -42,6 +42,21 @@
 
         <div class="h-right">
           <span class="demo-badge"><AppIcon name="check" :size="13" /> 演示模式</span>
+
+          <!-- 演示模式：身份切换，用于验证角色隔离（平台方 / 卖家视角） -->
+          <el-select
+            v-if="isDemo"
+            class="role-select"
+            :model-value="userStore.role"
+            @change="onRoleChange"
+          >
+            <el-option
+              v-for="(label, value) in userStore.ROLE_LABELS"
+              :key="value"
+              :label="label"
+              :value="value"
+            />
+          </el-select>
 
           <el-select
             class="tenant-select"
@@ -81,16 +96,28 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useTenantStore } from '@/stores/tenant'
+import { useUserStore, type UserRole } from '@/stores/user'
 import http from '@/api/http'
 import AppIcon from '@/components/AppIcon.vue'
 import WhatsNew from '@/components/WhatsNew.vue'
 
 // 基础布局：深色渐变侧边栏 + 顶栏 + 主内容区（方案 §0/§17 多租户透传）。
 const tenantStore = useTenantStore()
+const userStore = useUserStore()
 const route = useRoute()
 const collapsed = ref(false)
 
-const menus = [
+// 演示模式（VITE_USE_MOCK 未显式设为 false 即视为开）：显示身份切换，便于验证角色隔离。
+const isDemo = (import.meta.env.VITE_USE_MOCK ?? 'true') === 'true'
+
+interface MenuEntry {
+  path: string
+  title: string
+  icon: string
+  roles?: string[]
+}
+
+const menus: MenuEntry[] = [
   { path: '/', title: '仪表盘', icon: 'dashboard' },
   { path: '/orders', title: '订单中心', icon: 'orders' },
   { path: '/catalog', title: '商品 / SKU', icon: 'catalog' },
@@ -98,12 +125,18 @@ const menus = [
   { path: '/carriers', title: '承运商管理', icon: 'truck' },
   { path: '/quotes', title: '运费试算', icon: 'calculator' },
   { path: '/pricing', title: '加价 / 币种', icon: 'sliders' },
-  { path: '/tenants', title: '租户管理', icon: 'tenants' },
-  { path: '/progress', title: '开发进度', icon: 'target' },
+  // 以下为平台运营方专属：开发期/内部视图，卖家租户不可见
+  { path: '/tenants', title: '租户管理', icon: 'tenants', roles: ['super'] },
+  { path: '/progress', title: '开发进度', icon: 'target', roles: ['super'] },
 ]
 
+// 按角色过滤菜单：卖家租户看不到平台运营方专属项。
+const visibleMenus = computed(() =>
+  menus.filter((m) => !m.roles || m.roles.includes(userStore.role)),
+)
+
 const currentTitle = computed(
-  () => menus.find((m) => m.path === route.path)?.title ?? '仪表盘',
+  () => visibleMenus.value.find((m) => m.path === route.path)?.title ?? '仪表盘',
 )
 
 onMounted(async () => {
@@ -122,6 +155,11 @@ onMounted(async () => {
 
 function onTenantChange(code: string): void {
   tenantStore.setTenant(code)
+}
+
+// 演示模式下的身份切换：模拟平台运营方 / 卖家租户，验证菜单与提醒的显隐。
+function onRoleChange(r: string): void {
+  userStore.setRole(r as UserRole)
 }
 </script>
 
@@ -295,6 +333,10 @@ function onTenantChange(code: string): void {
 }
 .tenant-select {
   width: 150px;
+}
+/* 演示模式身份切换（验证角色隔离） */
+.role-select {
+  width: 130px;
 }
 .avatar {
   width: 38px;
