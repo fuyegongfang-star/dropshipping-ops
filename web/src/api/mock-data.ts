@@ -12,6 +12,8 @@
  */
 
 // ===== 类型（镜像后端 DTO 与前端 *Api 模块）=====
+import type { ComposeLegsRequest, ComposeLegsResult, ShipmentLeg } from './carriers'
+
 export interface MockTenant {
   id: string
   name: string
@@ -319,6 +321,61 @@ function mk(
 
 // ===== 工具 =====
 const delay = (ms = 120) => new Promise<void>((r) => setTimeout(r, ms))
+
+// ===== 两段式运单编排（任务 3.8，方案 §14）=====
+/** 计费重：取实重与体积重(长×宽×高/5000)较大者，多箱求和 */
+function computeChargeableG(parcels: { weightKg: number; lengthCm: number; widthCm: number; heightCm: number }[]): number {
+  const total = parcels.reduce((s, p) => {
+    const volumetric = (p.lengthCm * p.widthCm * p.heightCm) / 5000
+    return s + Math.max(p.weightKg, volumetric)
+  }, 0)
+  return Number(total.toFixed(2))
+}
+
+/** 两段式建单编排：拆分头程/尾程两段，分别生成运单号与成本（演示口径，非真实价） */
+function doCompose(body: unknown): ComposeLegsResult {
+  const req = body as ComposeLegsRequest
+  const ship = req.shipment
+  const hub = req.transitHub ?? `OVERSEAS-${ship.destCountry}`
+  const chargeable = computeChargeableG(ship.parcels)
+
+  // 头程单价 $/kg（空运头程较贵），尾程单价（末端派送）
+  const FIRST_PRICE = 38
+  const LAST_PRICE = 22
+  const nameOf = (code: string) => carriers.find((c) => c.code === code)?.name ?? code
+
+  const first: ShipmentLeg = {
+    legType: 'first',
+    carrierCode: req.firstCarrierCode,
+    carrierName: nameOf(req.firstCarrierCode),
+    waybillNo: `WB-${req.firstCarrierCode.toUpperCase()}-${seq++}`,
+    trackingNo: `TRK-${req.firstCarrierCode.toUpperCase()}-${seq++}`,
+    carrierCost: Number((chargeable * FIRST_PRICE).toFixed(2)),
+    currency: 'USD',
+    estimatedLeadDays: 4,
+    transitHub: hub,
+  }
+
+  const legs: ShipmentLeg[] = [first]
+  if (req.lastCarrierCode) {
+    const last: ShipmentLeg = {
+      legType: 'last',
+      carrierCode: req.lastCarrierCode,
+      carrierName: nameOf(req.lastCarrierCode),
+      waybillNo: `WB-${req.lastCarrierCode.toUpperCase()}-${seq++}`,
+      trackingNo: `TRK-${req.lastCarrierCode.toUpperCase()}-${seq++}`,
+      carrierCost: Number((chargeable * LAST_PRICE).toFixed(2)),
+      currency: 'USD',
+      estimatedLeadDays: 3,
+      transitHub: hub,
+    }
+    legs.push(last)
+  }
+
+  const totalCarrierCost = Number(legs.reduce((s, l) => s + l.carrierCost, 0).toFixed(2))
+  return { orderRef: ship.orderRef, legs, totalCarrierCost, currency: 'USD', composedAt: NOW() }
+}
+
 const reject = (msg: string) => Promise.reject(new Error(msg))
 let seq = 100
 
@@ -366,6 +423,7 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     const pull = url.match(/^\/channels\/([^/]+)\/pull$/)
     if (pull) return delay().then(() => doPull(pull[1]))
     if (url === '/pricing/compare') return delay(260).then(() => doCompare(body))
+    if (url === '/carriers/shipments/compose') return delay(300).then(() => doCompose(body))
     if (url === '/pricing/markup-rules') return delay().then(() => createMarkupRule(body))
     if (url === '/settings/tdk-rules') return delay().then(() => createTdkRule(body))
     // 品牌图片上传（LOGO / Favicon）：演示态直接回吐压缩后的 dataURL 地址。

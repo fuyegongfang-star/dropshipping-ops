@@ -65,6 +65,8 @@ const ICONS: Record<string, string> = {
     '<rect x="4" y="3" width="16" height="18" rx="1.5"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2M10 21v-3h4v3"/>',
   package:
     '<path d="M3.5 7.5 12 4l8.5 3.5v9L12 20l-8.5-3.5z"/><path d="M3.5 7.5 12 11l8.5-3.5M12 11v9"/>',
+  warehouse:
+    '<path d="M3 21V9l9-5 9 5v12"/><path d="M7 21v-7h10v7"/><path d="M7 13h10"/>',
   filter: '<path d="M3 5h18l-7 8v6l-4 2v-8z"/>',
   swap:
     '<path d="M7 7h11l-3-3M17 17H6l3 3"/>',

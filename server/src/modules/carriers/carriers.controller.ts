@@ -10,13 +10,17 @@ import { Body, Controller, Get, Param, Post } from '@nestjs/common'
 import { ApiResponse, ok } from '../../common/response/api-response'
 import { TenantId } from '../../common/tenant/tenant.decorator'
 import { CarriersService } from './carriers.service'
+import { ShipmentLegsService, ComposeShipmentRequest } from './shipment-legs.service'
 import { CarrierCode } from './carrier.constants'
 import { GetRatesRequest } from './dto/rate.dto'
 import { CreateShipmentRequest } from './dto/shipment.dto'
 
 @Controller('carriers')
 export class CarriersController {
-  constructor(private readonly svc: CarriersService) {}
+  constructor(
+    private readonly svc: CarriersService,
+    private readonly legs: ShipmentLegsService,
+  ) {}
 
   /** 承运商目录（运营级，全局） */
   @Get()
@@ -48,6 +52,15 @@ export class CarriersController {
     @Body() req: CreateShipmentRequest,
   ): Promise<ApiResponse<unknown>> {
     return ok(await this.svc.ship(tenantId, code as CarrierCode, req))
+  }
+
+  /** 两段式运单编排（§14 头程/尾程）：拆分 first + last 两段分别建单并聚合 */
+  @Post('shipments/compose')
+  async compose(
+    @TenantId() tenantId: string,
+    @Body() req: ComposeShipmentRequest,
+  ): Promise<ApiResponse<unknown>> {
+    return ok(await this.legs.compose(tenantId, req))
   }
 
   /** 轨迹查询（§3/§6） */

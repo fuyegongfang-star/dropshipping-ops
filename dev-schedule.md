@@ -55,7 +55,7 @@
 | 3.5 | 阶段3 | 比价引擎 4 层 + 试算模式 | 预热/可达性/实时池/护栏 + 试算开关（§5/§4） | 1.5/3.1 | 2d | ✅ |
 | 3.6 | 阶段3 | 加价规则引擎 + 币种归一 | 双价列/Markup/FX（§9/§10） | 3.5 | 1.5d | ✅ |
 | 3.7 | 阶段3 | 运费试算门户(正式) | 商户自助试算+自选（§4） | 3.5 | 1.5d | ✅ |
-| 3.8 | 阶段3 | 头程/尾程两段式 | `shipment_legs`(leg_type)（§14） | 1.3/3.1 | 1.5d | ⬜ |
+| 3.8 | 阶段3 | 头程/尾程两段式 | `shipment_legs`(leg_type)（§14） | 1.3/3.1 | 1.5d | ✅ |
 | 3.9 | 阶段3 | 面单 PDF/ZPL | pdf-lib 处理（§3/§11） | 3.2 | 1d | ⬜ |
 | 3.10 | 阶段3 | 报关/合规字段 | HS/IOSS/EORI/VAT/Section321（§19） | 1.4 | 1.5d | ⬜ |
 | 3.11 | 阶段3 | 轨迹双通道 + NDR | 推送+轮询兜底 + 异常工单（§3/§20） | 3.2/3.4 | 1.5d | ⬜ |
@@ -226,3 +226,19 @@
 - **测试结果**：`tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**122 passed / 17 suites**）。
 - **提交**：`cb04b4c`（feat(pricing): 3.7 运费试算门户(正式) quote 锁定 + 渠道自选）。
 - **下一步（次日接力）**：3.8 头程/尾程两段式（§14 `shipment_legs`：leg_type first/last；建单可拆分两段运单，轨迹带 leg 维度）。
+
+---
+
+### 进度更新 · 2026-10-13（夜间自动化 23:10 启动 · 3.8 头程/尾程两段式）
+- **完成（✅）**：
+  - **3.8 头程/尾程两段式物流模型（§14）** —— 在承运商建单模型引入 leg 维度：
+    - `dto/shipment.dto.ts`：`CreateShipmentResult` 增 `legs?: ShipmentLegResult[]`；新增 `ShipmentLegResult`（legType/承运商/运单号/轨迹号/面单/成本/时效/转运节点）与 `ComposeShipmentResult`（各段聚合 + 总成本）。`LegType`（first/last/direct）已在 rate.dto。
+    - `shipment-legs.service.ts`：`ShipmentLegsService.compose` 编排两段式建单——全程单拆为「头程 origin→hub」+「尾程 hub→dest」，分别调用 `CarriersService.ship` 建单并聚合；仅头程时退化为单段 FIRST。
+    - `carriers.controller.ts`：新增 `POST /carriers/shipments/compose`（租户隔离）；`carriers.module.ts` 装配 `ShipmentLegsService`。
+    - 单测 `shipment-legs.service.spec.ts`（3 cases：全程两段/单段退化/分段入参正确），全程拆两段成本聚合 12.5+7.3=19.8 断言通过。
+  - **前端可视化（两段式运单页）**：`web/src/views/ShipmentsView.vue`（物流履约分组「两段式运单」），选头程/尾程承运商 + 转运节点 → 渲染「国内仓→海外仓→买家」路由图与逐段运单号/成本/时效；`carriers.ts` 增 `composeLegs` API 与类型；`mock-data.ts` 增 `doCompose` 演示编排；路由 + BasicLayout 菜单 已注册；AppIcon 增 `warehouse` 图标。
+- **进行中（🔵）**：无。
+- **受阻**：无。
+- **测试结果**：server `tsc --noEmit` ✅ ｜ `jest` ✅（shipment-legs 3 passed，全仓 125 passed/18 suites）｜ web `vue-tsc --noEmit` ✅ ｜ `vite build` ✅。
+- **提交**：待本批末统一提交（3.8 + 后续任务一并 `feat(carriers): 阶段3 头程/尾程两段式 3.8`）。
+- **下一步（次日接力）**：3.9 面单 PDF/ZPL（§3/§11，pdf-lib 渲染，承运商/运单页打印入口）｜ 3.10 报关/合规字段（§19 HS/IOSS/EORI/VAT/Section321）｜ 3.11 轨迹双通道+NDR ｜ 3.12 地址校验+分区 ｜ 3.13 聚合平台兜底。

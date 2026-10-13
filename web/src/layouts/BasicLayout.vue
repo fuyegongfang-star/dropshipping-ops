@@ -195,6 +195,7 @@ const menuNodes: MenuNode[] = [
     children: [
       { path: '/carriers', title: '承运商管理', icon: 'truck' },
       { path: '/quotes', title: '运费试算', icon: 'calculator' },
+      { path: '/shipments', title: '两段式运单', icon: 'layers' },
     ],
   },
   {

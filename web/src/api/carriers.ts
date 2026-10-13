@@ -49,4 +49,60 @@ export const CAPABILITY_LABELS: { key: keyof CarrierCapability; label: string }[
 export const carriersApi = {
   list: () => http.get<Carrier[]>('/carriers'),
   health: (code: string) => http.get<CarrierHealth>(`/carriers/${code}/health`),
+  /**
+   * 两段式运单编排（§14）：给定头程/尾程承运商与全程参数，后端拆分为两段建单并聚合。
+   * 演示模式由 mock-data.ts 返回等价两段结果。
+   */
+  composeLegs: (req: ComposeLegsRequest) =>
+    http.post<ComposeLegsResult>('/carriers/shipments/compose', req),
+}
+
+/** 物流段（§14 头程/尾程/全程） */
+export type LegType = 'first' | 'last' | 'direct'
+
+/** 单段运单（§14 头程/尾程） */
+export interface ShipmentLeg {
+  legType: LegType
+  carrierCode: string
+  carrierName?: string
+  waybillNo: string
+  trackingNo?: string
+  labelUrl?: string
+  carrierCost: number
+  currency: string
+  estimatedLeadDays?: number
+  transitHub?: string
+}
+
+/** 两段式建单编排请求（前端 → 后端 §14 接口） */
+export interface ComposeLegsRequest {
+  firstCarrierCode: string // 头程承运商
+  lastCarrierCode?: string // 尾程承运商（省略则全程一票到底）
+  transitHub?: string // 转运节点 / 海外仓代码
+  shipment: {
+    orderRef?: string
+    origin: string
+    destCountry: string
+    destZip?: string
+    declaredValue?: number
+    currency?: string
+    parcels: { weightKg: number; lengthCm: number; widthCm: number; heightCm: number }[]
+    recipient?: { name: string; country: string; city: string; address1: string }
+  }
+}
+
+/** 两段式建单编排结果 */
+export interface ComposeLegsResult {
+  orderRef?: string
+  legs: ShipmentLeg[]
+  totalCarrierCost: number
+  currency: string
+  composedAt: string
+}
+
+/** 物流段中文标签 */
+export const LEG_LABELS: Record<LegType, string> = {
+  first: '头程',
+  last: '尾程',
+  direct: '全程',
 }

@@ -7,6 +7,7 @@ import CatalogView from '@/views/CatalogView.vue'
 import ChannelsView from '@/views/ChannelsView.vue'
 import CarriersView from '@/views/CarriersView.vue'
 import QuotesView from '@/views/QuotesView.vue'
+import ShipmentsView from '@/views/ShipmentsView.vue'
 import PricingRulesView from '@/views/PricingRulesView.vue'
 import SiteSettingsView from '@/views/SiteSettingsView.vue'
 import ProgressView from '@/views/ProgressView.vue'
@@ -28,6 +29,7 @@ const router = createRouter({
         { path: 'channels', name: 'channels', component: ChannelsView, meta: { title: '渠道' } },
         { path: 'carriers', name: 'carriers', component: CarriersView, meta: { title: '承运商管理' } },
         { path: 'quotes', name: 'quotes', component: QuotesView, meta: { title: '运费试算' } },
+        { path: 'shipments', name: 'shipments', component: ShipmentsView, meta: { title: '两段式运单' } },
         { path: 'pricing', name: 'pricing', component: PricingRulesView, meta: { title: '运营配置' } },
         // 内部视图：仅平台运营方（super）可见
         {

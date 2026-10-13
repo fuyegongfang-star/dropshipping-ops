@@ -128,6 +128,35 @@ export interface CreateShipmentResult {
   carrierCost: number // 实际成本（落 shipment.carrierCost）
   currency: string // 币种
   estimatedLeadDays?: number // 预计时效（工作日）
+  /** 两段式运单（§14）：全程单常被平台拆分为「头程 + 尾程」两段，各自独立运单号。 */
+  legs?: ShipmentLegResult[]
+}
+
+/**
+ * 单段运单（§14 头程/尾程）。
+ * 一个全程单（direct）由 first + last 两段组成，每段有独立承运商、运单号、成本与时效，
+ * 组合出全程报价与轨迹（尾程优先走聚合平台兜底，§3e/§20）。
+ */
+export interface ShipmentLegResult {
+  legType: LegType // first=头程 / last=尾程（§14）
+  carrierCode: string // 该段承运商代码
+  carrierName?: string // 承运商展示名（目录回查，运营维护）
+  waybillNo: string // 该段运单号
+  trackingNo?: string // 该段轨迹号
+  labelUrl?: string // 该段面单（落 MinIO，§2.1）
+  carrierCost: number // 该段成本（落 shipment_legs.cost）
+  currency: string // 币种
+  estimatedLeadDays?: number // 该段时效（工作日）
+  transitHub?: string // 转运节点（头程终点 / 尾程起点，如海外仓代码）
+}
+
+/** 两段式建单编排结果（§14） */
+export interface ComposeShipmentResult {
+  orderRef?: string // 关联订单/内部单号
+  legs: ShipmentLegResult[] // 各段（1 段=仅头程/仅尾程；2 段=全程）
+  totalCarrierCost: number // 各段成本之和（基准币种，§10 归一前）
+  currency: string // 币种（取首段币种）
+  composedAt: string // 编排完成时间（ISO8601）
 }
 
 /** 面单（PDF/ZPL，§3 getLabel） */
