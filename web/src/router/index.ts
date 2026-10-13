@@ -12,6 +12,7 @@ import ProgressView from '@/views/ProgressView.vue'
 import TenantsView from '@/views/TenantsView.vue'
 
 // 前端路由（方案 §11）：基础布局 + 业务模块页面（订单/商品SKU/渠道/承运商/定价/开发进度/租户）。
+// 菜单按「业务运营 / 物流履约 / 财务中心 / 系统设置」分组（见 BasicLayout.vue 的 menuNodes），
 // meta.roles 标注「仅平台运营方可见」的内部视图，由下方路由守卫拦截。
 const router = createRouter({
   history: createWebHistory(),
@@ -26,7 +27,7 @@ const router = createRouter({
         { path: 'channels', name: 'channels', component: ChannelsView, meta: { title: '渠道' } },
         { path: 'carriers', name: 'carriers', component: CarriersView, meta: { title: '承运商管理' } },
         { path: 'quotes', name: 'quotes', component: QuotesView, meta: { title: '运费试算' } },
-        { path: 'pricing', name: 'pricing', component: PricingRulesView, meta: { title: '加价 / 币种' } },
+        { path: 'pricing', name: 'pricing', component: PricingRulesView, meta: { title: '运营配置' } },
         // 内部视图：仅平台运营方（super）可见
         { path: 'progress', name: 'progress', component: ProgressView, meta: { title: '开发进度', roles: ['super'] } },
         { path: 'tenants', name: 'tenants', component: TenantsView, meta: { title: '租户', roles: ['super'] } },

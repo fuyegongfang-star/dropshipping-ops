@@ -1,7 +1,7 @@
 <template>
   <div class="pricing">
     <PageHeader
-      title="加价规则 / 币种"
+      title="运营配置 · 加价 / 币种"
       subtitle="平台加价规则引擎与币种归一 · 决定客户看到的最终售价（可自定义增删改）"
       icon="sliders"
       accent="violet"

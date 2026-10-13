@@ -16,10 +16,26 @@
         router
         class="side-menu"
       >
-        <el-menu-item v-for="m in visibleMenus" :key="m.path" :index="m.path">
-          <AppIcon :name="m.icon" :size="19" />
-          <span>{{ m.title }}</span>
-        </el-menu-item>
+        <template v-for="node in visibleNodes" :key="'path' in node ? node.path : node.group">
+          <el-menu-item v-if="'path' in node" :index="node.path">
+            <AppIcon :name="node.icon" :size="19" />
+            <span>{{ node.title }}</span>
+          </el-menu-item>
+          <el-sub-menu v-else :index="node.group">
+            <template #title>
+              <AppIcon :name="node.groupIcon" :size="19" />
+              <span>{{ node.group }}</span>
+            </template>
+            <el-menu-item
+              v-for="c in node.children"
+              :key="c.path"
+              :index="c.path"
+            >
+              <AppIcon :name="c.icon" :size="18" />
+              <span>{{ c.title }}</span>
+            </el-menu-item>
+          </el-sub-menu>
+        </template>
       </el-menu>
 
       <div v-show="!collapsed" class="aside-foot">
@@ -117,26 +133,83 @@ interface MenuEntry {
   roles?: string[]
 }
 
-const menus: MenuEntry[] = [
+// 菜单分组结构：顶层既可是独立项（如仪表盘），也可是分组（el-sub-menu）。
+// 归类规则（交付隔离 + 使用直觉）：
+//   - 业务运营：订单 / 商品 / 渠道 —— 天天要点的交易操作
+//   - 物流履约：承运商 / 运费试算 —— 物流相关
+//   - 财务中心：待阶段4 账务 / 对账 / 利润 / 理赔落地后入座
+//   - 系统设置：平台配置类（运营配置 / 租户 / 权限 / i18n / 集成 / 开发进度），不天天点
+type MenuNode =
+  | MenuEntry
+  | {
+      group: string
+      groupIcon: string
+      children: MenuEntry[]
+    }
+
+const menuNodes: MenuNode[] = [
   { path: '/', title: '仪表盘', icon: 'dashboard' },
-  { path: '/orders', title: '订单中心', icon: 'orders' },
-  { path: '/catalog', title: '商品 / SKU', icon: 'catalog' },
-  { path: '/channels', title: '渠道 / 店铺', icon: 'channels' },
-  { path: '/carriers', title: '承运商管理', icon: 'truck' },
-  { path: '/quotes', title: '运费试算', icon: 'calculator' },
-  { path: '/pricing', title: '加价 / 币种', icon: 'sliders' },
-  // 以下为平台运营方专属：开发期/内部视图，卖家租户不可见
-  { path: '/tenants', title: '租户管理', icon: 'tenants', roles: ['super'] },
-  { path: '/progress', title: '开发进度', icon: 'target', roles: ['super'] },
+  {
+    group: '业务运营',
+    groupIcon: 'grid',
+    children: [
+      { path: '/orders', title: '订单中心', icon: 'orders' },
+      { path: '/catalog', title: '商品 / SKU', icon: 'catalog' },
+      { path: '/channels', title: '渠道 / 店铺', icon: 'channels' },
+    ],
+  },
+  {
+    group: '物流履约',
+    groupIcon: 'globe',
+    children: [
+      { path: '/carriers', title: '承运商管理', icon: 'truck' },
+      { path: '/quotes', title: '运费试算', icon: 'calculator' },
+    ],
+  },
+  {
+    group: '财务中心',
+    groupIcon: 'coins',
+    children: [
+      // 待阶段4 落地：账务 / 钱包(4.1) · 账单与对账(4.2) · 利润核算(4.3) · 理赔(4.8)
+    ],
+  },
+  {
+    group: '系统设置',
+    groupIcon: 'settings',
+    children: [
+      { path: '/pricing', title: '运营配置', icon: 'sliders' },
+      // 平台运营方专属：租户管理、开发进度，卖家租户不可见
+      { path: '/tenants', title: '租户管理', icon: 'tenants', roles: ['super'] },
+      { path: '/progress', title: '开发进度', icon: 'target', roles: ['super'] },
+    ],
+  },
 ]
 
-// 按角色过滤菜单：卖家租户看不到平台运营方专属项。
-const visibleMenus = computed(() =>
-  menus.filter((m) => !m.roles || m.roles.includes(userStore.role)),
-)
+// 按角色过滤：独立项按 roles 过滤；分组过滤子项，无可见子项则整组不显示（如空置的财务中心）。
+const visibleNodes = computed<MenuNode[]>(() => {
+  const role = userStore.role
+  const pass = (m: MenuEntry) => !m.roles || m.roles.includes(role)
+  return menuNodes
+    .map((n) => {
+      if ('path' in n) return pass(n) ? n : null
+      const kids = n.children.filter(pass)
+      return kids.length ? { ...n, children: kids } : null
+    })
+    .filter((x): x is MenuNode => x !== null)
+})
+
+// 展开所有可见菜单项（含分组子项），用于按路由反查标题。
+const flatEntries = computed<MenuEntry[]>(() => {
+  const list: MenuEntry[] = []
+  for (const n of visibleNodes.value) {
+    if ('path' in n) list.push(n)
+    else list.push(...n.children)
+  }
+  return list
+})
 
 const currentTitle = computed(
-  () => visibleMenus.value.find((m) => m.path === route.path)?.title ?? '仪表盘',
+  () => flatEntries.value.find((m) => m.path === route.path)?.title ?? '仪表盘',
 )
 
 onMounted(async () => {
@@ -222,7 +295,8 @@ function onRoleChange(r: string): void {
   border-right: none;
   padding: 8px 0;
 }
-.side-menu :deep(.el-menu-item) {
+.side-menu :deep(.el-menu-item),
+.side-menu :deep(.el-sub-menu__title) {
   color: #c3cce0;
   height: 46px;
   margin: 4px 12px;
@@ -232,10 +306,13 @@ function onRoleChange(r: string): void {
   transition: all 0.18s var(--ease);
 }
 .side-menu :deep(.el-menu-item .el-icon),
-.side-menu :deep(.el-menu-item svg) {
+.side-menu :deep(.el-menu-item svg),
+.side-menu :deep(.el-sub-menu__title .el-icon),
+.side-menu :deep(.el-sub-menu__title svg) {
   margin-right: 10px;
 }
-.side-menu :deep(.el-menu-item:hover) {
+.side-menu :deep(.el-menu-item:hover),
+.side-menu :deep(.el-sub-menu__title:hover) {
   background: rgba(255, 255, 255, 0.07);
   color: #fff;
 }
