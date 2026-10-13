@@ -203,3 +203,18 @@
 **验证**：`eslint --max-warnings 0` ✅ ｜ `vue-tsc --noEmit && vite build` ✅ ｜ 浏览器实测：super 侧 = 仪表盘 + 业务运营(3) + 物流履约(2) + 系统设置(3，含租户管理/开发进度)、财务中心按预期不显示；seller 侧 = 系统设置仅剩「运营配置」、顶栏无「本次更新」铃铛、直访 `/progress`·`/tenants` 均被守卫重定向 `/`；分组内点击「系统设置→运营配置」正确导航到 `/pricing`。
 
 **下一步**：3.8 头程/尾程两段式（夜间自动化按 `dev-schedule.md` 接力；新菜单将按四组归类入座）。
+
+---
+
+## 2026-10-13（手动 · 子菜单展开配色修复）
+
+**背景**：用户反馈「子菜单展开之后颜色极不协调」——展开分组后，二级项下面露出**一块浅色/白色背景**。
+
+**根因**：Element Plus 的内联子菜单 `<ul class="el-menu--inline">` 默认带自己的浅色背景；此前只把顶层 `.side-menu` 设成透明，未覆盖嵌套层。
+
+**修复**（`web/src/layouts/BasicLayout.vue`）：
+1. `.side-menu :deep(.el-menu--inline)` → `background: transparent !important`，消除白底块；
+2. 二级项统一配色：`#9fabcb`（略暗于一级）、左缩进 `margin-left:22px` + `padding-left:14px`、高度 40px、字号 13.5px；hover 提亮 `rgba(255,255,255,0.06)`；激活态用品牌色渐隐底 + 左侧 3px 条。
+3. **折叠态补齐**：给 `el-sub-menu` 加 `popper-class="side-submenu-popup"`，新增非 scoped `<style>` 块（限定在该类下，不污染全局弹层）把 hover 弹出的浮层设成深色 `#16213c` + 圆角项，避免折叠时又是白浮层。
+
+**验证**：`eslint --max-warnings 0` ✅ ｜ `vue-tsc --noEmit && vite build` ✅ ｜ 浏览器实测：展开三组后二级项为深底浅字、无白块（截图 40）；折叠态浮层计算样式背景 `rgb(22,33,60)` ✅（截图 41）。

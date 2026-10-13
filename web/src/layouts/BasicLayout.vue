@@ -21,7 +21,7 @@
             <AppIcon :name="node.icon" :size="19" />
             <span>{{ node.title }}</span>
           </el-menu-item>
-          <el-sub-menu v-else :index="node.group">
+          <el-sub-menu v-else :index="node.group" popper-class="side-submenu-popup">
             <template #title>
               <AppIcon :name="node.groupIcon" :size="19" />
               <span>{{ node.group }}</span>
@@ -331,6 +331,41 @@ function onRoleChange(r: string): void {
   border-radius: 3px;
   background: var(--brand-400);
 }
+
+/* ---------- 内联子菜单（展开后的二级项）----------
+   Element Plus 的 .el-menu--inline 默认自带浅色背景，会在深色侧栏里露出一块白底，
+   这里统一清成透明并让子项配色、层级与一级项协调。 */
+.side-menu :deep(.el-sub-menu) {
+  margin-bottom: 2px;
+}
+.side-menu :deep(.el-menu--inline) {
+  background: transparent !important;
+}
+.side-menu :deep(.el-menu--inline .el-menu-item) {
+  height: 40px;
+  margin: 2px 12px 2px 22px;
+  padding-left: 14px !important;
+  font-size: 13.5px;
+  font-weight: 400;
+  color: #9fabcb;
+  background: transparent;
+}
+.side-menu :deep(.el-menu--inline .el-menu-item svg) {
+  opacity: 0.85;
+}
+.side-menu :deep(.el-menu--inline .el-menu-item:hover) {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+.side-menu :deep(.el-menu--inline .el-menu-item.is-active) {
+  color: #fff;
+  font-weight: 500;
+  background: linear-gradient(90deg, rgba(79, 110, 247, 0.22), rgba(79, 110, 247, 0.06));
+}
+.side-menu :deep(.el-menu--inline .el-menu-item.is-active)::before {
+  top: 8px;
+  bottom: 8px;
+}
 .aside-foot {
   padding: 14px 20px;
   font-size: 12px;
@@ -435,5 +470,31 @@ function onRoleChange(r: string): void {
 .content {
   padding: 24px;
   min-height: calc(100vh - 60px);
+}
+</style>
+
+<!-- 折叠态：hover 分组时 Element 弹出的浮层菜单（挂在 body 下，scoped 样式够不到，
+     故用 popper-class="side-submenu-popup" 单独限定作用域，避免污染全局弹层）。 -->
+<style>
+.side-submenu-popup .el-menu--popup {
+  background: #16213c;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 6px;
+  min-width: 168px;
+}
+.side-submenu-popup .el-menu-item {
+  height: 40px;
+  margin: 2px 0;
+  border-radius: 8px;
+  color: #9fabcb;
+  font-size: 13.5px;
+}
+.side-submenu-popup .el-menu-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+.side-submenu-popup .el-menu-item.is-active {
+  background: rgba(79, 110, 247, 0.24);
+  color: #fff;
 }
 </style>
