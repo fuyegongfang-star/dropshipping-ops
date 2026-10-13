@@ -18,6 +18,12 @@ export const useSiteStore = defineStore('site', () => {
   /** 站点副标题（Slogan）。 */
   const siteSlogan = computed(() => settings.value?.siteSlogan?.trim() || '运营中台')
 
+  /** 站点 LOGO 地址（上传或外链），空表示使用默认内置图标。 */
+  const logoUrl = computed(() => settings.value?.logoUrl?.trim() || '')
+
+  /** 浏览器标签图标（favicon）地址，空表示使用默认。 */
+  const faviconUrl = computed(() => settings.value?.faviconUrl?.trim() || '')
+
   /** 加载站点设置；失败时静默保持默认（设置页自身会提示错误）。 */
   async function load(): Promise<void> {
     try {
@@ -32,5 +38,5 @@ export const useSiteStore = defineStore('site', () => {
     settings.value = next
   }
 
-  return { settings, siteName, siteSlogan, load, apply }
+  return { settings, siteName, siteSlogan, logoUrl, faviconUrl, load, apply }
 })

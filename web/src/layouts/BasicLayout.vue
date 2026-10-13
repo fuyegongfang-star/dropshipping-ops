@@ -3,7 +3,11 @@
     <!-- 侧边栏：深色渐变 + 图标菜单 + 可折叠 -->
     <el-aside :width="collapsed ? '64px' : '220px'" class="aside">
       <div class="logo" :class="{ folded: collapsed }">
-        <span class="logo-ico"><AppIcon name="package" :size="20" /></span>
+        <!-- 站点 LOGO：取自「系统设置 → 站点设置」上传的品牌图，未上传则用内置图标 -->
+        <span class="logo-ico" :class="{ 'has-img': !!siteStore.logoUrl }">
+          <img v-if="siteStore.logoUrl" :src="siteStore.logoUrl" alt="站点 LOGO" />
+          <AppIcon v-else name="package" :size="20" />
+        </span>
         <!-- LOGO 文字取自「系统设置 → 站点设置」，保存后立即同步 -->
         <span v-show="!collapsed" class="logo-text">
           <strong :title="siteStore.siteName">{{ siteStore.siteName }}</strong>
@@ -130,6 +134,24 @@ const collapsed = ref(false)
 watchEffect(() => {
   const pageTitle = (route.meta.title as string) || '仪表盘'
   document.title = `${pageTitle} - ${siteStore.siteName}`
+})
+
+// 浏览器标签图标（favicon）：随「站点设置 → Favicon」立即切换，未设置则移除动态 link 回落默认。
+// 这样运营在设置页上传图标后，当前标签页图标当场就变，无需刷新即可确认效果。
+watchEffect(() => {
+  const href = siteStore.faviconUrl
+  let link = document.querySelector<HTMLLinkElement>('link[data-app-favicon="true"]')
+  if (!href) {
+    link?.remove()
+    return
+  }
+  if (!link) {
+    link = document.createElement('link')
+    link.rel = 'icon'
+    link.dataset.appFavicon = 'true'
+    document.head.appendChild(link)
+  }
+  link.href = href
 })
 
 // 演示模式（VITE_USE_MOCK 未显式设为 false 即视为开）：显示身份切换，便于验证角色隔离。
@@ -284,6 +306,16 @@ function onRoleChange(r: string): void {
   color: #fff;
   box-shadow: var(--sh-brand);
   flex: none;
+  overflow: hidden;
+}
+/* 已上传自定义 LOGO：去掉品牌渐变底，图片铺满圆角方框（与站点设置里的预览一致） */
+.logo-ico.has-img {
+  background: #fff;
+}
+.logo-ico img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 /* 站点名称可能较长（≤30 字），此处限宽并省略，避免撑破侧栏 */
 .logo-text {

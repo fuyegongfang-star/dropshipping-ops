@@ -70,15 +70,15 @@
                     </el-col>
                   </el-row>
 
-                  <el-row :gutter="12">
+                  <el-row :gutter="16">
                     <el-col :span="12">
-                      <el-form-item label="Logo 图片地址">
-                        <el-input v-model="form.logoUrl" placeholder="留空则使用默认图标" />
+                      <el-form-item label="站点 LOGO">
+                        <ImageUploadField v-model="form.logoUrl" kind="logo" />
                       </el-form-item>
                     </el-col>
                     <el-col :span="12">
-                      <el-form-item label="Favicon 地址">
-                        <el-input v-model="form.faviconUrl" placeholder="留空则不设置" />
+                      <el-form-item label="Favicon（浏览器标签图标）">
+                        <ImageUploadField v-model="form.faviconUrl" kind="favicon" />
                       </el-form-item>
                     </el-col>
                   </el-row>
@@ -159,7 +159,8 @@
                   <div class="bm-row"><span>客服</span><b>{{ form.contactEmail || '—' }}</b></div>
                 </div>
                 <p class="text-hint">
-                  左侧侧边栏 LOGO 与浏览器标签页标题会同步使用此处站点名称，保存后即时生效。
+                  保存后：站点名称同步侧栏文字与标签页标题，LOGO 同步侧栏图标，Favicon
+                  同步浏览器标签图标。上传即压缩为规范尺寸（LOGO 512×512 / Favicon 64×64 方图）。
                 </p>
               </el-card>
             </el-col>
@@ -338,7 +339,8 @@
                   <div class="browser-bar">
                     <span class="dot-r" /><span class="dot-y" /><span class="dot-g" />
                     <span class="tab">
-                      <AppIcon name="globe" :size="12" />
+                      <img v-if="form.faviconUrl" :src="form.faviconUrl" class="tab-fav" alt="favicon" />
+                      <AppIcon v-else name="globe" :size="12" />
                       {{ browserTitle }}
                     </span>
                   </div>
@@ -446,6 +448,7 @@ import {
 import { useSiteStore } from '@/stores/site'
 import PageHeader from '@/components/PageHeader.vue'
 import AppIcon from '@/components/AppIcon.vue'
+import ImageUploadField from '@/components/ImageUploadField.vue'
 
 // 站点设置页（系统设置）：站点身份 / 首页 TDK / 页面 TDK 规则 / 第三方代码 / 效果预览。
 // 表单类配置本地编辑后由「保存设置」整体提交；TDK 规则表走独立接口即时落库（与加价规则页一致）。
@@ -985,6 +988,13 @@ onMounted(load)
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.tab-fav {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  object-fit: cover;
+  flex: none;
 }
 .browser-body {
   display: flex;

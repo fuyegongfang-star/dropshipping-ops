@@ -24,5 +24,9 @@ server/node_modules/.prisma/
 # 测试覆盖
 coverage/
 
+# 本地验收产物（截图 / 测试用图，非仓库内容；.dev/state.json 与 errors.log 仍纳入版本管理）
+.dev/shots/
+.dev/test-images/
+
 # WorkBuddy 项目记忆（非仓库产物）
 .workbuddy/

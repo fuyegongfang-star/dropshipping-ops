@@ -368,6 +368,8 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     if (url === '/pricing/compare') return delay(260).then(() => doCompare(body))
     if (url === '/pricing/markup-rules') return delay().then(() => createMarkupRule(body))
     if (url === '/settings/tdk-rules') return delay().then(() => createTdkRule(body))
+    // 品牌图片上传（LOGO / Favicon）：演示态直接回吐压缩后的 dataURL 地址。
+    if (url === '/settings/assets') return delay(200).then(() => doUploadAsset(body))
     // 重置演示态站点设置：清空 localStorage 快照并回到种子数据。
     if (url === '/settings/site/reset') return delay().then(() => doResetSite())
     return delay().then(() => reject('演示模式不支持该请求：' + method + ' ' + url))
@@ -1251,6 +1253,55 @@ function updateSite(body: unknown): MockSiteSettings {
   siteSettings.updatedAt = NOW()
   persistSite()
   return cloneSite()
+}
+
+/** 演示态「上传」结果（镜像正式环境 POST /settings/assets 的返回结构）。 */
+export interface MockUploadedAsset {
+  url: string
+  kind: 'logo' | 'favicon'
+  name: string
+  width: number
+  height: number
+  bytes: number
+  mime: string
+  /** demo-local：演示模式未落对象存储（正式环境为 minio / cdn） */
+  storage: string
+  uploadedAt: string
+}
+
+/** 解析 dataURL 体积（base64 段长度 × 3/4），用于回显文件大小。 */
+function dataUrlBytes(dataUrl: string): number {
+  const base64 = dataUrl.split(',')[1] ?? ''
+  return Math.round((base64.length * 3) / 4)
+}
+
+/**
+ * 演示态品牌图片上传：不落任何存储，直接把前端压缩后的 dataURL 当地址返回。
+ * 与正式环境（POST /settings/assets → 对象存储 → 返回 CDN 地址）保持同一调用契约，
+ * 使「站点设置」页在演示模式下也能完整走通上传 → 预览 → 保存链路。
+ */
+function doUploadAsset(body: unknown): MockUploadedAsset {
+  const p = (body ?? {}) as {
+    kind?: string
+    dataUrl?: string
+    name?: string
+    width?: number
+    height?: number
+  }
+  const dataUrl = typeof p.dataUrl === 'string' ? p.dataUrl : ''
+  if (!dataUrl.startsWith('data:image/')) return reject('缺少图片数据') as unknown as MockUploadedAsset
+  const mime = dataUrl.slice(5, dataUrl.indexOf(';'))
+  return {
+    url: dataUrl,
+    kind: p.kind === 'favicon' ? 'favicon' : 'logo',
+    name: p.name || 'asset',
+    width: Math.max(0, Math.round(p.width ?? 0)),
+    height: Math.max(0, Math.round(p.height ?? 0)),
+    bytes: dataUrlBytes(dataUrl),
+    mime,
+    storage: 'demo-local',
+    uploadedAt: NOW(),
+  }
 }
 
 /** TDK 规则入参归一化：模板与关键词去空白，页面类型非法时回落自定义。 */
