@@ -14,6 +14,7 @@
     "typecheck": "npm run typecheck --workspace server",
     "build": "npm run build --workspace server",
     "prisma:generate": "npm run prisma:generate --workspace server",
+    "progress:gen": "node scripts/gen-progress.cjs",
     "prepare": "husky install || true"
   },
   "lint-staged": {

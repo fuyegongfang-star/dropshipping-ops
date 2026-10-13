@@ -115,10 +115,34 @@ const shops: MockShop[] = [
 ]
 
 const products: MockProduct[] = [
-  { id: 'p1', tenantId: TENANT_ID, title: '无线蓝牙耳机 Pro', spu: 'SPU-EARBUD', createdAt: '2026-09-02T08:00:00.000Z' },
-  { id: 'p2', tenantId: TENANT_ID, title: '便携充电宝 20000mAh', spu: 'SPU-POWER', createdAt: '2026-09-03T08:00:00.000Z' },
-  { id: 'p3', tenantId: TENANT_ID, title: '智能手环 S2', spu: 'SPU-BAND', createdAt: '2026-09-04T08:00:00.000Z' },
-  { id: 'p4', tenantId: TENANT_ID, title: '折叠手机支架', spu: 'SPU-STAND', createdAt: '2026-09-06T08:00:00.000Z' },
+  {
+    id: 'p1',
+    tenantId: TENANT_ID,
+    title: '无线蓝牙耳机 Pro',
+    spu: 'SPU-EARBUD',
+    createdAt: '2026-09-02T08:00:00.000Z',
+  },
+  {
+    id: 'p2',
+    tenantId: TENANT_ID,
+    title: '便携充电宝 20000mAh',
+    spu: 'SPU-POWER',
+    createdAt: '2026-09-03T08:00:00.000Z',
+  },
+  {
+    id: 'p3',
+    tenantId: TENANT_ID,
+    title: '智能手环 S2',
+    spu: 'SPU-BAND',
+    createdAt: '2026-09-04T08:00:00.000Z',
+  },
+  {
+    id: 'p4',
+    tenantId: TENANT_ID,
+    title: '折叠手机支架',
+    spu: 'SPU-STAND',
+    createdAt: '2026-09-06T08:00:00.000Z',
+  },
 ]
 
 const skus: MockSku[] = [
@@ -249,7 +273,11 @@ const seedOrders: MockOrder[] = [
   ]),
 ]
 
-let orders: MockOrder[] = seedOrders.map((o) => ({ ...o, items: o.items.map((i) => ({ ...i })), events: [...o.events] }))
+let orders: MockOrder[] = seedOrders.map((o) => ({
+  ...o,
+  items: o.items.map((i) => ({ ...i })),
+  events: [...o.events],
+}))
 
 // 订单工厂：补齐 shop 引用与轨迹事件
 function mk(
@@ -308,8 +336,10 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     if (url === '/orders') return delay().then(() => orders)
     if (url.startsWith('/orders?')) return delay().then(() => filterOrders(url))
     if (url === '/carriers') return delay().then(() => carriers)
-    if (url === '/pricing/markup-rules') return delay().then(() => markupRules)
-    if (url === '/pricing/fx') return delay().then(() => fxRates)
+    // 返回副本：避免视图 v-model 直接改写 mock 模块级状态，所有变更一律走下方 POST/PUT/DELETE。
+    if (url === '/pricing/markup-rules')
+      return delay().then(() => markupRules.map((r) => ({ ...r })))
+    if (url === '/pricing/fx') return delay().then(() => fxRates.map((f) => ({ ...f })))
     const chealth = url.match(/^\/carriers\/([^/]+)\/health$/)
     if (chealth) {
       const c = carriers.find((x) => x.code === chealth[1])
@@ -334,10 +364,95 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     const pull = url.match(/^\/channels\/([^/]+)\/pull$/)
     if (pull) return delay().then(() => doPull(pull[1]))
     if (url === '/pricing/compare') return delay(260).then(() => doCompare(body))
-    if (url === '/tenants') return delay().then(() => reject('演示模式不支持新建租户'))
+    if (url === '/pricing/markup-rules') return delay().then(() => createMarkupRule(body))
+    return delay().then(() => reject('演示模式不支持该请求：' + method + ' ' + url))
+  }
+
+  // PUT 集合：加价规则整条更新（含启停开关）
+  if (method === 'PUT') {
+    const rule = url.match(/^\/pricing\/markup-rules\/([^/]+)$/)
+    if (rule) return delay().then(() => updateMarkupRule(rule[1], body))
+    const fx = url.match(/^\/pricing\/fx\/([^/]+)\/([^/]+)$/)
+    if (fx) return delay().then(() => updateFxRate(fx[1], fx[2], body))
+  }
+
+  // DELETE 集合：删除加价规则
+  if (method === 'DELETE') {
+    const rule = url.match(/^\/pricing\/markup-rules\/([^/]+)$/)
+    if (rule) return delay().then(() => deleteMarkupRule(rule[1]))
   }
 
   return delay().then(() => reject('演示模式不支持该请求：' + method + ' ' + url))
+}
+
+// ===== 加价规则 / 汇率 可写操作（演示态内存改写）=====
+
+/** 入参校验：加价幅度必须为正数，百分比上限 500% 防止误填。 */
+function normalizeRuleInput(input: Partial<MockMarkupRule>): Partial<MockMarkupRule> {
+  const out: Partial<MockMarkupRule> = {}
+  if (input.scope !== undefined) out.scope = input.scope
+  if (input.target !== undefined) out.target = String(input.target).trim()
+  if (input.mode !== undefined) out.mode = input.mode
+  if (input.value !== undefined) {
+    const v = Number(input.value)
+    out.value = Number.isFinite(v) && v >= 0 ? v : 0
+  }
+  if (input.priority !== undefined) {
+    const p = Number(input.priority)
+    out.priority = Number.isFinite(p) ? Math.trunc(p) : 50
+  }
+  if (input.enabled !== undefined) out.enabled = Boolean(input.enabled)
+  if (input.note !== undefined) out.note = String(input.note)
+  return out
+}
+
+/** 新建加价规则：返回新规则；目标为空则拒绝。 */
+function createMarkupRule(body: unknown): MockMarkupRule {
+  const patch = normalizeRuleInput((body ?? {}) as Partial<MockMarkupRule>)
+  if (!patch.target) return reject('目标不能为空') as unknown as MockMarkupRule
+  const rule: MockMarkupRule = {
+    id: 'mr_' + Date.now().toString(36) + '_' + seq++,
+    scope: patch.scope ?? 'global',
+    target: patch.target,
+    mode: patch.mode ?? 'percent',
+    value: patch.value ?? 10,
+    priority: patch.priority ?? 50,
+    enabled: patch.enabled ?? true,
+    note: patch.note ?? '',
+  }
+  markupRules.push(rule)
+  persistPricing()
+  return { ...rule }
+}
+
+/** 更新加价规则（整条覆盖式更新，仅接受传入字段）。 */
+function updateMarkupRule(id: string, body: unknown): MockMarkupRule {
+  const idx = markupRules.findIndex((r) => r.id === id)
+  if (idx < 0) return reject('加价规则不存在') as unknown as MockMarkupRule
+  const patch = normalizeRuleInput((body ?? {}) as Partial<MockMarkupRule>)
+  markupRules[idx] = { ...markupRules[idx], ...patch }
+  persistPricing()
+  return { ...markupRules[idx] }
+}
+
+/** 删除加价规则。 */
+function deleteMarkupRule(id: string): { deleted: boolean } {
+  const idx = markupRules.findIndex((r) => r.id === id)
+  if (idx < 0) return reject('加价规则不存在') as unknown as { deleted: boolean }
+  markupRules.splice(idx, 1)
+  persistPricing()
+  return { deleted: true }
+}
+
+/** 更新币种汇率（按 base + quote 定位）。 */
+function updateFxRate(base: string, quote: string, body: unknown): MockFxRate {
+  const idx = fxRates.findIndex((f) => f.base === base && f.quote === quote)
+  if (idx < 0) return reject('汇率对不存在') as unknown as MockFxRate
+  const rate = Number((body as { rate?: unknown } | undefined)?.rate)
+  if (!Number.isFinite(rate) || rate <= 0) return reject('汇率必须为正数') as unknown as MockFxRate
+  fxRates[idx] = { ...fxRates[idx], rate, updatedAt: NOW() }
+  persistPricing()
+  return { ...fxRates[idx] }
 }
 
 // ===== 过滤 =====
@@ -345,9 +460,7 @@ function filterSkus(url: string): MockSku[] {
   const u = new URL(url, 'http://mock')
   const ps = u.searchParams.get('platformSku')
   const ss = u.searchParams.get('supplierSku')
-  return skus.filter(
-    (s) => (!ps || s.platformSku === ps) && (!ss || s.supplierSku === ss),
-  )
+  return skus.filter((s) => (!ps || s.platformSku === ps) && (!ss || s.supplierSku === ss))
 }
 function filterOrders(url: string): MockOrder[] {
   const u = new URL(url, 'http://mock')
@@ -361,7 +474,12 @@ function doReview(id: string): unknown {
   if (!o) return reject('订单不存在')
   const passed = true // 演示默认审单通过（真实后端按各项校验结果判定）
   o.status = passed ? 'approved' : 'rejected'
-  o.events.push({ id: id + '-rv' + seq++, type: passed ? '审单通过' : '审单驳回', operator: 'demo', createdAt: NOW() })
+  o.events.push({
+    id: id + '-rv' + seq++,
+    type: passed ? '审单通过' : '审单驳回',
+    operator: 'demo',
+    createdAt: NOW(),
+  })
   return {
     orderId: id,
     approved: passed,
@@ -392,7 +510,12 @@ function doTransition(id: string): unknown {
   const to = nextMap[o.status] ?? o.status
   const changed = to !== o.status
   if (changed) {
-    o.events.push({ id: id + '-tr' + seq++, type: '状态转移 → ' + to, operator: 'demo', createdAt: NOW() })
+    o.events.push({
+      id: id + '-tr' + seq++,
+      type: '状态转移 → ' + to,
+      operator: 'demo',
+      createdAt: NOW(),
+    })
     o.status = to
   }
   return { changed }
@@ -402,7 +525,12 @@ function doReverse(id: string): unknown {
   const o = orders.find((x) => x.id === id)
   if (!o) return reject('订单不存在')
   const reverseId = 'rev' + seq++
-  o.events.push({ id: id + '-rs' + seq++, type: '发起逆向流程', operator: 'demo', createdAt: NOW() })
+  o.events.push({
+    id: id + '-rs' + seq++,
+    type: '发起逆向流程',
+    operator: 'demo',
+    createdAt: NOW(),
+  })
   return { reverseId, status: o.status }
 }
 
@@ -472,8 +600,21 @@ const carriers: MockCarrier[] = [
     authType: 'OAuth2 + HMAC-SHA256',
     sandbox: true,
     region: '全球 · 专线小包',
-    capabilities: { rate: true, ship: true, label: true, track: true, cancel: true, subscribe: true },
-    health: { status: 'up', latencyMs: 168, uptime: 99.95, checkedAt: CHECKED_AT, note: 'token 内存缓存正常（提前 60s 刷新）' },
+    capabilities: {
+      rate: true,
+      ship: true,
+      label: true,
+      track: true,
+      cancel: true,
+      subscribe: true,
+    },
+    health: {
+      status: 'up',
+      latencyMs: 168,
+      uptime: 99.95,
+      checkedAt: CHECKED_AT,
+      note: 'token 内存缓存正常（提前 60s 刷新）',
+    },
     note: '六能力全支持：比价 / 建单 / 面单 / 轨迹 / 取消 / 订阅。',
   },
   {
@@ -483,8 +624,21 @@ const carriers: MockCarrier[] = [
     authType: 'OAuth2 Basic + API-Key',
     sandbox: true,
     region: '全球 · 商业快递',
-    capabilities: { rate: true, ship: true, label: true, track: true, cancel: false, subscribe: false },
-    health: { status: 'degraded', latencyMs: 436, uptime: 98.6, checkedAt: CHECKED_AT, note: '沙箱审批中，偶发 429 限流' },
+    capabilities: {
+      rate: true,
+      ship: true,
+      label: true,
+      track: true,
+      cancel: false,
+      subscribe: false,
+    },
+    health: {
+      status: 'degraded',
+      latencyMs: 436,
+      uptime: 98.6,
+      checkedAt: CHECKED_AT,
+      note: '沙箱审批中，偶发 429 限流',
+    },
     note: '不支持取消 / 订阅，相关能力诚实返回 NOT_IMPLEMENTED。',
   },
   {
@@ -494,8 +648,21 @@ const carriers: MockCarrier[] = [
     authType: 'MD5 签名（32 位小写）',
     sandbox: false,
     region: '全球 · 国际专线',
-    capabilities: { rate: true, ship: true, label: true, track: true, cancel: true, subscribe: false },
-    health: { status: 'up', latencyMs: 212, uptime: 99.8, checkedAt: CHECKED_AT, note: 'MD5 签名校验通过' },
+    capabilities: {
+      rate: true,
+      ship: true,
+      label: true,
+      track: true,
+      cancel: true,
+      subscribe: false,
+    },
+    health: {
+      status: 'up',
+      latencyMs: 212,
+      uptime: 99.8,
+      checkedAt: CHECKED_AT,
+      note: 'MD5 签名校验通过',
+    },
     note: '支持取消，不支持订阅（用轮询兜底）。',
   },
   {
@@ -505,8 +672,21 @@ const carriers: MockCarrier[] = [
     authType: 'MD5 签名（32 位小写）',
     sandbox: false,
     region: '欧美 · 邮政小包',
-    capabilities: { rate: false, ship: true, label: true, track: true, cancel: false, subscribe: false },
-    health: { status: 'up', latencyMs: 195, uptime: 99.7, checkedAt: CHECKED_AT, note: '不支持实时报价，走预置费率卡' },
+    capabilities: {
+      rate: false,
+      ship: true,
+      label: true,
+      track: true,
+      cancel: false,
+      subscribe: false,
+    },
+    health: {
+      status: 'up',
+      latencyMs: 195,
+      uptime: 99.7,
+      checkedAt: CHECKED_AT,
+      note: '不支持实时报价，走预置费率卡',
+    },
     note: '仅支持建单 / 面单 / 轨迹；不支持实时比价。',
   },
 ]
@@ -524,12 +704,66 @@ export interface MockMarkupRule {
 }
 
 const markupRules: MockMarkupRule[] = [
-  { id: 'mr_global', scope: 'global', target: '全部渠道', mode: 'percent', value: 12, priority: 100, enabled: true, note: '基础加价；未命中专属规则时生效' },
-  { id: 'mr_tenant_acme', scope: 'tenant', target: 'Acme 跨境店', mode: 'percent', value: 5, priority: 80, enabled: true, note: '大客户专属低加价' },
-  { id: 'mr_carrier_dhl', scope: 'carrier', target: 'DHL 快递', mode: 'percent', value: 8, priority: 60, enabled: true, note: '商业快递官方价高，加价率下调' },
-  { id: 'mr_carrier_yun', scope: 'carrier', target: '云途物流', mode: 'percent', value: 15, priority: 60, enabled: true, note: '专线小包走量，略高加价' },
-  { id: 'mr_product_battery', scope: 'product', target: '带电类目', mode: 'percent', value: 6, priority: 40, enabled: true, note: '带电附加成本转嫁' },
-  { id: 'mr_channel_amz', scope: 'channel', target: 'Amazon US', mode: 'fixed', value: 2, priority: 50, enabled: false, note: '固定加价，已停用' },
+  {
+    id: 'mr_global',
+    scope: 'global',
+    target: '全部渠道',
+    mode: 'percent',
+    value: 12,
+    priority: 100,
+    enabled: true,
+    note: '基础加价；未命中专属规则时生效',
+  },
+  {
+    id: 'mr_tenant_acme',
+    scope: 'tenant',
+    target: 'Acme 跨境店',
+    mode: 'percent',
+    value: 5,
+    priority: 80,
+    enabled: true,
+    note: '大客户专属低加价',
+  },
+  {
+    id: 'mr_carrier_dhl',
+    scope: 'carrier',
+    target: 'DHL 快递',
+    mode: 'percent',
+    value: 8,
+    priority: 60,
+    enabled: true,
+    note: '商业快递官方价高，加价率下调',
+  },
+  {
+    id: 'mr_carrier_yun',
+    scope: 'carrier',
+    target: '云途物流',
+    mode: 'percent',
+    value: 15,
+    priority: 60,
+    enabled: true,
+    note: '专线小包走量，略高加价',
+  },
+  {
+    id: 'mr_product_battery',
+    scope: 'product',
+    target: '带电类目',
+    mode: 'percent',
+    value: 6,
+    priority: 40,
+    enabled: true,
+    note: '带电附加成本转嫁',
+  },
+  {
+    id: 'mr_channel_amz',
+    scope: 'channel',
+    target: 'Amazon US',
+    mode: 'fixed',
+    value: 2,
+    priority: 50,
+    enabled: false,
+    note: '固定加价，已停用',
+  },
 ]
 
 /** 币种汇率（对齐后端 FxService 种子） */
@@ -546,6 +780,50 @@ const fxRates: MockFxRate[] = [
   { base: 'GBP', quote: 'CNY', rate: 9.184, updatedAt: '2026-10-13T00:00:00.000Z' },
   { base: 'USD', quote: 'EUR', rate: 0.921, updatedAt: '2026-10-13T00:00:00.000Z' },
 ]
+
+// ===== 演示态持久化（仅加价规则与汇率）=====
+// 目的：用户在「加价 / 币种」页自定义的加价幅度，刷新浏览器后依然保留（仅演示模式）。
+// 真实后端由数据库落库，本地演示用 localStorage 近似，避免「改了刷新就没」的错觉。
+const PRICING_LS_KEY = 'mock-pricing-v1'
+
+/** 将当前加价规则与汇率写入 localStorage（失败时静默忽略，如隐私模式）。 */
+export function persistPricing(): void {
+  try {
+    localStorage.setItem(PRICING_LS_KEY, JSON.stringify({ markupRules, fxRates }))
+  } catch {
+    /* 忽略：无 localStorage 环境 */
+  }
+}
+
+/** 清空演示态定价数据（页面提供「重置演示数据」入口调用）。 */
+export function resetPricingDemo(): void {
+  try {
+    localStorage.removeItem(PRICING_LS_KEY)
+  } catch {
+    /* 忽略 */
+  }
+}
+
+/** 启动时用 localStorage 快照覆盖种子数据（数据损坏则保持种子）。 */
+function restorePricing(): void {
+  try {
+    const raw = localStorage.getItem(PRICING_LS_KEY)
+    if (!raw) return
+    const saved = JSON.parse(raw) as { markupRules?: MockMarkupRule[]; fxRates?: MockFxRate[] }
+    if (Array.isArray(saved.markupRules) && saved.markupRules.length) {
+      markupRules.length = 0
+      markupRules.push(...saved.markupRules)
+    }
+    if (Array.isArray(saved.fxRates) && saved.fxRates.length) {
+      fxRates.length = 0
+      fxRates.push(...saved.fxRates)
+    }
+  } catch {
+    /* 忽略：保持种子数据 */
+  }
+}
+
+restorePricing()
 
 /** 比价结果行（含成本价与加价后售价「双价列」） */
 export interface MockQuoteLine {
@@ -588,16 +866,49 @@ const RATE_CARDS: {
   transit: string
   allowSensitive: boolean
 }[] = [
-  { code: 'yunexpress', carrierName: '云途物流', productCode: 'YUN-STD', productName: '云途专线小包', baseCny: 18, perKgCny: 68, transit: '8-12', allowSensitive: true },
-  { code: 'fourpx', carrierName: '4PX 递四方', productCode: '4PX-GLB', productName: '4PX 国际专线', baseCny: 22, perKgCny: 82, transit: '6-10', allowSensitive: true },
-  { code: 'dhl', carrierName: 'DHL 快递', productCode: 'DHL-EXP', productName: 'DHL Express 商业快递', baseCny: 46, perKgCny: 168, transit: '3-5', allowSensitive: false },
+  {
+    code: 'yunexpress',
+    carrierName: '云途物流',
+    productCode: 'YUN-STD',
+    productName: '云途专线小包',
+    baseCny: 18,
+    perKgCny: 68,
+    transit: '8-12',
+    allowSensitive: true,
+  },
+  {
+    code: 'fourpx',
+    carrierName: '4PX 递四方',
+    productCode: '4PX-GLB',
+    productName: '4PX 国际专线',
+    baseCny: 22,
+    perKgCny: 82,
+    transit: '6-10',
+    allowSensitive: true,
+  },
+  {
+    code: 'dhl',
+    carrierName: 'DHL 快递',
+    productCode: 'DHL-EXP',
+    productName: 'DHL Express 商业快递',
+    baseCny: 46,
+    perKgCny: 168,
+    transit: '3-5',
+    allowSensitive: false,
+  },
 ]
 
 /** 有效加价率：承运商专属规则覆盖全局基础加价，带电类目叠加产品规则 */
 function effectiveMarkup(carrierName: string, category: string): number {
-  const carrierRule = markupRules.find((r) => r.enabled && r.scope === 'carrier' && r.target === carrierName)
-  const base = carrierRule?.value ?? markupRules.find((r) => r.enabled && r.scope === 'global')?.value ?? 0
-  const batteryExtra = category === 'battery' ? markupRules.find((r) => r.enabled && r.scope === 'product')?.value ?? 0 : 0
+  const carrierRule = markupRules.find(
+    (r) => r.enabled && r.scope === 'carrier' && r.target === carrierName,
+  )
+  const base =
+    carrierRule?.value ?? markupRules.find((r) => r.enabled && r.scope === 'global')?.value ?? 0
+  const batteryExtra =
+    category === 'battery'
+      ? (markupRules.find((r) => r.enabled && r.scope === 'product')?.value ?? 0)
+      : 0
   return base + batteryExtra
 }
 
@@ -627,7 +938,10 @@ function doCompare(body: unknown): unknown {
   const trace: MockCompareTrace[] = []
 
   // L1 预热费率卡
-  trace.push({ layer: 'L1 预热费率卡', detail: `命中 ${RATE_CARDS.length} 条承运商费率卡（云途 / 4PX / DHL）` })
+  trace.push({
+    layer: 'L1 预热费率卡',
+    detail: `命中 ${RATE_CARDS.length} 条承运商费率卡（云途 / 4PX / DHL）`,
+  })
 
   // L2 可达性地图
   const banned = BANNED_COUNTRIES.includes(country)
@@ -664,7 +978,9 @@ function doCompare(body: unknown): unknown {
   }
   trace.push({
     layer: 'L3 实时并行池',
-    detail: banned ? 'L2 已剔除，跳过实时询价' : `并发询价 ${RATE_CARDS.length} 家，2s SLA 内全部返回`,
+    detail: banned
+      ? 'L2 已剔除，跳过实时询价'
+      : `并发询价 ${RATE_CARDS.length} 家，2s SLA 内全部返回`,
   })
 
   // L4 结果护栏：去重 → 售价升序 → 截断 20
@@ -683,7 +999,15 @@ function doCompare(body: unknown): unknown {
   })
 
   return {
-    request: { country, weightG, lengthCm, widthCm, heightCm, category, declaredValue: Number(req.declaredValue) || 0 },
+    request: {
+      country,
+      weightG,
+      lengthCm,
+      widthCm,
+      heightCm,
+      category,
+      declaredValue: Number(req.declaredValue) || 0,
+    },
     chargeableG,
     currency: 'USD',
     lines: truncated,

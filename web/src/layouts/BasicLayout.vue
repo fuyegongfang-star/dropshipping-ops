@@ -57,10 +57,7 @@
             />
           </el-select>
 
-          <button class="icon-btn" title="通知">
-            <AppIcon name="bell" :size="18" />
-            <span class="badge-dot" />
-          </button>
+          <WhatsNew />
 
           <span class="avatar"><AppIcon name="user" :size="18" /></span>
         </div>
@@ -86,6 +83,7 @@ import { useRoute } from 'vue-router'
 import { useTenantStore } from '@/stores/tenant'
 import http from '@/api/http'
 import AppIcon from '@/components/AppIcon.vue'
+import WhatsNew from '@/components/WhatsNew.vue'
 
 // 基础布局：深色渐变侧边栏 + 顶栏 + 主内容区（方案 §0/§17 多租户透传）。
 const tenantStore = useTenantStore()
@@ -101,6 +99,7 @@ const menus = [
   { path: '/quotes', title: '运费试算', icon: 'calculator' },
   { path: '/pricing', title: '加价 / 币种', icon: 'sliders' },
   { path: '/tenants', title: '租户管理', icon: 'tenants' },
+  { path: '/progress', title: '开发进度', icon: 'target' },
 ]
 
 const currentTitle = computed(
@@ -296,34 +295,6 @@ function onTenantChange(code: string): void {
 }
 .tenant-select {
   width: 150px;
-}
-.icon-btn {
-  position: relative;
-  width: 38px;
-  height: 38px;
-  border: none;
-  background: var(--line-soft);
-  color: var(--ink-600);
-  border-radius: 10px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.18s var(--ease);
-}
-.icon-btn:hover {
-  background: var(--brand-soft);
-  color: var(--brand-600);
-}
-.badge-dot {
-  position: absolute;
-  top: 9px;
-  right: 10px;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--orange-500);
-  border: 2px solid var(--surface);
 }
 .avatar {
   width: 38px;

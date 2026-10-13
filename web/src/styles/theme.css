@@ -364,3 +364,12 @@ body {
   font-size: 12px;
   line-height: 1.6;
 }
+
+/* ====================== 表单工具类 ====================== */
+/* 让 el-select / el-input-number / el-input 等表单控件撑满所在栅格列。 */
+.w-full,
+.w-full.el-select,
+.w-full .el-input,
+.w-full.el-input-number {
+  width: 100%;
+}

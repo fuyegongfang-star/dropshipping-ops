@@ -17,6 +17,11 @@
 - **时间窗自律**：启动 ~23:10，本地时间到 ~07:40 即停止开新任务、跑末轮 lint/test、写日报、收尾（约 07:50 结束）。
 - **纪律红线**：严格遵循方案 §31（注释清晰 / 代码整齐）；提交信息用 Conventional Commits；**任何问题自己解决，绝不询问用户**。
 - **日报**：每日结束向 `progress-log.md` 追加当日段落（完成/进行中/受阻+错误摘要/测试结果/下一步/提交号），并给用户简短汇总。
+- **可视化交付铁律（用户明确要求）**：用户每天早晨会打开网页查看成果，**不允许只交付后端代码而前端无可见变化**。
+  - 业务能力类任务（订单/商品/渠道/承运商/报价/加价/账务/报表等）必须同时交付：页面（`web/src/views/`）+ 左侧菜单（`web/src/layouts/BasicLayout.vue` 的 `menus`）+ 路由（`web/src/router/index.ts`）+ 演示数据与交互（`web/src/api/mock-data.ts` 与对应 `*Api` 模块），且**演示模式与正式模式两条路都要通**。
+  - 纯后端/基础设施类任务至少在「开发进度」页（`/progress`）有可见条目（`route` 可为 null），产出描述写清可验证点。
+  - **每批任务最后必须运行 `npm run progress:gen`**（`scripts/gen-progress.cjs` → 重新生成 `web/src/api/dev-progress.ts`）并随代码提交，确保次日刷新网页即可看到新增能力。
+  - 收尾验收：`cd web && npm run lint && npm run build` 零错误，新增页面已注册路由与菜单且能被 dev/preview 正确编译。
 
 ---
 

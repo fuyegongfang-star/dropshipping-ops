@@ -81,6 +81,44 @@
                 Mock 店拉单
               </span>
             </div>
+            <div class="ov-row">
+              <span class="ov-k">开发进度</span>
+              <span class="ov-v">
+                <span class="tag-soft tag-violet">已完成 {{ recent.total }} 项</span>
+                每晚自动开发，点右上角铃铛或
+                <router-link class="ov-link" to="/progress">查看进度</router-link>
+              </span>
+            </div>
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <!-- 最近交付能力：让用户每天刷新即可看到昨晚自动开发的新功能 -->
+    <el-row class="row-third">
+      <el-col :span="24">
+        <el-card>
+          <template #header>
+            <div class="card-head">
+              <span class="section-title">
+                <AppIcon name="sparkle" :size="15" class="ttl-ico" />最近交付能力
+              </span>
+              <router-link class="more-link" to="/progress">查看完整开发进度 →</router-link>
+            </div>
+          </template>
+
+          <div class="recent">
+            <div v-for="t in recent.tasks" :key="t.id" class="recent-item">
+              <span class="recent-id">{{ t.id }}</span>
+              <div class="recent-body">
+                <div class="recent-name">
+                  {{ t.name }}<span class="new-tag">NEW</span>
+                </div>
+                <div class="recent-deliv">{{ t.deliverable }}</div>
+              </div>
+              <router-link v-if="t.route" class="go-btn" :to="t.route">去查看</router-link>
+              <span v-else class="go-none">接口已就绪</span>
+            </div>
           </div>
         </el-card>
       </el-col>
@@ -96,11 +134,19 @@ import { tenantsApi } from '@/api/tenants'
 import { channelsApi } from '@/api/channels'
 import { catalogApi } from '@/api/catalog'
 import { ordersApi, ORDER_STATUS_LABELS, type Order } from '@/api/orders'
+import { DEV_TASKS, DEV_STATS, DEV_RECENT_IDS } from '@/api/dev-progress'
 import PageHeader from '@/components/PageHeader.vue'
 import AppIcon from '@/components/AppIcon.vue'
 
 const tenantStore = useTenantStore()
 const statusLabels = ORDER_STATUS_LABELS
+
+// 最近交付能力：数据来自 scripts/gen-progress.cjs 生成的 dev-progress.ts，
+// 夜间自动开发每完成一批任务会重新生成，故用户次日刷新看板即可看到新增能力。
+const recent = {
+  total: DEV_STATS.done,
+  tasks: DEV_TASKS.filter((t) => DEV_RECENT_IDS.includes(t.id)),
+}
 
 const loading = ref(false)
 const counts = ref({ tenants: 0, shops: 0, skus: 0, orders: 0 })
@@ -189,6 +235,115 @@ onMounted(load)
 }
 .row-second {
   margin-top: 16px;
+}
+.row-third {
+  margin-top: 16px;
+}
+
+/* 最近交付能力 */
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+.card-head .section-title {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.ttl-ico {
+  color: var(--brand-500);
+}
+.more-link {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--brand-600);
+  text-decoration: none;
+}
+.more-link:hover {
+  text-decoration: underline;
+}
+.recent {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+.recent-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--r-md);
+  background: #fbfcff;
+  border: 1px solid var(--line);
+}
+.recent-id {
+  flex: none;
+  font-weight: 700;
+  font-size: 12.5px;
+  color: #fff;
+  background: linear-gradient(135deg, var(--brand-500), var(--violet-500));
+  padding: 3px 8px;
+  border-radius: 7px;
+}
+.recent-body {
+  flex: 1;
+  min-width: 0;
+}
+.recent-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink-800);
+}
+.recent-deliv {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--ink-500);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.new-tag {
+  font-size: 10px;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(135deg, #ff7a45, #f5222d);
+  padding: 1px 5px;
+  border-radius: 5px;
+  letter-spacing: 0.4px;
+}
+.go-btn {
+  flex: none;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--brand-600);
+  background: var(--brand-soft);
+  padding: 5px 12px;
+  border-radius: var(--r-pill);
+  text-decoration: none;
+  transition: all 0.18s var(--ease);
+}
+.go-btn:hover {
+  background: var(--brand-500);
+  color: #fff;
+}
+.go-none {
+  flex: none;
+  font-size: 12px;
+  color: var(--ink-400);
+}
+.ov-link {
+  color: var(--brand-600);
+  font-weight: 600;
+  text-decoration: none;
+}
+.ov-link:hover {
+  text-decoration: underline;
 }
 
 /* 统计卡图标渐变底 */

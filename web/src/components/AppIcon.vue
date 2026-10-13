@@ -86,6 +86,15 @@ const ICONS: Record<string, string> = {
   clock: '<circle cx="12" cy="12" r="8"/><path d="M12 8v4.2l2.8 1.6"/>',
   select:
     '<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/>',
+  edit: '<path d="M4 20h4l10-10-4-4L4 16z"/><path d="M14.5 5.5 18.5 9.5"/>',
+  trash:
+    '<path d="M5 7h14"/><path d="M8 7V5h8v2"/><path d="M6.5 7l.8 12.2A1 1 0 0 0 8.3 20h7.4a1 1 0 0 0 1-0.8L17.5 7"/><path d="M10 11v6M14 11v6"/>',
+  target:
+    '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1"/>',
+  sparkle:
+    '<path d="M12 3.5 13.8 9l5.5 1.8-5.5 1.8L12 18l-1.8-5.4L4.7 10.8 10.2 9z"/><path d="M18.5 17.5l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/>',
+  rocket:
+    '<path d="M13.5 4.5c3.5-1 6-0.5 6-0.5s.5 2.5-.5 6c-.8 2.8-2.6 5-5.5 6.5L9 12.5C10.5 9.6 12.7 7.3 13.5 4.5z"/><path d="M9 12.5 6.5 15 5 19l4-1.5 2.5-2.5"/><circle cx="15" cy="9" r="1.4"/>',
 }
 
 const path = computed(() => ICONS[props.name] ?? ICONS.box)

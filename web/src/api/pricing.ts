@@ -84,8 +84,22 @@ export const SCOPE_LABELS: Record<MarkupRule['scope'], string> = {
   product: '品类',
 }
 
+/** 加价规则新增/编辑入参（id 由后端生成，故新建时不含 id）。 */
+export type MarkupRuleInput = Omit<MarkupRule, 'id'> & { id?: string }
+
 export const pricingApi = {
   compare: (req: QuoteRequest) => http.post<CompareResult>('/pricing/compare', req),
   markupRules: () => http.get<MarkupRule[]>('/pricing/markup-rules'),
+  /** 新建加价规则（自定义加价幅度）。 */
+  createMarkupRule: (rule: MarkupRuleInput) => http.post<MarkupRule>('/pricing/markup-rules', rule),
+  /** 更新加价规则（含启停、加价幅度调整）。 */
+  updateMarkupRule: (id: string, patch: Partial<MarkupRuleInput>) =>
+    http.put<MarkupRule>(`/pricing/markup-rules/${id}`, patch),
+  /** 删除加价规则。 */
+  removeMarkupRule: (id: string) =>
+    http.delete<{ deleted: boolean }>(`/pricing/markup-rules/${id}`),
   fxRates: () => http.get<FxRate[]>('/pricing/fx'),
+  /** 调整币种汇率。 */
+  updateFxRate: (base: string, quote: string, rate: number) =>
+    http.put<FxRate>(`/pricing/fx/${base}/${quote}`, { rate }),
 }
