@@ -4,9 +4,10 @@
     <el-aside :width="collapsed ? '64px' : '220px'" class="aside">
       <div class="logo" :class="{ folded: collapsed }">
         <span class="logo-ico"><AppIcon name="package" :size="20" /></span>
+        <!-- LOGO 文字取自「系统设置 → 站点设置」，保存后立即同步 -->
         <span v-show="!collapsed" class="logo-text">
-          <strong>代发·货代</strong>
-          <small>运营中台</small>
+          <strong :title="siteStore.siteName">{{ siteStore.siteName }}</strong>
+          <small :title="siteStore.siteSlogan">{{ siteStore.siteSlogan }}</small>
         </span>
       </div>
 
@@ -109,9 +110,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watchEffect } from 'vue'
 import { useRoute } from 'vue-router'
 import { useTenantStore } from '@/stores/tenant'
+import { useSiteStore } from '@/stores/site'
 import { useUserStore, type UserRole } from '@/stores/user'
 import http from '@/api/http'
 import AppIcon from '@/components/AppIcon.vue'
@@ -119,9 +121,16 @@ import WhatsNew from '@/components/WhatsNew.vue'
 
 // 基础布局：深色渐变侧边栏 + 顶栏 + 主内容区（方案 §0/§17 多租户透传）。
 const tenantStore = useTenantStore()
+const siteStore = useSiteStore()
 const userStore = useUserStore()
 const route = useRoute()
 const collapsed = ref(false)
+
+// 浏览器标签页标题：页面名 + 站点名，随「站点设置」的站点名称实时变化。
+watchEffect(() => {
+  const pageTitle = (route.meta.title as string) || '仪表盘'
+  document.title = `${pageTitle} - ${siteStore.siteName}`
+})
 
 // 演示模式（VITE_USE_MOCK 未显式设为 false 即视为开）：显示身份切换，便于验证角色隔离。
 const isDemo = (import.meta.env.VITE_USE_MOCK ?? 'true') === 'true'
@@ -178,7 +187,8 @@ const menuNodes: MenuNode[] = [
     groupIcon: 'settings',
     children: [
       { path: '/pricing', title: '运营配置', icon: 'sliders' },
-      // 平台运营方专属：租户管理、开发进度，卖家租户不可见
+      // 平台运营方专属：站点设置（站点名称/TDK）、租户管理、开发进度，卖家租户不可见
+      { path: '/settings/site', title: '站点设置', icon: 'flag', roles: ['super'] },
       { path: '/tenants', title: '租户管理', icon: 'tenants', roles: ['super'] },
       { path: '/progress', title: '开发进度', icon: 'target', roles: ['super'] },
     ],
@@ -214,6 +224,8 @@ const currentTitle = computed(
 
 onMounted(async () => {
   tenantStore.loadFromStorage()
+  // 站点设置：站点名称 / Slogan 用于侧栏 LOGO 与标签页标题（加载失败时 store 回落默认值）
+  await siteStore.load()
   try {
     const list = await http.get<{ code: string; name: string }[]>('/tenants')
     tenantStore.tenants = list ?? []
@@ -273,11 +285,19 @@ function onRoleChange(r: string): void {
   box-shadow: var(--sh-brand);
   flex: none;
 }
+/* 站点名称可能较长（≤30 字），此处限宽并省略，避免撑破侧栏 */
 .logo-text {
   display: flex;
   flex-direction: column;
   line-height: 1.2;
   white-space: nowrap;
+  min-width: 0;
+  overflow: hidden;
+}
+.logo-text strong,
+.logo-text small {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .logo-text strong {
   font-size: 16px;

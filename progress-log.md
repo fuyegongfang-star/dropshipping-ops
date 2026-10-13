@@ -218,3 +218,26 @@
 3. **折叠态补齐**：给 `el-sub-menu` 加 `popper-class="side-submenu-popup"`，新增非 scoped `<style>` 块（限定在该类下，不污染全局弹层）把 hover 弹出的浮层设成深色 `#16213c` + 圆角项，避免折叠时又是白浮层。
 
 **验证**：`eslint --max-warnings 0` ✅ ｜ `vue-tsc --noEmit && vite build` ✅ ｜ 浏览器实测：展开三组后二级项为深底浅字、无白块（截图 40）；折叠态浮层计算样式背景 `rgb(22,33,60)` ✅（截图 41）。
+
+---
+
+## 2026-10-13（手动 · 系统设置新增「站点设置」：站点名称 / TDK / 统计代码）
+
+**背景**：用户反馈「系统设置项里把站点名称设置以及 tdk 设置等项目也都加进去，要不然后续怎么用」——即系统设置不能只有加价/租户/进度，站点级基础配置得能改。
+
+**完成**：新增「系统设置 → 站点设置」（路由 `/settings/site`，`super` 专属），四页签：
+
+1. **基础信息**：站点名称（必填，≤30 字）、副标题 Slogan、站点域名、备案号、Logo / Favicon 地址、版权信息；联系方式（客服邮箱 / 电话 / 服务时间）与国际化（默认语言、时区）；右侧「品牌预览」实时展示 LOGO + 站点名观感。
+2. **SEO / TDK**：首页 Title / Description / Keywords（带字数计数与超长标红，标题建议 ≤60、描述 ≤160）；标题拼接规则（分隔符 4 选 1 + 是否追加站点名：总是 / 仅首页 / 不追加）；**页面 TDK 规则表**（首页 / 商品详情 / 品类聚合 / 运费试算 / 资讯文章 / 自定义，可新增、编辑、删除、启停），模板支持 `{site}` `{name}` `{category}` 变量。
+3. **统计与代码**：`<head>` 与 `<body>` 第三方代码注入、站长验证 meta、Sitemap 开关、`robots.txt`。
+4. **效果预览**：浏览器标签页效果 + 搜索结果片段（SERP）按当前模板与示例数据实时渲染。
+
+**联动与实现**：
+- 新增 `web/src/api/settings.ts`（`GET/PUT /settings/site`、`POST/PUT/DELETE /settings/tdk-rules`、`POST /settings/site/reset`）与 `web/src/stores/site.ts`；
+- `mock-data.ts` 新增 `siteSettings` 种子 + TDK 规则 CRUD，演示态写入 `localStorage('mock-site-v1')`，页面提供「重置演示数据」；
+- **站点名称保存后立即联动后台侧栏 LOGO 与浏览器标签页标题**（`document.title = 页面名 - 站点名`），改完即见效果，而非只写进数据；
+- 顺带修复：`titleSuffix=always` 时模板已含 `{site}` 会导致站点名重复拼接（如「耳机 - 站点名 - 站点名」），现按「已含站点名则不重复追加」处理，避免 SEO 品牌词堆砌。
+
+**验证**：`eslint --max-warnings 0` ✅ ｜ `vue-tsc --noEmit && vite build` ✅ ｜ 浏览器实测：站点名改「跨境云仓·一件代发」保存 → 侧栏 LOGO 与标签页标题立即变、toast 提示；重开页面仍为新名（持久化）；TDK 表格 5→6 条（新增「批发页」规则落库）；预览页标题去重后为「无线蓝牙耳机 Pro - 跨境云仓·一件代发」；卖家租户视角菜单无「站点设置」、直访 `/settings/site` 被守卫重定向 `/`。
+
+**下一步**：3.8 头程/尾程两段式（夜间自动化按 `dev-schedule.md` 接力）。

@@ -340,6 +340,8 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     if (url === '/pricing/markup-rules')
       return delay().then(() => markupRules.map((r) => ({ ...r })))
     if (url === '/pricing/fx') return delay().then(() => fxRates.map((f) => ({ ...f })))
+    // 站点设置：返回副本（含 TDK 规则数组副本），避免视图直接改写模块级状态。
+    if (url === '/settings/site') return delay().then(() => cloneSite())
     const chealth = url.match(/^\/carriers\/([^/]+)\/health$/)
     if (chealth) {
       const c = carriers.find((x) => x.code === chealth[1])
@@ -365,6 +367,9 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     if (pull) return delay().then(() => doPull(pull[1]))
     if (url === '/pricing/compare') return delay(260).then(() => doCompare(body))
     if (url === '/pricing/markup-rules') return delay().then(() => createMarkupRule(body))
+    if (url === '/settings/tdk-rules') return delay().then(() => createTdkRule(body))
+    // 重置演示态站点设置：清空 localStorage 快照并回到种子数据。
+    if (url === '/settings/site/reset') return delay().then(() => doResetSite())
     return delay().then(() => reject('演示模式不支持该请求：' + method + ' ' + url))
   }
 
@@ -374,12 +379,17 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     if (rule) return delay().then(() => updateMarkupRule(rule[1], body))
     const fx = url.match(/^\/pricing\/fx\/([^/]+)\/([^/]+)$/)
     if (fx) return delay().then(() => updateFxRate(fx[1], fx[2], body))
+    if (url === '/settings/site') return delay().then(() => updateSite(body))
+    const tdk = url.match(/^\/settings\/tdk-rules\/([^/]+)$/)
+    if (tdk) return delay().then(() => updateTdkRule(tdk[1], body))
   }
 
-  // DELETE 集合：删除加价规则
+  // DELETE 集合：删除加价规则 / TDK 规则
   if (method === 'DELETE') {
     const rule = url.match(/^\/pricing\/markup-rules\/([^/]+)$/)
     if (rule) return delay().then(() => deleteMarkupRule(rule[1]))
+    const tdk = url.match(/^\/settings\/tdk-rules\/([^/]+)$/)
+    if (tdk) return delay().then(() => deleteTdkRule(tdk[1]))
   }
 
   return delay().then(() => reject('演示模式不支持该请求：' + method + ' ' + url))
@@ -1014,4 +1024,293 @@ function doCompare(body: unknown): unknown {
     trace,
     generatedAt: NOW(),
   } as MockCompareResult
+}
+
+// ===== 站点设置（站点名称 / 品牌标识 / TDK·SEO / 统计代码）=====
+/**
+ * 演示态站点设置，镜像后端 `site_settings`（GET / PUT `/settings/site`）。
+ * 站点名称会实时反映到后台侧栏 LOGO 与浏览器标签页标题（见 stores/site.ts），
+ * 便于直观确认「改了确实生效」；TDK 规则用于生成前台各页面的 Title/Description/Keywords。
+ */
+
+/** TDK 规则适用的页面类型（与前台路由对应） */
+export type MockTdkPage = 'home' | 'product' | 'category' | 'quote' | 'article' | 'custom'
+
+/** 单条页面 TDK 规则：模板支持 {site} {name} {category} 等变量，渲染时按页面数据替换。 */
+export interface MockTdkRule {
+  id: string
+  page: MockTdkPage
+  path: string
+  titleTpl: string
+  descTpl: string
+  keywords: string
+  enabled: boolean
+  note: string
+}
+
+export interface MockSiteSettings {
+  // 站点基础信息
+  siteName: string
+  siteSlogan: string
+  logoUrl: string
+  faviconUrl: string
+  domain: string
+  icpNo: string
+  copyright: string
+  // 联系方式
+  contactEmail: string
+  contactPhone: string
+  serviceTime: string
+  // 国际化
+  lang: string
+  timezone: string
+  // SEO 标题拼接规则
+  titleSeparator: string
+  titleSuffix: 'always' | 'home' | 'never'
+  homeTitle: string
+  homeDesc: string
+  homeKeywords: string
+  // 第三方代码
+  headCode: string
+  bodyCode: string
+  verifyMeta: string
+  robots: string
+  sitemapEnabled: boolean
+  // 页面 TDK 规则表
+  tdkRules: MockTdkRule[]
+  updatedAt: string
+}
+
+/** 站点设置种子数据（真实环境由后端库表提供）。 */
+function defaultSiteSettings(): MockSiteSettings {
+  return {
+    siteName: '代发·货代运营中台',
+    siteSlogan: '一件代发 · 跨境物流履约',
+    logoUrl: '',
+    faviconUrl: '',
+    domain: 'https://ops.example.com',
+    icpNo: '粤ICP备2026000000号',
+    copyright: '© 2026 代发·货代运营中台 版权所有',
+    contactEmail: 'support@example.com',
+    contactPhone: '400-000-0000',
+    serviceTime: '工作日 09:00–18:00',
+    lang: 'zh-CN',
+    timezone: 'Asia/Shanghai',
+    titleSeparator: ' - ',
+    titleSuffix: 'always',
+    homeTitle: '代发·货代运营中台 | 一件代发与跨境物流履约平台',
+    homeDesc:
+      '为跨境卖家与货代运营方提供订单履约、承运商比价、运费试算与多店铺统一管理的一站式中台。',
+    homeKeywords: '一件代发,货代运营,跨境物流,运费试算,订单履约,海外仓',
+    headCode: '',
+    bodyCode: '',
+    verifyMeta: '',
+    robots:
+      'User-agent: *\nAllow: /\nDisallow: /admin\nSitemap: https://ops.example.com/sitemap.xml',
+    sitemapEnabled: true,
+    tdkRules: [
+      {
+        id: 'tdk_home',
+        page: 'home',
+        path: '/',
+        titleTpl: '{site} | 一件代发与跨境物流履约平台',
+        descTpl: '{site} 为跨境卖家提供订单履约、承运商比价与运费试算的一站式中台。',
+        keywords: '一件代发,货代运营,跨境物流,运费试算',
+        enabled: true,
+        note: '首页默认 TDK',
+      },
+      {
+        id: 'tdk_product',
+        page: 'product',
+        path: '/product/{id}',
+        titleTpl: '{name} - {site}',
+        descTpl: '{name}：{category}类目，支持全球直发与海外仓一件代发，{site} 提供实时运费试算。',
+        keywords: '{name},{category},一件代发',
+        enabled: true,
+        note: '商品详情页（变量：name / category）',
+      },
+      {
+        id: 'tdk_category',
+        page: 'category',
+        path: '/category/{slug}',
+        titleTpl: '{category} - {site}',
+        descTpl: '精选 {category} 品类货源，支持一件代发与批量发货，{site} 提供全链路履约。',
+        keywords: '{category},货源,一件代发',
+        enabled: true,
+        note: '品类聚合页（变量：category）',
+      },
+      {
+        id: 'tdk_quote',
+        page: 'quote',
+        path: '/quote',
+        titleTpl: '运费试算 - {site}',
+        descTpl:
+          '输入目的国、重量与体积即可比价云途、DHL、4PX、燕文等渠道，{site} 为你选出最优物流方案。',
+        keywords: '运费试算,国际物流比价,跨境运费',
+        enabled: true,
+        note: '运费试算页（高 SEO 价值入口）',
+      },
+      {
+        id: 'tdk_article',
+        page: 'article',
+        path: '/news/{id}',
+        titleTpl: '{name} - {site}资讯',
+        descTpl: '{name}｜{site} 跨境物流与一件代发实战干货。',
+        keywords: '{name},跨境物流,干货',
+        enabled: false,
+        note: '资讯文章页（暂未启用）',
+      },
+    ],
+    updatedAt: '2026-10-13T00:00:00.000Z',
+  }
+}
+
+// ===== 演示态持久化（站点设置）=====
+// 与加价规则同理：演示模式下改动写入 localStorage，刷新后仍在，避免「改了就没」的错觉。
+const SITE_LS_KEY = 'mock-site-v1'
+
+let siteSettings: MockSiteSettings = defaultSiteSettings()
+
+/** 深拷贝站点设置（含 TDK 规则数组），避免视图 v-model 直接改写模块级状态。 */
+function cloneSite(): MockSiteSettings {
+  return { ...siteSettings, tdkRules: siteSettings.tdkRules.map((r) => ({ ...r })) }
+}
+
+function persistSite(): void {
+  try {
+    localStorage.setItem(SITE_LS_KEY, JSON.stringify(siteSettings))
+  } catch {
+    /* 忽略：无 localStorage 环境 */
+  }
+}
+
+/** 清空演示态站点设置快照（页面「重置演示数据」入口调用）。 */
+export function resetSiteDemo(): void {
+  try {
+    localStorage.removeItem(SITE_LS_KEY)
+  } catch {
+    /* 忽略 */
+  }
+}
+
+/** 启动时用 localStorage 快照覆盖种子数据（数据损坏则保持种子）。 */
+function restoreSite(): void {
+  try {
+    const raw = localStorage.getItem(SITE_LS_KEY)
+    if (!raw) return
+    const saved = JSON.parse(raw) as Partial<MockSiteSettings>
+    if (saved && typeof saved === 'object' && saved.siteName) {
+      const base = defaultSiteSettings()
+      siteSettings = {
+        ...base,
+        ...saved,
+        tdkRules: Array.isArray(saved.tdkRules) ? saved.tdkRules : base.tdkRules,
+      }
+    }
+  } catch {
+    /* 忽略：保持种子数据 */
+  }
+}
+
+restoreSite()
+
+/** 更新站点设置：逐字段白名单写入，站点名称去空白后不允许为空。 */
+function updateSite(body: unknown): MockSiteSettings {
+  const p = (body ?? {}) as Partial<MockSiteSettings>
+  if (p.siteName !== undefined) {
+    const name = String(p.siteName).trim()
+    if (!name) return reject('站点名称不能为空') as unknown as MockSiteSettings
+    siteSettings.siteName = name
+  }
+  // 文本类字段统一去空白，避免前台渲染出多余空格
+  if (p.siteSlogan !== undefined) siteSettings.siteSlogan = String(p.siteSlogan).trim()
+  if (p.logoUrl !== undefined) siteSettings.logoUrl = String(p.logoUrl).trim()
+  if (p.faviconUrl !== undefined) siteSettings.faviconUrl = String(p.faviconUrl).trim()
+  if (p.domain !== undefined) siteSettings.domain = String(p.domain).trim()
+  if (p.icpNo !== undefined) siteSettings.icpNo = String(p.icpNo).trim()
+  if (p.copyright !== undefined) siteSettings.copyright = String(p.copyright).trim()
+  if (p.contactEmail !== undefined) siteSettings.contactEmail = String(p.contactEmail).trim()
+  if (p.contactPhone !== undefined) siteSettings.contactPhone = String(p.contactPhone).trim()
+  if (p.serviceTime !== undefined) siteSettings.serviceTime = String(p.serviceTime).trim()
+  if (p.lang !== undefined) siteSettings.lang = String(p.lang).trim()
+  if (p.timezone !== undefined) siteSettings.timezone = String(p.timezone).trim()
+  if (p.titleSeparator !== undefined) siteSettings.titleSeparator = String(p.titleSeparator)
+  if (p.titleSuffix !== undefined) {
+    const v = String(p.titleSuffix)
+    siteSettings.titleSuffix = v === 'home' || v === 'never' ? v : 'always'
+  }
+  if (p.homeTitle !== undefined) siteSettings.homeTitle = String(p.homeTitle)
+  if (p.homeDesc !== undefined) siteSettings.homeDesc = String(p.homeDesc)
+  if (p.homeKeywords !== undefined) siteSettings.homeKeywords = String(p.homeKeywords)
+  if (p.headCode !== undefined) siteSettings.headCode = String(p.headCode)
+  if (p.bodyCode !== undefined) siteSettings.bodyCode = String(p.bodyCode)
+  if (p.verifyMeta !== undefined) siteSettings.verifyMeta = String(p.verifyMeta).trim()
+  if (p.robots !== undefined) siteSettings.robots = String(p.robots)
+  if (p.sitemapEnabled !== undefined) siteSettings.sitemapEnabled = Boolean(p.sitemapEnabled)
+  if (p.tdkRules !== undefined && Array.isArray(p.tdkRules)) siteSettings.tdkRules = p.tdkRules
+  siteSettings.updatedAt = NOW()
+  persistSite()
+  return cloneSite()
+}
+
+/** TDK 规则入参归一化：模板与关键词去空白，页面类型非法时回落自定义。 */
+function normalizeTdkInput(input: Partial<MockTdkRule>): Partial<MockTdkRule> {
+  const out: Partial<MockTdkRule> = {}
+  const pages: MockTdkPage[] = ['home', 'product', 'category', 'quote', 'article', 'custom']
+  if (input.page !== undefined) out.page = pages.includes(input.page) ? input.page : 'custom'
+  if (input.path !== undefined) out.path = String(input.path).trim()
+  if (input.titleTpl !== undefined) out.titleTpl = String(input.titleTpl).trim()
+  if (input.descTpl !== undefined) out.descTpl = String(input.descTpl).trim()
+  if (input.keywords !== undefined) out.keywords = String(input.keywords).trim()
+  if (input.enabled !== undefined) out.enabled = Boolean(input.enabled)
+  if (input.note !== undefined) out.note = String(input.note)
+  return out
+}
+
+/** 新建 TDK 规则：模板为空则拒绝（空 TDK 对 SEO 有害）。 */
+function createTdkRule(body: unknown): MockTdkRule {
+  const patch = normalizeTdkInput((body ?? {}) as Partial<MockTdkRule>)
+  if (!patch.titleTpl) return reject('标题模板不能为空') as unknown as MockTdkRule
+  const rule: MockTdkRule = {
+    id: 'tdk_' + Date.now().toString(36) + '_' + seq++,
+    page: patch.page ?? 'custom',
+    path: patch.path ?? '/',
+    titleTpl: patch.titleTpl,
+    descTpl: patch.descTpl ?? '',
+    keywords: patch.keywords ?? '',
+    enabled: patch.enabled ?? true,
+    note: patch.note ?? '',
+  }
+  siteSettings.tdkRules.push(rule)
+  siteSettings.updatedAt = NOW()
+  persistSite()
+  return { ...rule }
+}
+
+/** 更新 TDK 规则（整条覆盖式更新，仅接受传入字段）。 */
+function updateTdkRule(id: string, body: unknown): MockTdkRule {
+  const idx = siteSettings.tdkRules.findIndex((r) => r.id === id)
+  if (idx < 0) return reject('TDK 规则不存在') as unknown as MockTdkRule
+  const patch = normalizeTdkInput((body ?? {}) as Partial<MockTdkRule>)
+  siteSettings.tdkRules[idx] = { ...siteSettings.tdkRules[idx], ...patch }
+  siteSettings.updatedAt = NOW()
+  persistSite()
+  return { ...siteSettings.tdkRules[idx] }
+}
+
+/** 删除 TDK 规则。 */
+function deleteTdkRule(id: string): { deleted: boolean } {
+  const idx = siteSettings.tdkRules.findIndex((r) => r.id === id)
+  if (idx < 0) return reject('TDK 规则不存在') as unknown as { deleted: boolean }
+  siteSettings.tdkRules.splice(idx, 1)
+  siteSettings.updatedAt = NOW()
+  persistSite()
+  return { deleted: true }
+}
+
+/** 重置站点设置：清空本地快照并回到种子数据（仅演示模式）。 */
+function doResetSite(): MockSiteSettings {
+  resetSiteDemo()
+  siteSettings = defaultSiteSettings()
+  return cloneSite()
 }

@@ -8,6 +8,7 @@ import ChannelsView from '@/views/ChannelsView.vue'
 import CarriersView from '@/views/CarriersView.vue'
 import QuotesView from '@/views/QuotesView.vue'
 import PricingRulesView from '@/views/PricingRulesView.vue'
+import SiteSettingsView from '@/views/SiteSettingsView.vue'
 import ProgressView from '@/views/ProgressView.vue'
 import TenantsView from '@/views/TenantsView.vue'
 
@@ -29,6 +30,12 @@ const router = createRouter({
         { path: 'quotes', name: 'quotes', component: QuotesView, meta: { title: '运费试算' } },
         { path: 'pricing', name: 'pricing', component: PricingRulesView, meta: { title: '运营配置' } },
         // 内部视图：仅平台运营方（super）可见
+        {
+          path: 'settings/site',
+          name: 'siteSettings',
+          component: SiteSettingsView,
+          meta: { title: '站点设置', roles: ['super'] },
+        },
         { path: 'progress', name: 'progress', component: ProgressView, meta: { title: '开发进度', roles: ['super'] } },
         { path: 'tenants', name: 'tenants', component: TenantsView, meta: { title: '租户', roles: ['super'] } },
       ],
