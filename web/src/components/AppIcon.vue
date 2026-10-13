@@ -74,6 +74,18 @@ const ICONS: Record<string, string> = {
     '<path d="M12 3 3 8l9 5 9-5z"/><path d="M3 13l9 5 9-5"/>',
   warning: '<path d="M12 3 2 20h20z"/><path d="M12 9v5M12 17h.01"/>',
   menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
+  calculator:
+    '<rect x="4.5" y="3" width="15" height="18" rx="2"/><path d="M8 7h8"/><path d="M8.5 12h.01M12 12h.01M15.5 12h.01M8.5 16h.01M12 16h.01M15.5 16h.01"/>',
+  sliders:
+    '<path d="M4 8h9M17 8h3M4 16h3M11 16h9"/><circle cx="15" cy="8" r="2.2"/><circle cx="9" cy="16" r="2.2"/>',
+  shield: '<path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="M9 12l2 2 4-4"/>',
+  bolt: '<path d="M13 3 5 13h6l-1 8 8-10h-6z"/>',
+  coins:
+    '<ellipse cx="9" cy="7" rx="5" ry="2.5"/><path d="M4 7v4c0 1.4 2.2 2.5 5 2.5s5-1.1 5-2.5V7"/><path d="M14 12.5c0 1.4 2.2 2.5 5 2.5s1-1.1 1-2.5"/>',
+  flag: '<path d="M6 21V4"/><path d="M6 5h11l-2 3 2 3H6"/>',
+  clock: '<circle cx="12" cy="12" r="8"/><path d="M12 8v4.2l2.8 1.6"/>',
+  select:
+    '<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/>',
 }
 
 const path = computed(() => ICONS[props.name] ?? ICONS.box)

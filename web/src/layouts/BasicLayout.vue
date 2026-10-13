@@ -97,6 +97,9 @@ const menus = [
   { path: '/orders', title: '订单中心', icon: 'orders' },
   { path: '/catalog', title: '商品 / SKU', icon: 'catalog' },
   { path: '/channels', title: '渠道 / 店铺', icon: 'channels' },
+  { path: '/carriers', title: '承运商管理', icon: 'truck' },
+  { path: '/quotes', title: '运费试算', icon: 'calculator' },
+  { path: '/pricing', title: '加价 / 币种', icon: 'sliders' },
   { path: '/tenants', title: '租户管理', icon: 'tenants' },
 ]
 

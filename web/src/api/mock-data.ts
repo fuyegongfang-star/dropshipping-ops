@@ -295,8 +295,9 @@ const reject = (msg: string) => Promise.reject(new Error(msg))
 let seq = 100
 
 // ===== 路由分发 =====
-/** mock 模式下 http.ts 的唯一入口：按 method + url 返回对应数据或执行状态变更。 */
-export function mockRouter(method: string, url: string): Promise<unknown> {
+/** mock 模式下 http.ts 的唯一入口：按 method + url 返回对应数据或执行状态变更。
+ *  body 仅在 POST/PUT 时由 http.ts 透传（用于比价试算等带参请求）。 */
+export function mockRouter(method: string, url: string, body?: unknown): Promise<unknown> {
   // GET 集合
   if (method === 'GET') {
     if (url === '/tenants') return delay().then(() => tenants)
@@ -306,6 +307,14 @@ export function mockRouter(method: string, url: string): Promise<unknown> {
     if (url.startsWith('/catalog/skus')) return delay().then(() => filterSkus(url))
     if (url === '/orders') return delay().then(() => orders)
     if (url.startsWith('/orders?')) return delay().then(() => filterOrders(url))
+    if (url === '/carriers') return delay().then(() => carriers)
+    if (url === '/pricing/markup-rules') return delay().then(() => markupRules)
+    if (url === '/pricing/fx') return delay().then(() => fxRates)
+    const chealth = url.match(/^\/carriers\/([^/]+)\/health$/)
+    if (chealth) {
+      const c = carriers.find((x) => x.code === chealth[1])
+      return c ? delay().then(() => c.health) : delay().then(() => reject('承运商不存在'))
+    }
     const detail = url.match(/^\/orders\/([^/]+)$/)
     if (detail) {
       const o = orders.find((x) => x.id === detail[1])
@@ -324,6 +333,7 @@ export function mockRouter(method: string, url: string): Promise<unknown> {
     if (rev) return delay().then(() => doReverse(rev[1]))
     const pull = url.match(/^\/channels\/([^/]+)\/pull$/)
     if (pull) return delay().then(() => doPull(pull[1]))
+    if (url === '/pricing/compare') return delay(260).then(() => doCompare(body))
     if (url === '/tenants') return delay().then(() => reject('演示模式不支持新建租户'))
   }
 
@@ -418,4 +428,266 @@ function doPull(shopId: string): unknown {
     failed: 0,
     errors: [],
   }
+}
+
+// ==========================================================================
+// 阶段3 承运商适配器 + 比价 / 加价 / 币种（演示数据，镜像后端 carriers / pricing 模块）
+// ==========================================================================
+
+/** 承运商六能力矩阵（对齐后端 CarrierAdapter 能力声明） */
+export interface MockCarrierCapability {
+  rate: boolean
+  ship: boolean
+  label: boolean
+  track: boolean
+  cancel: boolean
+  subscribe: boolean
+}
+export interface MockCarrierHealth {
+  status: 'up' | 'degraded' | 'down'
+  latencyMs: number
+  uptime: number
+  checkedAt: string
+  note: string
+}
+export interface MockCarrier {
+  code: string
+  name: string
+  enName: string
+  authType: string
+  sandbox: boolean
+  region: string
+  capabilities: MockCarrierCapability
+  health: MockCarrierHealth
+  note: string
+}
+
+const CHECKED_AT = '2026-10-13T00:55:00.000Z'
+
+const carriers: MockCarrier[] = [
+  {
+    code: 'yunexpress',
+    name: '云途物流',
+    enName: 'YunExpress',
+    authType: 'OAuth2 + HMAC-SHA256',
+    sandbox: true,
+    region: '全球 · 专线小包',
+    capabilities: { rate: true, ship: true, label: true, track: true, cancel: true, subscribe: true },
+    health: { status: 'up', latencyMs: 168, uptime: 99.95, checkedAt: CHECKED_AT, note: 'token 内存缓存正常（提前 60s 刷新）' },
+    note: '六能力全支持：比价 / 建单 / 面单 / 轨迹 / 取消 / 订阅。',
+  },
+  {
+    code: 'dhl',
+    name: 'DHL 快递',
+    enName: 'DHL Express',
+    authType: 'OAuth2 Basic + API-Key',
+    sandbox: true,
+    region: '全球 · 商业快递',
+    capabilities: { rate: true, ship: true, label: true, track: true, cancel: false, subscribe: false },
+    health: { status: 'degraded', latencyMs: 436, uptime: 98.6, checkedAt: CHECKED_AT, note: '沙箱审批中，偶发 429 限流' },
+    note: '不支持取消 / 订阅，相关能力诚实返回 NOT_IMPLEMENTED。',
+  },
+  {
+    code: 'fourpx',
+    name: '4PX 递四方',
+    enName: '4PX',
+    authType: 'MD5 签名（32 位小写）',
+    sandbox: false,
+    region: '全球 · 国际专线',
+    capabilities: { rate: true, ship: true, label: true, track: true, cancel: true, subscribe: false },
+    health: { status: 'up', latencyMs: 212, uptime: 99.8, checkedAt: CHECKED_AT, note: 'MD5 签名校验通过' },
+    note: '支持取消，不支持订阅（用轮询兜底）。',
+  },
+  {
+    code: 'yanwen',
+    name: '燕文物流',
+    enName: 'Yanwen',
+    authType: 'MD5 签名（32 位小写）',
+    sandbox: false,
+    region: '欧美 · 邮政小包',
+    capabilities: { rate: false, ship: true, label: true, track: true, cancel: false, subscribe: false },
+    health: { status: 'up', latencyMs: 195, uptime: 99.7, checkedAt: CHECKED_AT, note: '不支持实时报价，走预置费率卡' },
+    note: '仅支持建单 / 面单 / 轨迹；不支持实时比价。',
+  },
+]
+
+/** 加价规则（对齐后端 MarkupRulesService：按作用域 + 优先级生效） */
+export interface MockMarkupRule {
+  id: string
+  scope: 'global' | 'tenant' | 'carrier' | 'channel' | 'product'
+  target: string
+  mode: 'percent' | 'fixed'
+  value: number
+  priority: number
+  enabled: boolean
+  note: string
+}
+
+const markupRules: MockMarkupRule[] = [
+  { id: 'mr_global', scope: 'global', target: '全部渠道', mode: 'percent', value: 12, priority: 100, enabled: true, note: '基础加价；未命中专属规则时生效' },
+  { id: 'mr_tenant_acme', scope: 'tenant', target: 'Acme 跨境店', mode: 'percent', value: 5, priority: 80, enabled: true, note: '大客户专属低加价' },
+  { id: 'mr_carrier_dhl', scope: 'carrier', target: 'DHL 快递', mode: 'percent', value: 8, priority: 60, enabled: true, note: '商业快递官方价高，加价率下调' },
+  { id: 'mr_carrier_yun', scope: 'carrier', target: '云途物流', mode: 'percent', value: 15, priority: 60, enabled: true, note: '专线小包走量，略高加价' },
+  { id: 'mr_product_battery', scope: 'product', target: '带电类目', mode: 'percent', value: 6, priority: 40, enabled: true, note: '带电附加成本转嫁' },
+  { id: 'mr_channel_amz', scope: 'channel', target: 'Amazon US', mode: 'fixed', value: 2, priority: 50, enabled: false, note: '固定加价，已停用' },
+]
+
+/** 币种汇率（对齐后端 FxService 种子） */
+export interface MockFxRate {
+  base: string
+  quote: string
+  rate: number
+  updatedAt: string
+}
+
+const fxRates: MockFxRate[] = [
+  { base: 'USD', quote: 'CNY', rate: 7.242, updatedAt: '2026-10-13T00:00:00.000Z' },
+  { base: 'EUR', quote: 'CNY', rate: 7.865, updatedAt: '2026-10-13T00:00:00.000Z' },
+  { base: 'GBP', quote: 'CNY', rate: 9.184, updatedAt: '2026-10-13T00:00:00.000Z' },
+  { base: 'USD', quote: 'EUR', rate: 0.921, updatedAt: '2026-10-13T00:00:00.000Z' },
+]
+
+/** 比价结果行（含成本价与加价后售价「双价列」） */
+export interface MockQuoteLine {
+  carrierCode: string
+  carrierName: string
+  productCode: string
+  productName: string
+  transitDays: string
+  costPrice: number
+  sellPrice: number
+  markupRate: number
+  currency: string
+  reachable: boolean
+  note: string
+}
+export interface MockCompareTrace {
+  layer: string
+  detail: string
+}
+export interface MockCompareResult {
+  request: Record<string, unknown>
+  chargeableG: number
+  currency: string
+  lines: MockQuoteLine[]
+  trace: MockCompareTrace[]
+  generatedAt: string
+}
+
+const BANNED_COUNTRIES = ['KP', 'IR', 'SY']
+const USD_CNY = 7.242
+
+/** 承运商实时费率卡（成本口径，CNY）：首重 baseCny + 续重 perKgCny */
+const RATE_CARDS: {
+  code: string
+  carrierName: string
+  productCode: string
+  productName: string
+  baseCny: number
+  perKgCny: number
+  transit: string
+  allowSensitive: boolean
+}[] = [
+  { code: 'yunexpress', carrierName: '云途物流', productCode: 'YUN-STD', productName: '云途专线小包', baseCny: 18, perKgCny: 68, transit: '8-12', allowSensitive: true },
+  { code: 'fourpx', carrierName: '4PX 递四方', productCode: '4PX-GLB', productName: '4PX 国际专线', baseCny: 22, perKgCny: 82, transit: '6-10', allowSensitive: true },
+  { code: 'dhl', carrierName: 'DHL 快递', productCode: 'DHL-EXP', productName: 'DHL Express 商业快递', baseCny: 46, perKgCny: 168, transit: '3-5', allowSensitive: false },
+]
+
+/** 有效加价率：承运商专属规则覆盖全局基础加价，带电类目叠加产品规则 */
+function effectiveMarkup(carrierName: string, category: string): number {
+  const carrierRule = markupRules.find((r) => r.enabled && r.scope === 'carrier' && r.target === carrierName)
+  const base = carrierRule?.value ?? markupRules.find((r) => r.enabled && r.scope === 'global')?.value ?? 0
+  const batteryExtra = category === 'battery' ? markupRules.find((r) => r.enabled && r.scope === 'product')?.value ?? 0 : 0
+  return base + batteryExtra
+}
+
+/** 运费试算：L1 费率卡 → L2 可达性 → L3 实时池 → L4 护栏（与后端 PricingEngineService 四层一致） */
+function doCompare(body: unknown): unknown {
+  const req = (body ?? {}) as {
+    country?: string
+    weightG?: number
+    lengthCm?: number
+    widthCm?: number
+    heightCm?: number
+    category?: string
+    declaredValue?: number
+  }
+  const country = (req.country || 'US').toUpperCase()
+  const weightG = Number(req.weightG) || 500
+  const lengthCm = Number(req.lengthCm) || 20
+  const widthCm = Number(req.widthCm) || 15
+  const heightCm = Number(req.heightCm) || 10
+  const category = req.category || 'normal'
+
+  // 计费重：实重与体积重（长×宽×高/5000）取大
+  const volumetricG = Math.round(((lengthCm * widthCm * heightCm) / 5000) * 1000)
+  const chargeableG = Math.max(weightG, volumetricG)
+  const chargeableKg = Math.round((chargeableG / 1000) * 100) / 100
+
+  const trace: MockCompareTrace[] = []
+
+  // L1 预热费率卡
+  trace.push({ layer: 'L1 预热费率卡', detail: `命中 ${RATE_CARDS.length} 条承运商费率卡（云途 / 4PX / DHL）` })
+
+  // L2 可达性地图
+  const banned = BANNED_COUNTRIES.includes(country)
+  const l2detail = banned
+    ? `目的国 ${country} 命中禁运清单（KP / IR / SY），实时池整体剔除`
+    : category === 'sensitive'
+      ? `目的国 ${country} 可达；「敏感货」仅云途 / 4PX 可承运，DHL 剔除`
+      : `目的国 ${country} 可达，禁运清单未命中`
+  trace.push({ layer: 'L2 可达性地图', detail: l2detail })
+
+  // L3 实时并行池（2s SLA）
+  const lines: MockQuoteLine[] = []
+  if (!banned) {
+    for (const rc of RATE_CARDS) {
+      if (category === 'sensitive' && !rc.allowSensitive) continue
+      const costCny = rc.baseCny + rc.perKgCny * chargeableKg
+      const costPrice = Math.round((costCny / USD_CNY) * 100) / 100
+      const markupRate = effectiveMarkup(rc.carrierName, category)
+      const sellPrice = Math.round(costPrice * (1 + markupRate / 100) * 100) / 100
+      lines.push({
+        carrierCode: rc.code,
+        carrierName: rc.carrierName,
+        productCode: rc.productCode,
+        productName: rc.productName,
+        transitDays: rc.transit,
+        costPrice,
+        sellPrice,
+        markupRate,
+        currency: 'USD',
+        reachable: true,
+        note: category === 'battery' && rc.code === 'dhl' ? '带电需走专用渠道，仅作参考' : '',
+      })
+    }
+  }
+  trace.push({
+    layer: 'L3 实时并行池',
+    detail: banned ? 'L2 已剔除，跳过实时询价' : `并发询价 ${RATE_CARDS.length} 家，2s SLA 内全部返回`,
+  })
+
+  // L4 结果护栏：去重 → 售价升序 → 截断 20
+  lines.sort((a, b) => a.sellPrice - b.sellPrice)
+  const seen = new Set<string>()
+  const deduped = lines.filter((l) => {
+    const k = l.carrierCode + ':' + l.productCode
+    if (seen.has(k)) return false
+    seen.add(k)
+    return true
+  })
+  const truncated = deduped.slice(0, 20)
+  trace.push({
+    layer: 'L4 结果护栏',
+    detail: `去重 ${deduped.length} 条 → 按售价升序 → 截断 ${truncated.length}/20`,
+  })
+
+  return {
+    request: { country, weightG, lengthCm, widthCm, heightCm, category, declaredValue: Number(req.declaredValue) || 0 },
+    chargeableG,
+    currency: 'USD',
+    lines: truncated,
+    trace,
+    generatedAt: NOW(),
+  } as MockCompareResult
 }

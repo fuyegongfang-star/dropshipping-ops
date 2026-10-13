@@ -116,3 +116,22 @@
 **提交**：`cb04b4c`（3.7 运费试算门户正式）。
 
 **下一步**：3.8 头程/尾程两段式（`shipment_legs` leg_type first/last；建单可拆分两段运单，轨迹带 leg 维度，§14）。
+
+---
+
+## 2026-10-13（手动 · 前端补齐：承运商 / 运费试算 / 加价·币种）
+
+**背景**：阶段3 夜间自动化 3.2–3.7 交付的是**后端能力**（`carriers` / `pricing` 模块），前端此前仅 5 个页面，用户反馈"看不到对应菜单"。
+
+**完成**：补齐 3 个前端业务页 + 左侧菜单 + 路由，走纯前端演示(mock)模式即可直接查看：
+- **承运商管理** `web/src/views/CarriersView.vue`：云途/DHL/4PX/燕文四家 · 能力矩阵六徽章（比价/建单/面单/轨迹/取消/订阅）+ 健康状态/时延/可用率 + 顶部汇总卡。
+- **运费试算** `web/src/views/QuotesView.vue`：目的国/重量/尺寸/品类/申报价值 → `POST /pricing/compare` → 展示比价引擎 **L1–L4 执行痕迹** + **双价列**（成本 → 加价后客户售价）+ 渠道自选。
+- **加价 / 币种** `web/src/views/PricingRulesView.vue`：加价规则表（作用域/目标/加价值/优先级/启停）+ 币种汇率表。
+- **mock 数据层**：`mock-data.ts` 新增 carriers / markup-rules / fx 种子与 `doCompare` 四层引擎模拟；`http.ts` 的 POST/PUT 现向 `mockRouter` 透传 `body`。
+- **导航**：`router/index.ts` 增 `/carriers`、`/quotes`、`/pricing`；`BasicLayout.vue` 菜单 +3 项；`AppIcon.vue` 增 calculator/sliders/shield/bolt/coins/flag/clock/select 图标。
+
+**验证**：`eslint --max-warnings 0` ✅ ｜ `vue-tsc --noEmit && vite build` ✅ ｜ 浏览器实测（预览端口）四页渲染 + 试算结果均正常。
+
+**说明**：本次为后端能力的"可视化前端"（演示级），正式版仍按原排期推进（3.7 备注的「试算门户前端页」、4.6「运营配置后台」）。
+
+**下一步**：夜间自动化按原计划 3.8 头程/尾程两段式接力（不受本次前端补充影响）。

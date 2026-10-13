@@ -66,11 +66,11 @@ export const http: TypedHttp = {
     USE_MOCK ? (mockRouter('GET', url) as unknown as Promise<T>) : (instance.get(url, config) as unknown as Promise<T>),
   post: <T>(url: string, data?: unknown, config?: AxiosRequestConfig) =>
     USE_MOCK
-      ? (mockRouter('POST', url) as unknown as Promise<T>)
+      ? (mockRouter('POST', url, data) as unknown as Promise<T>)
       : (instance.post(url, data, config) as unknown as Promise<T>),
   put: <T>(url: string, data?: unknown, config?: AxiosRequestConfig) =>
     USE_MOCK
-      ? (mockRouter('PUT', url) as unknown as Promise<T>)
+      ? (mockRouter('PUT', url, data) as unknown as Promise<T>)
       : (instance.put(url, data, config) as unknown as Promise<T>),
   delete: <T>(url: string, config?: AxiosRequestConfig) =>
     USE_MOCK
