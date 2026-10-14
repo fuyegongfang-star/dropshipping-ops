@@ -271,3 +271,27 @@
 **占位 / 待联调（统一 TODO）**：`POST /settings/assets` 的后端实现（解码 base64 → 落 MinIO → 返回 CDN 地址）随 §23 系统设置后端模块一并联调；当前演示模式全链路已通，正式模式前端调用契约已就绪。
 
 **下一步**：3.8 头程/尾程两段式（夜间自动化按 `dev-schedule.md` 接力）。
+
+---
+
+## 2026-10-14（夜间自动化 23:10 启动 · 3.12 地址校验+分区 / 3.13 聚合平台兜底）
+
+**背景**：阶段3 国际物流段收口（M3）。本次补齐最后两项物流能力：地址校验标准化（§18，脏地址/邮编分区/远程费驱动）与聚合平台兜底追踪（§3e，AfterShip/17TRACK 尾程归一化）。两者均按「可视化交付铁律」落地前端独立页面。
+
+**完成任务**：
+- **3.12 地址校验与分区（§18）**：后端 `carriers/address/`（AddressService 标准化/质量分/脏地址检测 + ZoneMapService 邮编→分区/远程/可达，按承运商覆盖）；`POST /carriers/address/validate`；单测 12 cases。前端新增 `AddressView.vue`（物流履约→地址校验）：表单→质量分徽章+标准化地址+分区结论+分级问题+各承运商可行性表，内置合规/脏地址示例，演示+正式双路通。
+- **3.13 聚合平台兜底（§3e）**：后端 `carriers/aggregator/`（AggregatorService 经 AfterShip/17TRACK 归一化尾程轨迹，诚实原则：不支持平台抛 NOT_IMPLEMENTED、fail 哨兵返回 fallback 建议直连）；`POST /carriers/aggregator/track` + `GET /carriers/aggregator/catalog`；单测 5 cases。前端新增 `AggregatorView.vue`（物流履约→聚合追踪）：选平台+尾程承运商+轨迹号→归一化轨迹时间线+fallback 提示。
+- **前端新增页面**：`AddressView.vue`、`AggregatorView.vue`；`carriers.ts` 增 `validateAddress`/`aggregateTrack`/`listAggregators` API 与类型；`mock-data.ts` 增 `doValidateAddress`/`doAggregateTrack`/`doAggregatorCatalog`（与后端同口径）；`AppIcon` 增 `pin`；`router` + `BasicLayout.menuNodes` 注册两页（物流履约分组）。
+- **进度生成器**：`scripts/gen-progress.cjs` 的 `EXPLICIT_ROUTES` 增补 `3.12→/address`、`3.13→/aggregator`；重跑 `npm run progress:gen`（45 任务/25 完成/55.6%）；`dev-schedule.md` 状态列 3.12、3.13 置 ✅ 并追加进度段落。
+
+**进行中**：无。
+**受阻**：无。
+**测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（155 passed / 23 suites，新增 17）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
+**提交**：本批统一提交（3.12+3.13 后端/前端/进度生成器/文档），随后检查点提交。
+**本次新增前端页面与菜单**：
+- 物流履约 → 「地址校验」（/address）：AddressView.vue
+- 物流履约 → 「聚合追踪」（/aggregator）：AggregatorView.vue
+
+**下一步**：阶段3 收口完成（M3 达成）。进入阶段4：4.1 收款账务 wallet+ledger（§16 复式记账/预充值/账期/退款）→ 4.2 商户账单+承运商对账 → 4.3 利润核算 → 4.4 多租户隔离强化 → 4.5 精细化 RBAC → 4.6 运营配置后台 → 4.7 报表指标 → 4.8 理赔保险 → 4.9 多语言多币种前端。另：3.12 的 zone_maps 可在 §4.4 接入远程附加费、在比价 L2 可达性复用。
+
+**明天打开网页能看到什么**：左侧「物流履约」新增两个菜单——「地址校验」（填收件地址即见质量分、标准化地址、分区结论、各承运商可达性/远程费提示，含一键合规/脏地址示例）与「聚合追踪」（选 AfterShip/17TRACK + 尾程承运商 + 轨迹号即见归一化尾程轨迹时间线，含 fail 哨兵演示兜底）；「开发进度」页与仪表盘「最近交付」卡片新增 3.12/3.13 条目。

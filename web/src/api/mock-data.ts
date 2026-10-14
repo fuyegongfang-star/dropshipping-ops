@@ -12,7 +12,7 @@
  */
 
 // ===== 类型（镜像后端 DTO 与前端 *Api 模块）=====
-import type { ComposeLegsRequest, ComposeLegsResult, ShipmentLeg, LabelSpec, LabelResult, CustomsSpec, CustomsIssue, CustomsValidationResult, TrackingQuery, TrackingEnvelope, TrackingChannel, TrackingEvent, NdrReport } from './carriers'
+import type { ComposeLegsRequest, ComposeLegsResult, ShipmentLeg, LabelSpec, LabelResult, CustomsSpec, CustomsIssue, CustomsValidationResult, TrackingQuery, TrackingEnvelope, TrackingChannel, TrackingEvent, NdrReport, AddressValidateRequest, AddressValidationResult, AddressIssue, ZoneInfo, CarrierFeasibility, AggregatorQuery, AggregatorResult, AggregatorCatalogItem } from './carriers'
 
 export interface MockTenant {
   id: string
@@ -522,6 +522,199 @@ function doTrackQuery(body: unknown): TrackingEnvelope {
   }
 }
 
+// ===== 地址校验与分区（任务 3.12，方案 §18）=====
+/** 与后端 AddressService / ZoneMapService 同口径的演示实现。 */
+const ADDR_POSTAL_FORMAT: Record<string, RegExp> = {
+  US: /^\d{5}(-\d{4})?$/,
+  DE: /^\d{5}$/,
+  GB: /^[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}$/i,
+  FR: /^\d{5}$/,
+  CA: /^[A-Z]\d[A-Z]\s?\d[A-Z]\d$/i,
+  AU: /^\d{4}$/,
+  JP: /^\d{3}-?\d{4}$/,
+}
+const ADDR_REMOTE_PREFIX: Record<string, string[]> = {
+  US: ['99', '96', '969', '995', '997', '998'],
+  CA: ['Y', 'X0'],
+  AU: ['08', '087'],
+}
+const ADDR_UNREACHABLE: Record<string, Record<string, string[]>> = {
+  yunexpress: {},
+  dhl: {},
+  fourpx: { US: ['ZONE_5'] },
+  yanwen: { CA: ['ZONE_4', 'ZONE_5'] },
+  mock: {},
+  aggregator: {},
+}
+const ADDR_REGION: Record<string, string> = {
+  US: '北美·本土',
+  CA: '北美·加拿大',
+  DE: '欧洲·西欧',
+  FR: '欧洲·西欧',
+  GB: '欧洲·英国',
+  ES: '欧洲·南欧',
+  IT: '欧洲·南欧',
+  NL: '欧洲·西欧',
+  AU: '大洋洲·澳洲',
+  JP: '亚洲·东亚',
+  CN: '亚洲·东亚',
+}
+const ADDR_CARRIER_NAMES: Record<string, string> = {
+  yunexpress: '云途',
+  dhl: 'DHL Express',
+  fourpx: '递四方',
+  yanwen: '燕文',
+  mock: '演示承运商',
+  aggregator: '聚合平台',
+}
+const ADDR_ALL_CARRIERS = ['yunexpress', 'dhl', 'fourpx', 'yanwen', 'mock']
+
+function addrDeriveZone(country: string, postal: string): { zoneCode: string; region: string } {
+  const cleaned = (postal || '').replace(/[^A-Z0-9]/gi, '').toUpperCase()
+  const first = cleaned[0] ?? '0'
+  const n = /[0-9]/.test(first) ? Number(first) : first.charCodeAt(0) % 5
+  const zoneIndex = (n % 5) + 1
+  return { zoneCode: `ZONE_${zoneIndex}`, region: `${country}·${ADDR_REGION[country] ?? '其他区域'}` }
+}
+
+function doValidateAddress(body: unknown): AddressValidationResult {
+  const req = body as AddressValidateRequest
+  const issues: AddressIssue[] = []
+  const country = (req.country || '').toUpperCase()
+  const postalRaw = (req.postalCode || '').trim()
+
+  if (!country) issues.push({ level: 'error', code: 'COUNTRY_MISSING', message: '目的国必填（ISO2，如 US/DE/GB）', field: 'country' })
+  if (!postalRaw) issues.push({ level: 'error', code: 'POSTAL_MISSING', message: '邮政编码必填', field: 'postalCode' })
+  if (!req.city) issues.push({ level: 'warning', code: 'CITY_MISSING', message: '建议补充城市', field: 'city' })
+  if (!req.addressLine1) issues.push({ level: 'warning', code: 'ADDRESS1_MISSING', message: '建议补充街道门牌', field: 'addressLine1' })
+  if (!req.name) issues.push({ level: 'warning', code: 'NAME_MISSING', message: '建议补充收件人姓名', field: 'name' })
+  if (!req.phone) issues.push({ level: 'warning', code: 'PHONE_MISSING', message: '建议补充联系电话', field: 'phone' })
+
+  const postalFormatOk = country ? addrIsPostalValid(country, postalRaw) : false
+  if (country && postalRaw && !postalFormatOk) {
+    issues.push({ level: 'error', code: 'POSTAL_FORMAT', message: `邮编格式不符合 ${country} 规范`, field: 'postalCode' })
+  }
+
+  let phoneFormatOk = true
+  if (req.phone && !/^\+?[\d\s-]{6,20}$/.test(req.phone.trim())) {
+    phoneFormatOk = false
+    issues.push({ level: 'warning', code: 'PHONE_FORMAT', message: '电话格式可疑，建议含国际区号', field: 'phone' })
+  }
+
+  const normalized: AddressValidateRequest = {
+    country,
+    name: req.name?.trim() || undefined,
+    phone: req.phone?.trim() || undefined,
+    state: req.state?.trim() || undefined,
+    city: req.city?.trim() || undefined,
+    addressLine1: req.addressLine1?.trim() || undefined,
+    addressLine2: req.addressLine2?.trim() || undefined,
+    postalCode: postalRaw.toUpperCase(),
+  }
+
+  const required: (keyof AddressValidateRequest)[] = ['country', 'postalCode', 'city', 'addressLine1', 'name', 'phone']
+  const filled = required.filter((f) => (req[f] as unknown as string)?.toString().trim()).length
+  const completeness = filled / required.length
+  const formatOk = postalFormatOk && phoneFormatOk
+  const qualityScore = Math.round(completeness * 70 + (formatOk ? 30 : 0))
+
+  const carrierCodes = req.carriers && req.carriers.length ? req.carriers : ADDR_ALL_CARRIERS
+  const feasibility: CarrierFeasibility[] = carrierCodes.map((code) => {
+    const hit = addrResolve(code, country, normalized.postalCode)
+    return {
+      carrierCode: code,
+      carrierName: ADDR_CARRIER_NAMES[code] ?? code,
+      zoneCode: hit.zoneCode,
+      region: hit.region,
+      isRemote: hit.isRemote,
+      reachable: country ? hit.reachable : false,
+      note: !country
+        ? '目的国缺失，暂无法评估'
+        : hit.reachable
+          ? hit.isRemote
+            ? '偏远区，将加收远程附加费（§4.4）'
+            : '可达，费率正常'
+          : '该承运商此分区不可达，建议转其他承运商 / 聚合兜底（§3e）',
+    }
+  })
+
+  const primary = feasibility[0]
+  const zone: ZoneInfo = {
+    country,
+    postalCode: normalized.postalCode ?? '',
+    zoneCode: primary?.zoneCode ?? 'ZONE_1',
+    region: primary?.region ?? `${country}·其他区域`,
+    isRemote: primary?.isRemote ?? false,
+    reachable: primary?.reachable ?? false,
+  }
+
+  return { valid: !issues.some((i) => i.level === 'error'), normalized, qualityScore, issues, zone, feasibility }
+}
+
+function addrIsPostalValid(country: string, postal?: string): boolean {
+  if (!postal) return false
+  const fmt = ADDR_POSTAL_FORMAT[country]
+  return fmt ? fmt.test(postal.trim()) : true
+}
+
+function addrResolve(carrierCode: string, country: string, postal?: string): { zoneCode: string; region: string; isRemote: boolean; reachable: boolean } {
+  const cc = (carrierCode || 'mock').toLowerCase()
+  const c = (country || '').toUpperCase()
+  const normalizedPostal = (postal || '').trim().toUpperCase()
+  const { zoneCode, region } = addrDeriveZone(c, normalizedPostal)
+  const remotePrefixes = ADDR_REMOTE_PREFIX[c] ?? []
+  const isRemote = remotePrefixes.some((p) => normalizedPostal.startsWith(p))
+  const blocked = ADDR_UNREACHABLE[cc]?.[c] ?? []
+  const reachable = !blocked.includes(zoneCode)
+  return { zoneCode, region, isRemote, reachable }
+}
+
+// ===== 聚合平台兜底追踪（任务 3.13，方案 §3e）=====
+/** 与后端 AggregatorService 同口径的演示实现。 */
+const AGGREGATOR_NAMES: Record<string, string> = { aftership: 'AfterShip', '17track': '17TRACK' }
+
+function doAggregateTrack(body: unknown): AggregatorResult {
+  const q = body as AggregatorQuery
+  const code = (q.aggregatorCode || '').toLowerCase()
+  const name = AGGREGATOR_NAMES[code]
+  if (!name) {
+    throw new Error(`未接入的聚合平台：${q.aggregatorCode}（当前仅支持 AfterShip / 17TRACK）`)
+  }
+  const now = NOW()
+  if (/fail/i.test(q.trackingNo)) {
+    return {
+      trackingNo: q.trackingNo,
+      carrierCode: q.carrierCode,
+      aggregatorCode: code,
+      aggregatorName: name,
+      status: 'unknown',
+      events: [{ status: 'exception', occurredAt: now, description: '聚合平台未能从承运商取回轨迹' }],
+      fallback: true,
+      note: '聚合平台未解析到轨迹，建议改用承运商直连追踪（§6）兜底',
+    }
+  }
+  return {
+    trackingNo: q.trackingNo,
+    carrierCode: q.carrierCode,
+    aggregatorCode: code,
+    aggregatorName: name,
+    status: 'out_for_delivery',
+    events: [
+      { status: 'picked_up', location: 'CN SZ', occurredAt: now, description: '已揽收（聚合平台归一化）' },
+      { status: 'in_transit', location: 'CN SZ', occurredAt: now, description: '干线运输中' },
+      { status: 'customs', location: 'US LAX', occurredAt: now, description: '清关中' },
+      { status: 'out_for_delivery', location: 'US LAX', occurredAt: now, description: '派送中' },
+      { status: 'delivered', location: 'US LAX', occurredAt: now, description: '已签收' },
+    ],
+    fallback: false,
+    note: `经 ${name} 归一化尾程轨迹成功，可作为承运商直连的兜底通道（§3e）`,
+  }
+}
+
+function doAggregatorCatalog(): AggregatorCatalogItem[] {
+  return Object.entries(AGGREGATOR_NAMES).map(([code, name]) => ({ code, name, capability: 'track' }))
+}
+
 // ===== 路由分发 =====
 /** mock 模式下 http.ts 的唯一入口：按 method + url 返回对应数据或执行状态变更。
  *  body 仅在 POST/PUT 时由 http.ts 透传（用于比价试算等带参请求）。 */
@@ -570,6 +763,9 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     if (url === '/carriers/labels') return delay(200).then(() => doCreateLabel(body))
     if (url === '/carriers/customs/validate') return delay(200).then(() => doValidateCustoms(body))
     if (url === '/carriers/tracking/query') return delay(200).then(() => doTrackQuery(body))
+    if (url === '/carriers/address/validate') return delay(180).then(() => doValidateAddress(body))
+    if (url === '/carriers/aggregator/track') return delay(200).then(() => doAggregateTrack(body))
+    if (url === '/carriers/aggregator/catalog') return delay(120).then(() => doAggregatorCatalog())
     if (url === '/pricing/markup-rules') return delay().then(() => createMarkupRule(body))
     if (url === '/settings/tdk-rules') return delay().then(() => createTdkRule(body))
     // 品牌图片上传（LOGO / Favicon）：演示态直接回吐压缩后的 dataURL 地址。

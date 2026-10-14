@@ -59,8 +59,8 @@
 | 3.9 | 阶段3 | 面单 PDF/ZPL | pdf-lib 处理（§3/§11） | 3.2 | 1d | ✅ |
 | 3.10 | 阶段3 | 报关/合规字段 | HS/IOSS/EORI/VAT/Section321（§19） | 1.4 | 1.5d | ✅ |
 | 3.11 | 阶段3 | 轨迹双通道 + NDR | 推送+轮询兜底 + 异常工单（§3/§20） | 3.2/3.4 | 1.5d | ✅ |
-| 3.12 | 阶段3 | 地址校验 + 分区 | 脏地址/邮编→zone（§18） | 1.4 | 1d | ⬜ |
-| 3.13 | 阶段3 | 聚合平台兜底 | AfterShip/17track 尾程（§3e） | 3.11 | 0.5d | ⬜ |
+| 3.12 | 阶段3 | 地址校验 + 分区 | 脏地址/邮编→zone（§18） | 1.4 | 1d | ✅ |
+| 3.13 | 阶段3 | 聚合平台兜底 | AfterShip/17track 尾程（§3e） | 3.11 | 0.5d | ✅ |
 | 4.1 | 阶段4 | 收款账务 wallet+ledger | 复式记账/预充值/账期/退款（§16） | 0.3 | 2d | ⬜ |
 | 4.2 | 阶段4 | 商户账单 + 承运商对账 | bills/reconciliations（§9/§10） | 4.1/3.6 | 1.5d | ⬜ |
 | 4.3 | 阶段4 | 利润核算(spread) | Σ(sell−cost)（§9/§10） | 4.2 | 1d | ⬜ |
@@ -291,3 +291,28 @@
 - **测试结果**：server `tsc --noEmit` ✅ ｜ `jest` ✅（tracking 3 passed，全仓 138 passed/21 suites）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
 - **提交**：`待提交`（feat(carriers): 阶段3 轨迹双通道+NDR 3.11）。
 - **下一步（次日接力）**：3.12 地址校验+分区（§18 脏地址/邮编→zone）｜ 3.13 聚合平台兜底（AfterShip/17track 尾程）。
+
+---
+
+### 进度更新 · 2026-10-14（夜间自动化 23:10 启动 · 3.12 地址校验+分区 / 3.13 聚合平台兜底）
+- **完成（✅）**：
+  - **3.12 地址校验与分区（§18 地址校验与标准化）** —— 新增 `carriers/address/` 子模块：
+    - `address.types.ts`：`AddressSpec`/`AddressIssue`/`ZoneInfo`/`CarrierFeasibility`/`AddressValidationResult`（分级问题 + 邮编分区 + 多承运商可行性）。
+    - `zone-map.service.ts`：`ZoneMapService` 邮编→分区映射引擎 `resolve`/`resolveMany`：分区 ZONE_1..ZONE_5（邮编首字符确定性落入）、区域中文名、远程区前缀标记（US AK/HI/关岛、CA 北部、AU 北领地占位）、按承运商可达性覆盖（4PX 美国 ZONE_5 不可达、燕文加拿大远区不可达，待 §3e 兜底）。
+    - `address.service.ts`：`AddressService.validate` —— 脏地址检测（必填/邮编格式按目的国/电话格式）+ 标准化（大小写归一/邮编大写/去空格）+ 质量分（完整度 70% + 格式合规 30%）+ 分区与多承运商可行性；error 级阻断、warning/info 提示。
+    - `carriers.controller.ts`：`POST /carriers/address/validate`；`carriers.module.ts` 装配 `AddressService`/`ZoneMapService`。
+    - 单测 `address.service.spec.ts`（12 cases：必填/邮编格式/电话/质量分/标准化/分区/远程/可达/多承运商可行性）。
+  - **3.13 聚合平台兜底追踪（§3e）** —— 新增 `carriers/aggregator/` 子模块：
+    - `aggregator.types.ts`：`AggregatorQuery`/`AggregatorResult`/`AggregatorCatalogItem`（归一化尾程轨迹 + fallback 标志）。
+    - `aggregator.service.ts`：`AggregatorService.query` 经 AfterShip/17TRACK 归一化尾程轨迹，作为直连失败时的第三兜底通道；诚实原则——未接入平台抛 `NOT_IMPLEMENTED`、fail 哨兵返回 `fallback=true` 建议直连，不静默伪装妥投；`listCatalog` 供前端枚举。
+    - `carriers.controller.ts`：`POST /carriers/aggregator/track` + `GET /carriers/aggregator/catalog`；`carriers.module.ts` 装配 `AggregatorService`。
+    - 单测 `aggregator.service.spec.ts`（5 cases：目录/正常归一化/不支持诚实抛/失败哨兵 fallback）。
+  - **前端可视化（两页独立，避免膨胀 ShipmentsView）**：
+    - `AddressView.vue`（物流履约分组「地址校验」）：地址表单（目的国/收件人/电话/州省/城市/地址行/邮编/承运商多选）→ 质量分徽章 + 标准化地址 + 分区结论（区/区域/远程/可达）+ 分级问题清单 + 各承运商可行性表；内置「合规/脏地址」示例一键填充，演示+正式双路通。
+    - `AggregatorView.vue`（物流履约分组「聚合追踪」）：选聚合平台 + 尾程承运商 + 轨迹号 → 归一化轨迹时间线 + fallback 提示；含「fail」哨兵演示未解析兜底。
+    - `carriers.ts` 增 `validateAddress`/`aggregateTrack`/`listAggregators` API 与类型；`mock-data.ts` 增 `doValidateAddress`/`doAggregateTrack`/`doAggregatorCatalog`（与后端同口径）；`AppIcon` 增 `pin`；`router` + `BasicLayout.menuNodes` 已注册两页。
+- **进行中（🔵）**：无（本批任务全部完成）。
+- **受阻**：无。
+- **测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**155 passed / 23 suites**，新增 17：address 12 + aggregator 5）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
+- **提交**：待本批末统一提交（3.12+3.13 后端/前端/进度生成器）。
+- **下一步（次日接力）**：阶段3 收口完成（M3 达成）。进入阶段4：4.1 收款账务 wallet+ledger（复式记账/预充值/账期/退款 §16）→ 4.2 商户账单+承运商对账 → 4.3 利润核算 → 4.4 多租户隔离强化 → 4.5 精细化 RBAC → 4.6 运营配置后台 → 4.7 报表指标 → 4.8 理赔保险 → 4.9 多语言多币种前端。另：3.12 的 zone_maps 可在 §4.4 接入远程附加费、在比价 L2 可达性复用。

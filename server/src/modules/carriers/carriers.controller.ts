@@ -17,6 +17,10 @@ import { CustomsService } from './customs/customs.service'
 import { CustomsSpec } from './customs/customs.types'
 import { TrackingService } from './tracking/tracking.service'
 import { TrackingQuery } from './tracking/tracking.types'
+import { AddressService } from './address/address.service'
+import { AddressValidateRequest } from './address/address.types'
+import { AggregatorService } from './aggregator/aggregator.service'
+import { AggregatorQuery } from './aggregator/aggregator.types'
 import { CarrierCode } from './carrier.constants'
 import { GetRatesRequest } from './dto/rate.dto'
 import { CreateShipmentRequest } from './dto/shipment.dto'
@@ -29,6 +33,8 @@ export class CarriersController {
     private readonly label: LabelService,
     private readonly customs: CustomsService,
     private readonly tracking: TrackingService,
+    private readonly address: AddressService,
+    private readonly aggregator: AggregatorService,
   ) {}
 
   /** 承运商目录（运营级，全局） */
@@ -88,6 +94,24 @@ export class CarriersController {
   @Post('tracking/query')
   async trackingQuery(@TenantId() tenantId: string, @Body() q: TrackingQuery): Promise<ApiResponse<unknown>> {
     return ok(await this.tracking.track(tenantId, q.carrierCode as CarrierCode, q.trackingNo))
+  }
+
+  /** 地址校验与分区（§18）：试算输入即校验、下单强校验；输出标准化/质量分/分区/承运商可行性 */
+  @Post('address/validate')
+  async addressValidate(@Body() req: AddressValidateRequest): Promise<ApiResponse<unknown>> {
+    return ok(this.address.validate(req))
+  }
+
+  /** 聚合平台兜底追踪（§3e）：AfterShip/17TRACK 归一化尾程轨迹，直连失败时的第三通道 */
+  @Post('aggregator/track')
+  async aggregatorTrack(@Body() q: AggregatorQuery): Promise<ApiResponse<unknown>> {
+    return ok(this.aggregator.query(q))
+  }
+
+  /** 聚合平台目录（§3e，前端枚举选择） */
+  @Get('aggregator/catalog')
+  async aggregatorCatalog(): Promise<ApiResponse<unknown>> {
+    return ok(this.aggregator.listCatalog())
   }
 
   /** 轨迹查询（§3/§6） */

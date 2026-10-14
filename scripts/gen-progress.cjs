@@ -37,6 +37,8 @@ const EXPLICIT_ROUTES = {
   '1.7': '/catalog',
   '3.6': '/pricing',
   '3.7': '/quotes',
+  '3.12': '/address',
+  '3.13': '/aggregator',
 };
 
 /** 关键词 → 路由（兜底推断，命中即用）。 */

@@ -8,6 +8,8 @@ import ChannelsView from '@/views/ChannelsView.vue'
 import CarriersView from '@/views/CarriersView.vue'
 import QuotesView from '@/views/QuotesView.vue'
 import ShipmentsView from '@/views/ShipmentsView.vue'
+import AddressView from '@/views/AddressView.vue'
+import AggregatorView from '@/views/AggregatorView.vue'
 import PricingRulesView from '@/views/PricingRulesView.vue'
 import SiteSettingsView from '@/views/SiteSettingsView.vue'
 import ProgressView from '@/views/ProgressView.vue'
@@ -30,6 +32,8 @@ const router = createRouter({
         { path: 'carriers', name: 'carriers', component: CarriersView, meta: { title: '承运商管理' } },
         { path: 'quotes', name: 'quotes', component: QuotesView, meta: { title: '运费试算' } },
         { path: 'shipments', name: 'shipments', component: ShipmentsView, meta: { title: '两段式运单' } },
+        { path: 'address', name: 'address', component: AddressView, meta: { title: '地址校验' } },
+        { path: 'aggregator', name: 'aggregator', component: AggregatorView, meta: { title: '聚合追踪' } },
         { path: 'pricing', name: 'pricing', component: PricingRulesView, meta: { title: '运营配置' } },
         // 内部视图：仅平台运营方（super）可见
         {

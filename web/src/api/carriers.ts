@@ -61,6 +61,99 @@ export const carriersApi = {
   validateCustoms: (spec: CustomsSpec) => http.post<CustomsValidationResult>('/carriers/customs/validate', spec),
   /** 轨迹双通道 + NDR（§3/§6/§20）：推送优先，轮询兜底，异常自动识别 */
   trackQuery: (q: TrackingQuery) => http.post<TrackingEnvelope>('/carriers/tracking/query', q),
+  /** 地址校验与分区（§18）：标准化/质量分/脏地址检测/邮编→zone 远程与可达 */
+  validateAddress: (req: AddressValidateRequest) =>
+    http.post<AddressValidationResult>('/carriers/address/validate', req),
+  /** 聚合平台兜底追踪（§3e）：AfterShip/17TRACK 归一化尾程轨迹 */
+  aggregateTrack: (q: AggregatorQuery) => http.post<AggregatorResult>('/carriers/aggregator/track', q),
+  /** 聚合平台目录（§3e） */
+  listAggregators: () => http.get<AggregatorCatalogItem[]>('/carriers/aggregator/catalog'),
+}
+
+/** 地址校验入参（§18） */
+export interface AddressValidateRequest {
+  country: string // 目的国（ISO2）
+  name?: string
+  phone?: string
+  state?: string
+  city?: string
+  addressLine1?: string
+  addressLine2?: string
+  postalCode?: string
+  carriers?: string[] // 需评估可行性的承运商代码
+}
+
+/** 地址问题（error 阻断 / warning 提示 / info 建议） */
+export interface AddressIssue {
+  level: 'error' | 'warning' | 'info'
+  code: string
+  message: string
+  field?: string
+}
+
+/** 分区信息（§18 zone_maps，驱动远程费与可达性 §4.4） */
+export interface ZoneInfo {
+  country: string
+  postalCode: string
+  zoneCode: string
+  region: string
+  isRemote: boolean
+  reachable: boolean
+}
+
+/** 单承运商可行性（§18 多承运商分区/远程/可达） */
+export interface CarrierFeasibility {
+  carrierCode: string
+  carrierName: string
+  zoneCode: string
+  region: string
+  isRemote: boolean
+  reachable: boolean
+  note: string
+}
+
+/** 地址校验结果（§18） */
+export interface AddressValidationResult {
+  valid: boolean
+  normalized: AddressValidateRequest
+  qualityScore: number
+  issues: AddressIssue[]
+  zone: ZoneInfo
+  feasibility: CarrierFeasibility[]
+}
+
+/** 聚合平台兜底追踪（§3e） */
+export interface AggregatorQuery {
+  aggregatorCode: string // 聚合平台（aftership / 17track）
+  carrierCode: string // 尾程承运商
+  trackingNo: string
+}
+
+/** 归一化轨迹节点（与 §3 getTracking 同构） */
+export interface AggregatorEvent {
+  status: string
+  location?: string
+  occurredAt: string
+  description?: string
+}
+
+/** 聚合追踪结果（§3e 兜底通道） */
+export interface AggregatorResult {
+  trackingNo: string
+  carrierCode: string
+  aggregatorCode: string
+  aggregatorName: string
+  status: string
+  events: AggregatorEvent[]
+  fallback: boolean // true=聚合平台未解析，需承运商直连兜底（§3e）
+  note: string
+}
+
+/** 聚合平台目录项 */
+export interface AggregatorCatalogItem {
+  code: string
+  name: string
+  capability: 'track'
 }
 
 /** 轨迹获取通道（推送订阅 / 轮询兜底，§6） */
