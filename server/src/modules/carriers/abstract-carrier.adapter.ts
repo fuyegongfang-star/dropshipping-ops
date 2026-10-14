@@ -29,6 +29,11 @@ export abstract class AbstractCarrierAdapter implements CarrierAdapter {
     return this.carrier
   }
 
+  /** 公开能力查询（供轨迹双通道判定：是否支持推送订阅，§6/§3） */
+  getCapabilities(): CarrierCapability[] {
+    return this.capabilities()
+  }
+
   /**
    * 默认健康检查：返回适配器支持的能力（无网络探测）。
    * 需要真实探测的承运商（如打 ping/rate 接口）应覆盖本方法，复用 this.http 重试能力。

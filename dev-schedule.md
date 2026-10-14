@@ -58,7 +58,7 @@
 | 3.8 | 阶段3 | 头程/尾程两段式 | `shipment_legs`(leg_type)（§14） | 1.3/3.1 | 1.5d | ✅ |
 | 3.9 | 阶段3 | 面单 PDF/ZPL | pdf-lib 处理（§3/§11） | 3.2 | 1d | ✅ |
 | 3.10 | 阶段3 | 报关/合规字段 | HS/IOSS/EORI/VAT/Section321（§19） | 1.4 | 1.5d | ✅ |
-| 3.11 | 阶段3 | 轨迹双通道 + NDR | 推送+轮询兜底 + 异常工单（§3/§20） | 3.2/3.4 | 1.5d | ⬜ |
+| 3.11 | 阶段3 | 轨迹双通道 + NDR | 推送+轮询兜底 + 异常工单（§3/§20） | 3.2/3.4 | 1.5d | ✅ |
 | 3.12 | 阶段3 | 地址校验 + 分区 | 脏地址/邮编→zone（§18） | 1.4 | 1d | ⬜ |
 | 3.13 | 阶段3 | 聚合平台兜底 | AfterShip/17track 尾程（§3e） | 3.11 | 0.5d | ⬜ |
 | 4.1 | 阶段4 | 收款账务 wallet+ledger | 复式记账/预充值/账期/退款（§16） | 0.3 | 2d | ⬜ |
@@ -274,3 +274,20 @@
 - **测试结果**：server `tsc --noEmit` ✅ ｜ `jest` ✅（customs 7 passed，全仓 135 passed/20 suites）｜ web `vue-tsc --noEmit` ✅ ｜ `vite build` ✅。
 - **提交**：待本批末统一提交（3.10 `feat(carriers): 阶段3 报关/合规字段 3.10`）。
 - **下一步（次日接力）**：3.11 轨迹双通道+NDR（§3/§20 推送+轮询兜底+异常工单）｜ 3.12 地址校验+分区（§18 脏地址/邮编→zone）｜ 3.13 聚合平台兜底（AfterShip/17track 尾程）。
+
+---
+
+### 进度更新 · 2026-10-13（续跑 · 3.11 轨迹双通道 + NDR）
+- **完成（✅）**：
+  - **3.11 轨迹双通道 + NDR（§3 getTracking / §6 双通道 / §20 异常事件）** —— 新增 `carriers/tracking/` 子模块：
+    - `abstract-carrier.adapter.ts`：补 `getCapabilities()` 公开方法（能力清单供通道判定，已同步进 `CarrierAdapter` 接口契约）。
+    - `tracking.types.ts`：`TrackingEnvelope`（轨迹+通道+NDR+查询时间）/ `NdrReport`（detected/severity/events/recommendedAction）/ `TrackingQuery`。
+    - `tracking.service.ts`：`TrackingService.track` 双通道判定——支持订阅的承运商走**推送（push，注册 webhook 订阅）**，否则走**轮询（poll）**兜底；`detectNdr` 对 exception/cancelled 归一化状态产出 NDR 报告（critical→建理赔工单 §20，cancelled→确认重投/退款）。
+    - `carriers.controller.ts`：`POST /carriers/tracking/query`；`carriers.module.ts` 装配 `TrackingService`。
+    - 单测 `tracking.service.spec.ts`（3 cases：推送通道+订阅 / 轮询通道 / NDR 异常识别）全绿。
+  - **前端可视化（轨迹查询双通道 + NDR）**：`ShipmentsView.vue` 新增「轨迹查询（双通道 + NDR）」卡片——选承运商 + 轨迹号（`ndr` 哨兵触发异常演示）→ 展示**通道标签（推送/轮询）+ 订阅状态**与**NDR 异常报告（严重级别+事件+建议）**及轨迹节点时间线；`carriers.ts` 增 `trackQuery` API 与类型；`mock-data.ts` 增 `doTrackQuery`（订阅能力→通道、ndr→exception+清关扣留事件）；AppIcon 增 `radar` 图标。
+- **进行中（🔵）**：无。
+- **受阻**：无。
+- **测试结果**：server `tsc --noEmit` ✅ ｜ `jest` ✅（tracking 3 passed，全仓 138 passed/21 suites）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
+- **提交**：`待提交`（feat(carriers): 阶段3 轨迹双通道+NDR 3.11）。
+- **下一步（次日接力）**：3.12 地址校验+分区（§18 脏地址/邮编→zone）｜ 3.13 聚合平台兜底（AfterShip/17track 尾程）。

@@ -100,7 +100,7 @@
                 <span class="node-label">国内仓</span>
                 <span class="node-sub">{{ form.origin }}</span>
               </div>
-              <div class="seg" v-for="(leg, i) in result.legs" :key="i">
+              <div v-for="(leg, i) in result.legs" :key="i" class="seg">
                 <span class="seg-line" :class="`seg-${leg.legType}`" />
                 <span class="seg-tag" :class="`tag-${leg.legType}`">
                   {{ LEG_LABELS[leg.legType] }} · {{ leg.carrierName }}
@@ -237,6 +237,83 @@
       </el-row>
     </el-card>
 
+    <!-- 轨迹查询（双通道 + NDR，§3/§6/§20） -->
+    <el-card class="track-card">
+      <template #header>
+        <div class="card-head">
+          <span class="section-title">轨迹查询（双通道 + NDR）</span>
+          <span v-if="track" class="count-pill" :class="track.ndr.detected ? 'bad' : 'ok'">
+            {{ track.ndr.detected ? '检测到异常' : '轨迹正常' }} · {{ channelLabel }}
+          </span>
+        </div>
+      </template>
+
+      <el-row :gutter="16">
+        <el-col :span="10">
+          <el-form label-position="top" class="track-form">
+            <el-form-item label="承运商">
+              <el-select v-model="trackForm.carrierCode" class="w-full">
+                <el-option v-for="c in carriers" :key="c.code" :label="c.name" :value="c.code" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="轨迹号（含 ndr 触发异常演示）">
+              <el-input v-model="trackForm.trackingNo" placeholder="如 TRK-YUNEXPRESS-100 或 TRK-NDR-1" />
+            </el-form-item>
+            <el-button type="primary" class="w-full run-btn" :loading="trackLoading" @click="runTrack">
+              <AppIcon name="radar" :size="15" class="btn-ico" />查询轨迹
+            </el-button>
+            <p class="text-hint form-hint">
+              支持订阅的承运商（云途）走<strong>推送通道</strong>，否则走<strong>轮询通道</strong>兜底；
+              轨迹号含 <code>ndr</code> 触发清关异常并生成 NDR 报告。
+            </p>
+          </el-form>
+        </el-col>
+        <el-col :span="14">
+          <div v-if="track" class="track-result">
+            <div class="track-meta">
+              <span class="ch-tag" :class="track.channel === 'push' ? 'ch-push' : 'ch-poll'">
+                <AppIcon :name="track.channel === 'push' ? 'bolt' : 'refresh'" :size="13" />{{ channelLabel }}
+              </span>
+              <span v-if="track.channel === 'push'" class="sub-tag" :class="track.subscribed ? 'ok' : 'bad'">
+                {{ track.subscribed ? '已订阅推送' : '订阅失败（轮询兜底）' }}
+              </span>
+            </div>
+
+            <!-- NDR 报告 -->
+            <div v-if="track.ndr.detected" class="ndr" :class="`ndr-${track.ndr.severity}`">
+              <div class="ndr-head"><AppIcon name="warning" :size="14" />NDR 异常报告（{{ severityLabel }}）</div>
+              <ul class="ndr-events">
+                <li v-for="(e, i) in track.ndr.events" :key="i">{{ e }}</li>
+              </ul>
+              <div class="ndr-action"><b>建议：</b>{{ track.ndr.recommendedAction }}</div>
+            </div>
+            <div v-else class="ndr ndr-ok"><AppIcon name="check" :size="14" />轨迹正常，无需处理</div>
+
+            <!-- 轨迹节点时间线 -->
+            <div class="events">
+              <div
+                v-for="(ev, i) in track.tracking.events"
+                :key="i"
+                class="ev"
+                :class="ev.status === 'exception' ? 'ev-bad' : ''"
+              >
+                <span class="ev-dot" />
+                <div class="ev-body">
+                  <span class="ev-status">{{ statusLabel(ev.status) }}</span>
+                  <span class="ev-desc">{{ ev.description }}</span>
+                  <span v-if="ev.location" class="ev-loc">{{ ev.location }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div v-else class="app-empty">
+            <span class="app-empty-ico"><AppIcon name="radar" :size="26" /></span>
+            <span class="app-empty-text">输入轨迹号并点击「查询轨迹」，查看推送/轮询双通道与 NDR 异常识别</span>
+          </div>
+        </el-col>
+      </el-row>
+    </el-card>
+
     <!-- 面单预览对话框（§3/§11 PDF + ZPL 双格式） -->
     <el-dialog v-model="labelVisible" title="面单预览" width="460px" append-to-body>
       <div v-if="labelData" class="label-prev">
@@ -263,7 +340,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { carriersApi, LEG_LABELS, type ComposeLegsResult, type LegType, type ShipmentLeg, type LabelResult, type CustomsValidationResult, type CustomsSpec } from '@/api/carriers'
+import { carriersApi, LEG_LABELS, type ComposeLegsResult, type ShipmentLeg, type LabelResult, type CustomsValidationResult, type CustomsSpec, type TrackingEnvelope, type TrackingQuery } from '@/api/carriers'
 import type { Carrier } from '@/api/carriers'
 import PageHeader from '@/components/PageHeader.vue'
 import AppIcon from '@/components/AppIcon.vue'
@@ -350,6 +427,51 @@ async function runCustoms(): Promise<void> {
     ElMessage.error('校验失败：' + (e as Error).message)
   } finally {
     customsLoading.value = false
+  }
+}
+
+// 轨迹查询（双通道 + NDR，§3/§6/§20）
+const track = ref<TrackingEnvelope | null>(null)
+const trackLoading = ref(false)
+const trackForm = reactive<TrackingQuery>({
+  carrierCode: 'yunexpress',
+  trackingNo: 'TRK-YUNEXPRESS-100',
+})
+const STATUS_LABELS: Record<string, string> = {
+  created: '已创建',
+  picked_up: '已揽收',
+  in_transit: '运输中',
+  customs: '清关中',
+  out_for_delivery: '派送中',
+  delivered: '已签收',
+  exception: '异常',
+  cancelled: '已取消',
+  unknown: '未知',
+}
+const statusLabel = (s: string) => STATUS_LABELS[s] ?? s
+const channelLabel = computed(() =>
+  track.value ? (track.value.channel === 'push' ? '推送通道 (webhook)' : '轮询通道 (poll)') : '—',
+)
+const severityLabel = computed(() => {
+  const m: Record<string, string> = { info: '提示', warning: '警告', critical: '严重' }
+  return track.value ? m[track.value.ndr.severity] : '—'
+})
+
+async function runTrack(): Promise<void> {
+  if (!trackForm.trackingNo) {
+    ElMessage.warning('请输入轨迹号')
+    return
+  }
+  trackLoading.value = true
+  try {
+    track.value = await carriersApi.trackQuery({ ...trackForm })
+    ElMessage.success(
+      track.value.ndr.detected ? '检测到异常，已生成 NDR 报告' : '轨迹查询成功，通道与状态正常',
+    )
+  } catch (e) {
+    ElMessage.error('查询失败：' + (e as Error).message)
+  } finally {
+    trackLoading.value = false
   }
 }
 
@@ -487,4 +609,36 @@ async function run(): Promise<void> {
 .c-error { background: #fef2f2; color: #b91c1c; }
 .c-warning { background: #fff4e5; color: #b45309; }
 .c-info { background: #eff6ff; color: #1d4ed8; }
+
+/* 轨迹查询（双通道 + NDR） */
+.track-card { margin-top: 16px; }
+.track-form :deep(.el-card__body) { padding: 18px 20px; }
+.track-result { padding-top: 4px; }
+.track-meta { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.ch-tag {
+  display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600;
+  padding: 4px 10px; border-radius: var(--r-pill);
+}
+.ch-push { background: var(--brand-soft); color: var(--brand-700); }
+.ch-poll { background: #f1f5f9; color: #475569; }
+.sub-tag { font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: var(--r-pill); }
+.sub-tag.ok { background: #ecfdf5; color: #047857; }
+.sub-tag.bad { background: #fff4e5; color: #b45309; }
+.ndr { border-radius: var(--r-md); padding: 10px 12px; margin-bottom: 12px; font-size: 13px; line-height: 1.55; }
+.ndr-ok { background: #ecfdf5; color: #047857; display: flex; align-items: center; gap: 6px; }
+.ndr-critical { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+.ndr-warning { background: #fff4e5; color: #b45309; border: 1px solid #fed7aa; }
+.ndr-head { font-weight: 700; display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.ndr-events { margin: 0 0 6px; padding-left: 18px; }
+.ndr-events li { margin-bottom: 2px; }
+.ndr-action { font-size: 12.5px; }
+.events { display: flex; flex-direction: column; gap: 0; border-left: 2px solid var(--line); margin-left: 6px; padding-left: 4px; }
+.ev { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0 8px 12px; position: relative; }
+.ev::before { content: ''; position: absolute; left: -19px; top: 14px; width: 10px; height: 10px; border-radius: 50%; background: var(--brand-500); border: 2px solid #fff; box-shadow: 0 0 0 1px var(--line); }
+.ev-bad::before { background: #dc2626; }
+.ev-body { display: flex; flex-direction: column; gap: 2px; }
+.ev-status { font-size: 13px; font-weight: 700; color: var(--ink-900); }
+.ev-desc { font-size: 12.5px; color: var(--ink-700); }
+.ev-loc { font-size: 11.5px; color: var(--ink-400); }
+.form-hint code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 12px; color: var(--brand-700); }
 </style>

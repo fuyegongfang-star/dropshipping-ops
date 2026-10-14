@@ -59,6 +59,50 @@ export const carriersApi = {
   createLabel: (spec: LabelSpec) => http.post<LabelResult>('/carriers/labels', spec),
   /** 报关/合规校验（§19 守卫）：booking 前关卡 */
   validateCustoms: (spec: CustomsSpec) => http.post<CustomsValidationResult>('/carriers/customs/validate', spec),
+  /** 轨迹双通道 + NDR（§3/§6/§20）：推送优先，轮询兜底，异常自动识别 */
+  trackQuery: (q: TrackingQuery) => http.post<TrackingEnvelope>('/carriers/tracking/query', q),
+}
+
+/** 轨迹获取通道（推送订阅 / 轮询兜底，§6） */
+export type TrackingChannel = 'push' | 'poll'
+
+/** 归一化轨迹节点（§3 getTracking） */
+export interface TrackingEvent {
+  status: string
+  location?: string
+  occurredAt: string
+  description?: string
+}
+
+/** 归一化轨迹结果 */
+export interface TrackingResult {
+  trackingNo: string
+  carrierCode: string
+  status: string
+  events: TrackingEvent[]
+}
+
+/** NDR（Non-Delivery Report / 异常事件）报告（§20） */
+export interface NdrReport {
+  detected: boolean
+  severity: 'info' | 'warning' | 'critical'
+  events: string[]
+  recommendedAction: string
+}
+
+/** 轨迹查询信封：轨迹结果 + 通道 + NDR（§3/§6/§20） */
+export interface TrackingEnvelope {
+  tracking: TrackingResult
+  channel: TrackingChannel
+  subscribed: boolean
+  ndr: NdrReport
+  queriedAt: string
+}
+
+/** 轨迹查询入参 */
+export interface TrackingQuery {
+  carrierCode: string
+  trackingNo: string
 }
 
 /** 报关/合规校验入参（§19） */

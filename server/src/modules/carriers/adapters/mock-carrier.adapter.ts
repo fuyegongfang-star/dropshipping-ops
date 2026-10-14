@@ -80,8 +80,19 @@ export class MockCarrierAdapter extends AbstractCarrierAdapter {
     }
   }
 
-  /** 轨迹：返回单条节点（已揽收） */
+  /** 轨迹：返回单条节点（已揽收）；轨迹号含 NDR 哨兵时返回异常，便于演示 NDR 识别 */
   async getTracking(no: string): Promise<CarrierTrackingResult> {
+    if (/ndr/i.test(no)) {
+      return {
+        trackingNo: no,
+        carrierCode: CarrierCode.MOCK,
+        status: CarrierTrackingStatus.EXCEPTION,
+        events: [
+          { status: CarrierTrackingStatus.PICKED_UP, location: 'Mock Warehouse', occurredAt: '2026-10-11T12:00:00.000Z', description: 'picked up (mock)' },
+          { status: CarrierTrackingStatus.EXCEPTION, location: 'US LAX', occurredAt: '2026-10-12T08:30:00.000Z', description: '清关失败：申报信息不符，包裹被海关扣留' },
+        ],
+      }
+    }
     return {
       trackingNo: no,
       carrierCode: CarrierCode.MOCK,

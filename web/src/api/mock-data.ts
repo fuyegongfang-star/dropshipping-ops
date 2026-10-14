@@ -12,7 +12,7 @@
  */
 
 // ===== 类型（镜像后端 DTO 与前端 *Api 模块）=====
-import type { ComposeLegsRequest, ComposeLegsResult, ShipmentLeg, LabelSpec, LabelResult, CustomsSpec, CustomsIssue, CustomsValidationResult } from './carriers'
+import type { ComposeLegsRequest, ComposeLegsResult, ShipmentLeg, LabelSpec, LabelResult, CustomsSpec, CustomsIssue, CustomsValidationResult, TrackingQuery, TrackingEnvelope, TrackingChannel, TrackingEvent, NdrReport } from './carriers'
 
 export interface MockTenant {
   id: string
@@ -471,6 +471,57 @@ function doValidateCustoms(body: unknown): CustomsValidationResult {
   return { valid: !issues.some((i) => i.level === 'error'), issues, eligibleSection321, recommendedDuty }
 }
 
+// ===== 轨迹双通道 + NDR（任务 3.11，方案 §3/§6/§20）=====
+/**
+ * 轨迹查询：演示态实现，与后端 TrackingService 同口径。
+ * - 通道：承运商能力含 subscribe → 推送（push），并标记已订阅；否则轮询（poll）兜底。
+ * - NDR：轨迹号含「ndr」哨兵 → 返回 exception 状态 + 清关扣留异常事件，触发 NDR 报告。
+ */
+function doTrackQuery(body: unknown): TrackingEnvelope {
+  const q = body as TrackingQuery
+  const carrier = carriers.find((c) => c.code === q.carrierCode)
+  const canPush = !!carrier?.capabilities.subscribe
+  const channel: TrackingChannel = canPush ? 'push' : 'poll'
+  const subscribed = canPush // 演示态：支持订阅即订阅成功
+
+  const isNdr = /ndr/i.test(q.trackingNo)
+  const status = isNdr ? 'exception' : 'out_for_delivery'
+  const events: TrackingEvent[] = isNdr
+    ? [
+        { status: 'picked_up', location: 'CN SZ', occurredAt: NOW(), description: '已揽收' },
+        { status: 'in_transit', location: 'CN SZ', occurredAt: NOW(), description: '干线运输中' },
+        {
+          status: 'exception',
+          location: 'US LAX',
+          occurredAt: NOW(),
+          description: '清关失败：申报信息不符，包裹被海关扣留',
+        },
+      ]
+    : [
+        { status: 'picked_up', location: 'CN SZ', occurredAt: NOW(), description: '已揽收' },
+        { status: 'in_transit', location: 'CN SZ', occurredAt: NOW(), description: '干线运输中' },
+        { status: 'customs', location: 'US LAX', occurredAt: NOW(), description: '清关中' },
+        { status: 'out_for_delivery', location: 'US LAX', occurredAt: NOW(), description: '派送中' },
+      ]
+
+  const ndr: NdrReport = isNdr
+    ? {
+        detected: true,
+        severity: 'critical',
+        events: ['清关失败：申报信息不符，包裹被海关扣留'],
+        recommendedAction: '建议转人工并建理赔工单（§20 claims）',
+      }
+    : { detected: false, severity: 'info', events: [], recommendedAction: '轨迹正常，无需处理' }
+
+  return {
+    tracking: { trackingNo: q.trackingNo, carrierCode: q.carrierCode, status, events },
+    channel,
+    subscribed,
+    ndr,
+    queriedAt: NOW(),
+  }
+}
+
 // ===== 路由分发 =====
 /** mock 模式下 http.ts 的唯一入口：按 method + url 返回对应数据或执行状态变更。
  *  body 仅在 POST/PUT 时由 http.ts 透传（用于比价试算等带参请求）。 */
@@ -518,6 +569,7 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     if (url === '/carriers/shipments/compose') return delay(300).then(() => doCompose(body))
     if (url === '/carriers/labels') return delay(200).then(() => doCreateLabel(body))
     if (url === '/carriers/customs/validate') return delay(200).then(() => doValidateCustoms(body))
+    if (url === '/carriers/tracking/query') return delay(200).then(() => doTrackQuery(body))
     if (url === '/pricing/markup-rules') return delay().then(() => createMarkupRule(body))
     if (url === '/settings/tdk-rules') return delay().then(() => createTdkRule(body))
     // 品牌图片上传（LOGO / Favicon）：演示态直接回吐压缩后的 dataURL 地址。

@@ -23,6 +23,9 @@ export interface CarrierAdapter {
   /** 承运商代码（用于注册表分发，对齐 Carrier.code） */
   getCode(): CarrierCode
 
+  /** 能力清单（供轨迹双通道判定是否支持推送订阅，§6/§3） */
+  getCapabilities(): CarrierCapability[]
+
   /** 健康/能力探测：返回可达能力与连通性 */
   healthCheck(): Promise<CarrierHealth>
 

@@ -15,6 +15,8 @@ import { LabelService } from './label/label.service'
 import { LabelSpec } from './label/label.types'
 import { CustomsService } from './customs/customs.service'
 import { CustomsSpec } from './customs/customs.types'
+import { TrackingService } from './tracking/tracking.service'
+import { TrackingQuery } from './tracking/tracking.types'
 import { CarrierCode } from './carrier.constants'
 import { GetRatesRequest } from './dto/rate.dto'
 import { CreateShipmentRequest } from './dto/shipment.dto'
@@ -26,6 +28,7 @@ export class CarriersController {
     private readonly legs: ShipmentLegsService,
     private readonly label: LabelService,
     private readonly customs: CustomsService,
+    private readonly tracking: TrackingService,
   ) {}
 
   /** 承运商目录（运营级，全局） */
@@ -79,6 +82,12 @@ export class CarriersController {
   @Post('customs/validate')
   async customsValidate(@Body() spec: CustomsSpec): Promise<ApiResponse<unknown>> {
     return ok(await this.customs.validate(spec))
+  }
+
+  /** 轨迹双通道 + NDR（§3/§6/§20）：推送优先，轮询兜底，异常自动识别 */
+  @Post('tracking/query')
+  async trackingQuery(@TenantId() tenantId: string, @Body() q: TrackingQuery): Promise<ApiResponse<unknown>> {
+    return ok(await this.tracking.track(tenantId, q.carrierCode as CarrierCode, q.trackingNo))
   }
 
   /** 轨迹查询（§3/§6） */

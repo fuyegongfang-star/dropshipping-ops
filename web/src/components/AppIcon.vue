@@ -108,6 +108,8 @@ const ICONS: Record<string, string> = {
   image:
     '<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M4 17l4.5-4.2a1.5 1.5 0 0 1 2 0L14 16l2-1.8a1.5 1.5 0 0 1 2 0L20.5 16"/>',
   link: '<path d="M10.5 13.5a3.5 3.5 0 0 0 5 0l3-3a3.5 3.5 0 0 0-5-5l-1 1"/><path d="M13.5 10.5a3.5 3.5 0 0 0-5 0l-3 3a3.5 3.5 0 0 0 5 5l1-1"/>',
+  radar:
+    '<circle cx="12" cy="12" r="8.5"/><path d="M12 12 19 6"/><path d="M12 12 5.5 15"/><circle cx="12" cy="12" r="1.6"/>',
 }
 
 const path = computed(() => ICONS[props.name] ?? ICONS.box)
