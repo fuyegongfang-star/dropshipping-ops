@@ -322,30 +322,32 @@ model FxRate {
 }
 
 // ---- 结算 / 账务（§9/§10/§16）---------------------------------------------
-// 商户账单：基于 sellPrice（商户应付）
+// 商户账单：基于 sellPrice（商户应付），按账期聚合
 model Bill {
   id        String   @id @default(cuid())
   tenantId  String
-  period    String? // 账期（如 2026-10）
-  amount    Decimal  @db.Decimal(12, 2)
-  currency  String
-  status    String   @default("unpaid") // unpaid | paid | void
+  period    String // 账期，如 2026-10
+  currency  String   @default("CNY")
+  totalSell Decimal  @db.Decimal(12, 2) @default(0) // Σ sell_price（商户应付）
+  itemCount Int      @default(0)
+  status    String   @default("draft") // draft（草稿）| issued（已出账）| settled（已结清）
   createdAt DateTime @default(now())
 
-  @@index([tenantId])
+  @@unique([tenantId, period])
 }
 
-// 承运商对账：基于 carrierCost（平台应付）
+// 承运商对账：基于 carrierCost（平台应付），按承运商+账期聚合
 model Reconciliation {
-  id        String   @id @default(cuid())
-  tenantId  String
-  carrierId String?
-  amount    Decimal  @db.Decimal(12, 2)
-  currency  String
-  status    String   @default("open") // open | matched | settled
-  createdAt DateTime @default(now())
+  id          String   @id @default(cuid())
+  carrierCode String
+  period      String // 账期，如 2026-10
+  currency    String   @default("CNY")
+  totalCost   Decimal  @db.Decimal(12, 2) @default(0) // Σ carrier_cost（平台应付承运商）
+  itemCount   Int      @default(0)
+  status      String   @default("open") // open（未对账）| matched（已匹配）| closed（已关闭）
+  createdAt   DateTime @default(now())
 
-  @@index([tenantId])
+  @@unique([carrierCode, period])
 }
 
 // 商户钱包（预充值 / 信用账期，§16）

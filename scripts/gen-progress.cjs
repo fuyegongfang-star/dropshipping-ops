@@ -40,6 +40,7 @@ const EXPLICIT_ROUTES = {
   '3.12': '/address',
   '3.13': '/aggregator',
   '4.1': '/wallet',
+  '4.2': '/billing',
 };
 
 /** 关键词 → 路由（兜底推断，命中即用）。 */

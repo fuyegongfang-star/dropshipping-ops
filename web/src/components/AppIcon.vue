@@ -114,6 +114,14 @@ const ICONS: Record<string, string> = {
     '<path d="M12 21s-7-6.5-7-12a7 7 0 0 1 14 0c0 5.5-7 12-7 12z"/><circle cx="12" cy="9" r="2.6"/>',
   wallet:
     '<path d="M3 8.5A2 2 0 0 1 5 6.5h12a2 2 0 0 1 2 2V9H3z"/><rect x="3" y="9" width="18" height="10" rx="2.2"/><circle cx="16.5" cy="14" r="1.3"/>',
+  bill:
+    '<path d="M6 3h9l4 4v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v4h4"/><path d="M8.5 12h7M8.5 15.5h7M8.5 8.5h3"/>',
+  calendar:
+    '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 9h16M8 3v4M16 3v4"/>',
+  'arrow-down': '<path d="M12 5v14M6 13l6 6 6-6"/>',
+  'arrow-up': '<path d="M12 19V5M6 11l6-6 6 6"/>',
+  trend: '<path d="M4 17l5-5 3 3 7-7"/><path d="M15 8h4v4"/>',
+  percent: '<path d="M6 18 18 6"/><circle cx="7.5" cy="7.5" r="2"/><circle cx="16.5" cy="16.5" r="2"/>',
 }
 
 const path = computed(() => ICONS[props.name] ?? ICONS.box)

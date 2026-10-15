@@ -62,7 +62,7 @@
 | 3.12 | 阶段3 | 地址校验 + 分区 | 脏地址/邮编→zone（§18） | 1.4 | 1d | ✅ |
 | 3.13 | 阶段3 | 聚合平台兜底 | AfterShip/17track 尾程（§3e） | 3.11 | 0.5d | ✅ |
 | 4.1 | 阶段4 | 收款账务 wallet+ledger | 复式记账/预充值/账期/退款（§16） | 0.3 | 2d | ✅ |
-| 4.2 | 阶段4 | 商户账单 + 承运商对账 | bills/reconciliations（§9/§10） | 4.1/3.6 | 1.5d | ⬜ |
+| 4.2 | 阶段4 | 商户账单 + 承运商对账 | bills/reconciliations（§9/§10） | 4.1/3.6 | 1.5d | ✅ |
 | 4.3 | 阶段4 | 利润核算(spread) | Σ(sell−cost)（§9/§10） | 4.2 | 1d | ⬜ |
 | 4.4 | 阶段4 | 多租户隔离强化 | schema-per-tenant 评估（§17） | 0.2 | 1d | ⬜ |
 | 4.5 | 阶段4 | 精细化 RBAC | 组织层级/scope（§22） | 0.3 | 1d | ⬜ |
@@ -333,3 +333,18 @@
 - **测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**162 passed / 24 suites**，新增 7）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
 - **提交**：待本批末统一提交（4.1 后端/前端/进度生成器，含 schema 变更需随 `prisma generate` 产物）。
 - **下一步（次日接力）**：4.2 商户账单 + 承运商对账（bills/reconciliations，§9/§10，复用 4.1 ledger 与 3.6 加价/币种）→ 4.3 利润核算(spread) → 4.4 多租户隔离强化 → 4.5 精细化 RBAC → 4.6 运营配置后台 → 4.7 报表指标 → 4.8 理赔保险 → 4.9 多语言多币种前端。
+
+### 进度更新 · 2026-10-15（续跑 · 4.2 商户账单 + 承运商对账）
+- **完成（✅）**：
+  - **4.2 商户账单 + 承运商对账（§9/§10 结算与对账）** —— 新增 `billing` 模块：
+    - `billing.service.ts`：按账期聚合各租户 `Shipment.sellPrice` → 商户账单 `Bill`（tenant+period 唯一，draft→issued→settled 状态机）；按账期聚合各承运商 `Shipment.carrierCost` → 承运商对账 `Reconciliation`（carrierCode+period 唯一，carrierId→code 经 Carrier 映射，open→matched→closed 状态机）；平台利润核算 `profit = ΣtotalSell − ΣtotalCost`、毛利率（§9 spread）。
+    - `billing.controller.ts`：`POST /billing/bills/generate`、`GET /billing/bills`、`POST .../:id/issue|settle`、`POST /billing/reconciliations/generate`、`GET /billing/reconciliations`、`POST .../:id/match|close`、`GET /billing/profit`；账单列表按 `@TenantId()` 隔离，对账/利润为平台级。
+    - `billing.module.ts` 装配并接入 `AppModule`。
+    - 单测 `billing.service.spec.ts`（7 cases：账期聚合/出账幂等/承运商聚合/账单状态机/对账状态机/利润核算/非法账期）全绿。
+  - **Schema 修复**：`Bill`/`Reconciliation` 在 §9/§10 落地时曾被重复定义（P1012），已合并为单一聚合模型（tenant+period / carrierCode+period 唯一），`prisma generate` 通过。
+  - **前端可视化（财务中心第二个落地页）**：`web/src/views/BillingView.vue`（/billing）—— 平台利润四宫格（应收合计/应付合计/平台利润/毛利率）+ 双 Tab（商户账单：生成/出账/结清；承运商对账：生成/匹配/关闭）；`web/src/api/billing.ts` 接口封装、`mock-data.ts` 同口径内存实现（演示+正式双路通）；`router` + `BasicLayout.menuNodes` 财务中心分组注册「商户账单」；AppIcon 增 `bill/calendar/arrow-down/arrow-up/trend/percent` 图标。
+- **进行中（🔵）**：无（4.2 完成，进入 4.3）。
+- **受阻**：无。
+- **测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**169 passed / 25 suites**，新增 7）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
+- **提交**：随本批统一提交（含 schema 修复、billing 模块、前端页、进度生成器）。
+- **下一步**：4.3 利润核算(spread)（报表化 §9/§10，前端利润看板/趋势，复用 4.2 的 profit 口径）→ 4.4 多租户隔离强化 → 4.5 精细化 RBAC → 4.6 运营配置后台 → 4.7 报表指标 → 4.8 理赔保险 → 4.9 多语言多币种前端。

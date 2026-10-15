@@ -203,9 +203,10 @@ const menuNodes: MenuNode[] = [
   {
     group: '财务中心',
     groupIcon: 'coins',
-    children: [
+      children: [
       { path: '/wallet', title: '收款账务', icon: 'wallet' },
-      // 待阶段4 后续落地：账单与对账(4.2) · 利润核算(4.3) · 理赔(4.8)
+      { path: '/billing', title: '商户账单', icon: 'bill' },
+      // 待阶段4 后续落地：利润核算(4.3) · 理赔(4.8)
     ],
   },
   {

@@ -14,6 +14,7 @@
 // ===== 类型（镜像后端 DTO 与前端 *Api 模块）=====
 import type { ComposeLegsRequest, ComposeLegsResult, ShipmentLeg, LabelSpec, LabelResult, CustomsSpec, CustomsIssue, CustomsValidationResult, TrackingQuery, TrackingEnvelope, TrackingChannel, TrackingEvent, NdrReport, AddressValidateRequest, AddressValidationResult, AddressIssue, ZoneInfo, CarrierFeasibility, AggregatorQuery, AggregatorResult, AggregatorCatalogItem } from './carriers'
 import type { WalletSummary, LedgerType, LedgerItem } from './finance'
+import type { BillItem, ReconciliationItem, ProfitSummary, GenerateResult } from './billing'
 
 export interface MockTenant {
   id: string
@@ -827,6 +828,195 @@ function doSettle(body: unknown): WalletSummary {
   return { ...walletState }
 }
 
+// ===== 商户账单与承运商对账（任务 4.2，方案 §9/§10）=====
+/** 与后端 BillingService 同口径的内存演示实现：按账期聚合 sell_price / carrier_cost。
+ *  billingBills / billingRecons 为模块级可变状态，生成/出账/结清/匹配/关闭会真实改写它。 */
+const billingShipments: {
+  id: string
+  tenantId: string
+  carrierCode: string
+  sellPrice: number
+  carrierCost: number
+  createdAt: string
+}[] = [
+  { id: 'bs1', tenantId: TENANT_ID, carrierCode: 'yunexpress', sellPrice: 128.5, carrierCost: 78.0, createdAt: '2026-10-03T10:00:00.000Z' },
+  { id: 'bs2', tenantId: TENANT_ID, carrierCode: 'dhl', sellPrice: 210.0, carrierCost: 150.0, createdAt: '2026-10-12T10:00:00.000Z' },
+  { id: 'bs3', tenantId: 't_demo2', carrierCode: 'yunexpress', sellPrice: 96.4, carrierCost: 60.0, createdAt: '2026-10-20T10:00:00.000Z' },
+  { id: 'bs4', tenantId: TENANT_ID, carrierCode: '4px', sellPrice: 64.0, carrierCost: 42.0, createdAt: '2026-10-25T10:00:00.000Z' },
+  { id: 'bs5', tenantId: TENANT_ID, carrierCode: 'dhl', sellPrice: 320.0, carrierCost: 240.0, createdAt: '2026-09-08T10:00:00.000Z' },
+]
+
+let billSeq = 1
+let reconSeq = 1
+const billingBills: BillItem[] = []
+const billingRecons: ReconciliationItem[] = []
+
+function periodOf(iso: string): string {
+  return iso.slice(0, 7)
+}
+
+function parseQ(url: string): Record<string, string> {
+  const i = url.indexOf('?')
+  if (i < 0) return {}
+  const sp = new URLSearchParams(url.slice(i + 1))
+  const o: Record<string, string> = {}
+  sp.forEach((v, k) => {
+    o[k] = v
+  })
+  return o
+}
+
+/** 按账期聚合各租户 sell_price → 商户账单（tenant + period 唯一） */
+function aggBills(period: string, tenantId?: string): GenerateResult {
+  const rows = billingShipments.filter(
+    (s) => periodOf(s.createdAt) === period && (!tenantId || s.tenantId === tenantId),
+  )
+  const byTenant = new Map<string, { totalSell: number; count: number }>()
+  for (const s of rows) {
+    const t = byTenant.get(s.tenantId) || { totalSell: 0, count: 0 }
+    t.totalSell += s.sellPrice
+    t.count++
+    byTenant.set(s.tenantId, t)
+  }
+  let generated = 0
+  let updated = 0
+  for (const [tid, v] of byTenant) {
+    const idx = billingBills.findIndex((b) => b.tenantId === tid && b.period === period)
+    if (idx >= 0) {
+      billingBills[idx].totalSell = v.totalSell
+      billingBills[idx].itemCount = v.count
+      updated++
+    } else {
+      billingBills.push({
+        id: `b_${billSeq++}`,
+        tenantId: tid,
+        period,
+        currency: 'CNY',
+        totalSell: v.totalSell,
+        itemCount: v.count,
+        status: 'draft',
+        createdAt: NOW(),
+      })
+      generated++
+    }
+  }
+  return { period, generated, updated }
+}
+
+/** 按账期聚合各承运商 carrier_cost → 承运商对账（carrierCode + period 唯一） */
+function aggRecons(period: string): GenerateResult {
+  const rows = billingShipments.filter((s) => periodOf(s.createdAt) === period && s.carrierCode)
+  const byCarrier = new Map<string, { totalCost: number; count: number }>()
+  for (const s of rows) {
+    const c = byCarrier.get(s.carrierCode) || { totalCost: 0, count: 0 }
+    c.totalCost += s.carrierCost
+    c.count++
+    byCarrier.set(s.carrierCode, c)
+  }
+  let generated = 0
+  let updated = 0
+  for (const [code, v] of byCarrier) {
+    const idx = billingRecons.findIndex((r) => r.carrierCode === code && r.period === period)
+    if (idx >= 0) {
+      billingRecons[idx].totalCost = v.totalCost
+      billingRecons[idx].itemCount = v.count
+      updated++
+    } else {
+      billingRecons.push({
+        id: `r_${reconSeq++}`,
+        carrierCode: code,
+        period,
+        currency: 'CNY',
+        totalCost: v.totalCost,
+        itemCount: v.count,
+        status: 'open',
+        createdAt: NOW(),
+      })
+      generated++
+    }
+  }
+  return { period, generated, updated }
+}
+
+// 预生成最近账期，避免页面首屏空白
+aggBills('2026-10')
+aggRecons('2026-10')
+aggBills('2026-09')
+aggRecons('2026-09')
+
+function doListBills(url: string): BillItem[] {
+  const q = parseQ(url)
+  let res = billingBills.slice()
+  res = res.filter((b) => (q.tenantId ? b.tenantId === q.tenantId : b.tenantId === TENANT_ID))
+  if (q.status) res = res.filter((b) => b.status === q.status)
+  return res
+    .sort((a, b) => (a.period < b.period ? 1 : -1))
+    .map((b) => ({ ...b }))
+}
+
+function doListRecons(url: string): ReconciliationItem[] {
+  const q = parseQ(url)
+  let res = billingRecons.slice()
+  if (q.status) res = res.filter((r) => r.status === q.status)
+  return res
+    .sort((a, b) =>
+      a.period !== b.period ? (a.period < b.period ? 1 : -1) : a.carrierCode < b.carrierCode ? -1 : 1,
+    )
+    .map((r) => ({ ...r }))
+}
+
+function doGetProfit(url: string): ProfitSummary {
+  const q = parseQ(url)
+  const period = q.period || '2026-10'
+  let totalSell = 0
+  let billCount = 0
+  for (const b of billingBills) {
+    if (b.period === period) {
+      totalSell += b.totalSell
+      billCount++
+    }
+  }
+  let totalCost = 0
+  let reconCount = 0
+  for (const r of billingRecons) {
+    if (r.period === period) {
+      totalCost += r.totalCost
+      reconCount++
+    }
+  }
+  const profit = totalSell - totalCost
+  const marginRate = totalSell === 0 ? 0 : profit / totalSell
+  return { period, currency: 'CNY', totalSell, totalCost, profit, marginRate, billCount, reconciliationCount: reconCount }
+}
+
+function doIssueBill(id: string): BillItem {
+  const b = billingBills.find((x) => x.id === id)
+  if (!b) throw new Error('账单不存在')
+  if (b.status !== 'draft') throw new Error(`仅草稿可出账，当前：${b.status}`)
+  b.status = 'issued'
+  return { ...b }
+}
+function doSettleBill(id: string): BillItem {
+  const b = billingBills.find((x) => x.id === id)
+  if (!b) throw new Error('账单不存在')
+  if (b.status !== 'issued') throw new Error(`仅已出账可结清，当前：${b.status}`)
+  b.status = 'settled'
+  return { ...b }
+}
+function doMatchRecon(id: string): ReconciliationItem {
+  const r = billingRecons.find((x) => x.id === id)
+  if (!r) throw new Error('对账单不存在')
+  if (r.status !== 'open') throw new Error(`仅未对账可匹配，当前：${r.status}`)
+  r.status = 'matched'
+  return { ...r }
+}
+function doCloseRecon(id: string): ReconciliationItem {
+  const r = billingRecons.find((x) => x.id === id)
+  if (!r) throw new Error('对账单不存在')
+  r.status = 'closed'
+  return { ...r }
+}
+
 // ===== 路由分发 =====
 /** mock 模式下 http.ts 的唯一入口：按 method + url 返回对应数据或执行状态变更。
  *  body 仅在 POST/PUT 时由 http.ts 透传（用于比价试算等带参请求）。 */
@@ -844,6 +1034,21 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     // 收款账务（§16）：钱包概要 + 记账流水（返回副本，避免视图直接改写模块级状态）
     if (url === '/finance/wallet') return delay().then(() => doGetWallet())
     if (url === '/finance/ledger') return delay().then(() => doGetLedger())
+    // 商户账单 / 承运商对账 / 利润核算（§9/§10）：按当前租户隔离与平台级聚合
+    if (url === '/billing/bills' || url.startsWith('/billing/bills?')) return delay().then(() => doListBills(url))
+    if (url === '/billing/reconciliations' || url.startsWith('/billing/reconciliations?'))
+      return delay().then(() => doListRecons(url))
+    if (url === '/billing/profit' || url.startsWith('/billing/profit?')) return delay().then(() => doGetProfit(url))
+    const billId = url.match(/^\/billing\/bills\/([^/]+)$/)
+    if (billId) {
+      const b = billingBills.find((x) => x.id === billId[1])
+      return b ? delay().then(() => ({ ...b })) : delay().then(() => reject('账单不存在'))
+    }
+    const reconId = url.match(/^\/billing\/reconciliations\/([^/]+)$/)
+    if (reconId) {
+      const r = billingRecons.find((x) => x.id === reconId[1])
+      return r ? delay().then(() => ({ ...r })) : delay().then(() => reject('对账单不存在'))
+    }
     // 返回副本：避免视图 v-model 直接改写 mock 模块级状态，所有变更一律走下方 POST/PUT/DELETE。
     if (url === '/pricing/markup-rules')
       return delay().then(() => markupRules.map((r) => ({ ...r })))
@@ -889,6 +1094,19 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     if (url === '/finance/wallet/charge') return delay(160).then(() => doCharge(body))
     if (url === '/finance/wallet/refund') return delay(160).then(() => doRefund(body))
     if (url === '/finance/wallet/settle') return delay(160).then(() => doSettle(body))
+    // 商户账单 / 承运商对账（§9/§10）：生成 / 出账 / 结清 / 匹配 / 关闭
+    if (url.startsWith('/billing/bills/generate'))
+      return delay(160).then(() => { const q = parseQ(url); return aggBills(q.period, q.tenantId) })
+    if (url.startsWith('/billing/reconciliations/generate'))
+      return delay(160).then(() => { const q = parseQ(url); return aggRecons(q.period) })
+    const issueBill = url.match(/^\/billing\/bills\/([^/]+)\/issue$/)
+    if (issueBill) return delay(120).then(() => doIssueBill(issueBill[1]))
+    const settleBill = url.match(/^\/billing\/bills\/([^/]+)\/settle$/)
+    if (settleBill) return delay(120).then(() => doSettleBill(settleBill[1]))
+    const matchRec = url.match(/^\/billing\/reconciliations\/([^/]+)\/match$/)
+    if (matchRec) return delay(120).then(() => doMatchRecon(matchRec[1]))
+    const closeRec = url.match(/^\/billing\/reconciliations\/([^/]+)\/close$/)
+    if (closeRec) return delay(120).then(() => doCloseRecon(closeRec[1]))
     if (url === '/pricing/markup-rules') return delay().then(() => createMarkupRule(body))
     if (url === '/settings/tdk-rules') return delay().then(() => createTdkRule(body))
     // 品牌图片上传（LOGO / Favicon）：演示态直接回吐压缩后的 dataURL 地址。
