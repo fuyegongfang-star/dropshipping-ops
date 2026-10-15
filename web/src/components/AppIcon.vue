@@ -112,6 +112,8 @@ const ICONS: Record<string, string> = {
     '<circle cx="12" cy="12" r="8.5"/><path d="M12 12 19 6"/><path d="M12 12 5.5 15"/><circle cx="12" cy="12" r="1.6"/>',
   pin:
     '<path d="M12 21s-7-6.5-7-12a7 7 0 0 1 14 0c0 5.5-7 12-7 12z"/><circle cx="12" cy="9" r="2.6"/>',
+  wallet:
+    '<path d="M3 8.5A2 2 0 0 1 5 6.5h12a2 2 0 0 1 2 2V9H3z"/><rect x="3" y="9" width="18" height="10" rx="2.2"/><circle cx="16.5" cy="14" r="1.3"/>',
 }
 
 const path = computed(() => ICONS[props.name] ?? ICONS.box)

@@ -2,8 +2,8 @@
  * 开发进度数据 —— **本文件由 scripts/gen-progress.cjs 自动生成，请勿手工修改。**
  *
  * 生成命令：`npm run progress:gen`（读取 dev-schedule.md 的任务表）
- * 生成时间：2026-10-14T15:24:41.051Z
- * 源码提交：685352a
+ * 生成时间：2026-10-15T15:29:28.697Z
+ * 源码提交：cab98c0
  *
  * 作用：让「演示模式」与「正式模式」都能在网页上直接看到开发进度与最近交付的能力，
  * 夜间自动开发每完成一批任务后重新生成并提交，次日刷新页面即可看到新内容。
@@ -42,10 +42,10 @@ export interface DevStats {
 }
 
 /** 数据生成时间（ISO 字符串） */
-export const DEV_PROGRESS_GENERATED_AT = "2026-10-14T15:24:41.619Z"
+export const DEV_PROGRESS_GENERATED_AT = "2026-10-15T15:29:29.274Z"
 
 /** 数据对应的源码提交号（短 SHA） */
-export const DEV_PROGRESS_COMMIT = "685352a"
+export const DEV_PROGRESS_COMMIT = "cab98c0"
 
 /** 全部任务（按 dev-schedule.md 顺序） */
 export const DEV_TASKS: DevTask[] = [
@@ -376,8 +376,8 @@ export const DEV_TASKS: DevTask[] = [
     "deliverable": "复式记账/预充值/账期/退款（§16）",
     "deps": "0.3",
     "estimate": "2d",
-    "status": "todo",
-    "route": null
+    "status": "done",
+    "route": "/wallet"
   },
   {
     "id": "4.2",
@@ -504,16 +504,16 @@ export const DEV_TASKS: DevTask[] = [
 /** 统计汇总 */
 export const DEV_STATS: DevStats = {
   "total": 45,
-  "done": 25,
+  "done": 26,
   "doing": 0,
-  "todo": 20,
+  "todo": 19,
   "blocked": 0,
   "skipped": 0,
-  "percent": 55.6
+  "percent": 57.8
 }
 
 /** 阶段列表（去重，按出现顺序） */
 export const DEV_PHASES = ["阶段0","阶段1","阶段2","阶段3","阶段4","阶段5"]
 
 /** 最近交付的任务号（已完成中序号最大的若干个），用于「最近更新」高亮 */
-export const DEV_RECENT_IDS = ["3.10","3.11","3.12","3.13"]
+export const DEV_RECENT_IDS = ["3.11","3.12","3.13","4.1"]

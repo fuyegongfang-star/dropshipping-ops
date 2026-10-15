@@ -12,6 +12,7 @@ import { OrdersModule } from './modules/orders/orders.module'
 import { CatalogModule } from './modules/catalog/catalog.module'
 import { CarriersModule } from './modules/carriers/carriers.module'
 import { PricingModule } from './modules/pricing/pricing.module'
+import { FinanceModule } from './modules/finance/finance.module'
 
 /**
  * 根模块：装配全局配置、数据库、鉴权、健康检查与业务模块（方案 §0/§11）。
@@ -30,6 +31,7 @@ import { PricingModule } from './modules/pricing/pricing.module'
     CatalogModule,
     CarriersModule,
     PricingModule,
+    FinanceModule,
   ],
 })
 export class AppModule implements NestModule {

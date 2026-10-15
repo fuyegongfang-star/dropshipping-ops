@@ -61,7 +61,7 @@
 | 3.11 | 阶段3 | 轨迹双通道 + NDR | 推送+轮询兜底 + 异常工单（§3/§20） | 3.2/3.4 | 1.5d | ✅ |
 | 3.12 | 阶段3 | 地址校验 + 分区 | 脏地址/邮编→zone（§18） | 1.4 | 1d | ✅ |
 | 3.13 | 阶段3 | 聚合平台兜底 | AfterShip/17track 尾程（§3e） | 3.11 | 0.5d | ✅ |
-| 4.1 | 阶段4 | 收款账务 wallet+ledger | 复式记账/预充值/账期/退款（§16） | 0.3 | 2d | ⬜ |
+| 4.1 | 阶段4 | 收款账务 wallet+ledger | 复式记账/预充值/账期/退款（§16） | 0.3 | 2d | ✅ |
 | 4.2 | 阶段4 | 商户账单 + 承运商对账 | bills/reconciliations（§9/§10） | 4.1/3.6 | 1.5d | ⬜ |
 | 4.3 | 阶段4 | 利润核算(spread) | Σ(sell−cost)（§9/§10） | 4.2 | 1d | ⬜ |
 | 4.4 | 阶段4 | 多租户隔离强化 | schema-per-tenant 评估（§17） | 0.2 | 1d | ⬜ |
@@ -316,3 +316,20 @@
 - **测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**155 passed / 23 suites**，新增 17：address 12 + aggregator 5）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
 - **提交**：待本批末统一提交（3.12+3.13 后端/前端/进度生成器）。
 - **下一步（次日接力）**：阶段3 收口完成（M3 达成）。进入阶段4：4.1 收款账务 wallet+ledger（复式记账/预充值/账期/退款 §16）→ 4.2 商户账单+承运商对账 → 4.3 利润核算 → 4.4 多租户隔离强化 → 4.5 精细化 RBAC → 4.6 运营配置后台 → 4.7 报表指标 → 4.8 理赔保险 → 4.9 多语言多币种前端。另：3.12 的 zone_maps 可在 §4.4 接入远程附加费、在比价 L2 可达性复用。
+
+---
+
+### 进度更新 · 2026-10-15（夜间自动化 23:10 启动 · 4.1 收款账务）
+- **完成（✅）**：
+  - **4.1 收款账务 wallet + ledger（§16 平台收款与商户账务）** —— 新增 `finance` 模块：
+    - `wallet.service.ts`：钱包模型（balance 可用余额 / frozen 冻结 / creditLimit 信用账期 / currency 基准币 / status）、复式记账流水（recharge/freeze/unfreeze/charge/refund/settle，只增不改，balanceAfter 留痕）；资金流（§16.3）充值→钱包增、下单锁价→冻结、实际 booking→扣减（优先消耗冻结、余额可负表示动用信用）、撤单/退货→refund、与承运商结算→settle；可用额度 `available = balance - frozen + creditLimit`，下单前据此校验、不足诚实抛 `WALLET_INSUFFICIENT`；钱包被风控冻结（`status=frozen`）禁止资金进出（§16.1）。
+    - `wallet.controller.ts`：`GET /finance/wallet`（概要）、`GET /finance/ledger`（流水）、`POST /finance/wallet/recharge`、`/credit-limit`、`/freeze`、`/unfreeze`、`/charge`、`/refund`、`/settle`；全部 `@TenantId()` 租户隔离（§0/§17）。
+    - `finance.module.ts` 装配并接入 `AppModule`。
+    - 单测 `wallet.service.spec.ts`（7 cases：充值/冻结扣费/额度不足/信用账期/退款结算/解冻/流水只增不改）全绿。
+  - **Schema（§16.5）**：`Wallet` 增 `frozen`/`creditLimit`/`status` 字段，`LedgerEntry` 类型与字段对齐 §16.2（amount 带符号、balanceAfter、refType/refId/remark）；已 `prisma generate`。
+  - **前端可视化（财务中心首个落地页）**：`web/src/views/WalletView.vue`（/wallet）—— 钱包四宫格（可用额度/可用余额/冻结/授信）+ 资金操作（充值、设授信、模拟下单冻结→扣费、撤单解冻→退款）+ 复式记账流水表（类型徽章/带符号金额/变动后余额/关联单号）；`web/src/api/finance.ts` 接口封装、`mock-data.ts` 同口径内存实现（演示+正式双路通）；`router` + `BasicLayout.menuNodes` 财务中心分组注册「收款账务」；AppIcon 增 `wallet` 图标。
+- **进行中（🔵）**：无（本批任务完成）。
+- **受阻**：无。
+- **测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**162 passed / 24 suites**，新增 7）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
+- **提交**：待本批末统一提交（4.1 后端/前端/进度生成器，含 schema 变更需随 `prisma generate` 产物）。
+- **下一步（次日接力）**：4.2 商户账单 + 承运商对账（bills/reconciliations，§9/§10，复用 4.1 ledger 与 3.6 加价/币种）→ 4.3 利润核算(spread) → 4.4 多租户隔离强化 → 4.5 精细化 RBAC → 4.6 运营配置后台 → 4.7 报表指标 → 4.8 理赔保险 → 4.9 多语言多币种前端。

@@ -13,6 +13,7 @@
 
 // ===== 类型（镜像后端 DTO 与前端 *Api 模块）=====
 import type { ComposeLegsRequest, ComposeLegsResult, ShipmentLeg, LabelSpec, LabelResult, CustomsSpec, CustomsIssue, CustomsValidationResult, TrackingQuery, TrackingEnvelope, TrackingChannel, TrackingEvent, NdrReport, AddressValidateRequest, AddressValidationResult, AddressIssue, ZoneInfo, CarrierFeasibility, AggregatorQuery, AggregatorResult, AggregatorCatalogItem } from './carriers'
+import type { WalletSummary, LedgerType, LedgerItem } from './finance'
 
 export interface MockTenant {
   id: string
@@ -715,6 +716,117 @@ function doAggregatorCatalog(): AggregatorCatalogItem[] {
   return Object.entries(AGGREGATOR_NAMES).map(([code, name]) => ({ code, name, capability: 'track' }))
 }
 
+// ===== 收款账务（任务 4.1，方案 §16）=====
+/** 与后端 WalletService 同口径的内存演示实现（复式记账 / 预充值 / 信用账期）。
+ *  walletState 为模块级可变状态，充值/冻结/扣费/退款/结算 会真实改写它，GET 立即反映变更。 */
+const walletState: WalletSummary = {
+  tenantId: TENANT_ID,
+  currency: 'CNY',
+  balance: 12800,
+  frozen: 0,
+  creditLimit: 5000,
+  available: 17800,
+  status: 'active',
+}
+
+const walletLedger: LedgerItem[] = [
+  { id: 'l_seed1', type: 'recharge', amount: 12800, balanceAfter: 12800, refType: 'manual', refId: null, remark: '初始充值', createdAt: '2026-10-08T09:00:00.000Z' },
+  { id: 'l_seed2', type: 'settle', amount: -3200, balanceAfter: 9600, refType: 'settle', refId: 'C-202609', remark: '9 月承运商结算', createdAt: '2026-10-10T09:00:00.000Z' },
+  { id: 'l_seed3', type: 'recharge', amount: 3200, balanceAfter: 12800, refType: 'manual', refId: null, remark: '补缴充值', createdAt: '2026-10-12T09:00:00.000Z' },
+]
+
+let ledgerSeq = 100
+function recomputeWallet(): void {
+  walletState.available = walletState.balance - walletState.frozen + walletState.creditLimit
+}
+function pushLedger(type: LedgerType, amount: number, refType?: string, refId?: string, remark?: string): void {
+  walletLedger.unshift({
+    id: `l_${ledgerSeq++}`,
+    type,
+    amount,
+    balanceAfter: walletState.balance,
+    refType: refType ?? null,
+    refId: refId ?? null,
+    remark: remark ?? null,
+    createdAt: NOW(),
+  })
+}
+
+function doGetWallet(): WalletSummary {
+  return { ...walletState }
+}
+
+function doGetLedger(): LedgerItem[] {
+  return walletLedger.map((l) => ({ ...l }))
+}
+
+function doRecharge(body: unknown): WalletSummary {
+  const { amount, remark } = body as { amount: number; remark?: string }
+  walletState.balance += amount
+  recomputeWallet()
+  pushLedger('recharge', amount, 'manual', undefined, remark || '演示充值')
+  return { ...walletState }
+}
+
+function doSetCreditLimit(body: unknown): WalletSummary {
+  const { creditLimit } = body as { creditLimit: number }
+  walletState.creditLimit = creditLimit
+  recomputeWallet()
+  return { ...walletState }
+}
+
+function doFreeze(body: unknown): WalletSummary {
+  const { amount, refId, refType } = body as { amount: number; refId?: string; refType?: string }
+  const available = walletState.balance - walletState.frozen + walletState.creditLimit
+  if (available < amount) {
+    throw new Error(`可用额度不足：需 ${amount}，当前可用 ${available}`)
+  }
+  walletState.frozen += amount
+  pushLedger('freeze', 0, refType || 'order', refId, `冻结订单 ${refId ?? ''}`)
+  return { ...walletState }
+}
+
+function doUnfreeze(body: unknown): WalletSummary {
+  const { amount, refId, refType } = body as { amount: number; refId?: string; refType?: string }
+  walletState.frozen = Math.max(0, walletState.frozen - amount)
+  pushLedger('unfreeze', 0, refType || 'order', refId, `解冻订单 ${refId ?? ''}`)
+  return { ...walletState }
+}
+
+function doCharge(body: unknown): WalletSummary {
+  const { amount, refId, refType } = body as { amount: number; refId?: string; refType?: string }
+  const available = walletState.balance - walletState.frozen + walletState.creditLimit
+  if (available < amount) {
+    throw new Error(`可用额度不足：需扣费 ${amount}，当前可用 ${available}`)
+  }
+  const fromFrozen = Math.min(walletState.frozen, amount)
+  walletState.frozen -= fromFrozen
+  walletState.balance -= amount
+  recomputeWallet()
+  pushLedger('charge', -amount, refType || 'order', refId, `订单扣费 ${refId ?? ''}`)
+  return { ...walletState }
+}
+
+function doRefund(body: unknown): WalletSummary {
+  const { amount, refId, refType } = body as { amount: number; refId?: string; refType?: string }
+  walletState.balance += amount
+  recomputeWallet()
+  pushLedger('refund', amount, refType || 'refund', refId, `退款 ${refId ?? ''}`)
+  return { ...walletState }
+}
+
+function doSettle(body: unknown): WalletSummary {
+  const { amount, refId, refType } = body as { amount: number; refId?: string; refType?: string }
+  const available = walletState.balance - walletState.frozen + walletState.creditLimit
+  if (available < amount) {
+    throw new Error(`可用额度不足：需结算 ${amount}，当前可用 ${available}`)
+  }
+  walletState.balance -= amount
+  recomputeWallet()
+  pushLedger('settle', -amount, refType || 'settle', refId, `结算 ${refId ?? ''}`)
+  return { ...walletState }
+}
+
 // ===== 路由分发 =====
 /** mock 模式下 http.ts 的唯一入口：按 method + url 返回对应数据或执行状态变更。
  *  body 仅在 POST/PUT 时由 http.ts 透传（用于比价试算等带参请求）。 */
@@ -729,6 +841,9 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     if (url === '/orders') return delay().then(() => orders)
     if (url.startsWith('/orders?')) return delay().then(() => filterOrders(url))
     if (url === '/carriers') return delay().then(() => carriers)
+    // 收款账务（§16）：钱包概要 + 记账流水（返回副本，避免视图直接改写模块级状态）
+    if (url === '/finance/wallet') return delay().then(() => doGetWallet())
+    if (url === '/finance/ledger') return delay().then(() => doGetLedger())
     // 返回副本：避免视图 v-model 直接改写 mock 模块级状态，所有变更一律走下方 POST/PUT/DELETE。
     if (url === '/pricing/markup-rules')
       return delay().then(() => markupRules.map((r) => ({ ...r })))
@@ -766,6 +881,14 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     if (url === '/carriers/address/validate') return delay(180).then(() => doValidateAddress(body))
     if (url === '/carriers/aggregator/track') return delay(200).then(() => doAggregateTrack(body))
     if (url === '/carriers/aggregator/catalog') return delay(120).then(() => doAggregatorCatalog())
+    // 收款账务资金操作（§16）：充值 / 授信 / 冻结 / 解冻 / 扣费 / 退款 / 结算
+    if (url === '/finance/wallet/recharge') return delay(160).then(() => doRecharge(body))
+    if (url === '/finance/wallet/credit-limit') return delay(120).then(() => doSetCreditLimit(body))
+    if (url === '/finance/wallet/freeze') return delay(160).then(() => doFreeze(body))
+    if (url === '/finance/wallet/unfreeze') return delay(160).then(() => doUnfreeze(body))
+    if (url === '/finance/wallet/charge') return delay(160).then(() => doCharge(body))
+    if (url === '/finance/wallet/refund') return delay(160).then(() => doRefund(body))
+    if (url === '/finance/wallet/settle') return delay(160).then(() => doSettle(body))
     if (url === '/pricing/markup-rules') return delay().then(() => createMarkupRule(body))
     if (url === '/settings/tdk-rules') return delay().then(() => createTdkRule(body))
     // 品牌图片上传（LOGO / Favicon）：演示态直接回吐压缩后的 dataURL 地址。
