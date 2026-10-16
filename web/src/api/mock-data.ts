@@ -1061,6 +1061,101 @@ function doGetSecurity(): Record<string, unknown> {
   }
 }
 
+// ===== RBAC 演示数据（任务 4.5，§22）=====
+// 系统内置角色蓝图（与后端 ROLE_PERMISSIONS 同口径）
+const RBAC_BLUEPRINTS: Record<string, string[]> = {
+  super_admin: [
+    'dashboard:view', 'order:view', 'order:review', 'order:push', 'catalog:view', 'catalog:manage',
+    'channel:view', 'channel:manage', 'carrier:view', 'carrier:manage', 'pricing:view', 'pricing:manage',
+    'shipment:view', 'shipment:manage', 'finance:view', 'finance:manage', 'report:view', 'rbac:manage',
+    'tenant:manage', 'settings:manage',
+  ],
+  operator: [
+    'dashboard:view', 'order:view', 'order:review', 'order:push', 'catalog:view', 'catalog:manage',
+    'channel:view', 'channel:manage', 'carrier:view', 'carrier:manage', 'pricing:view',
+    'shipment:view', 'shipment:manage', 'report:view',
+  ],
+  finance: ['dashboard:view', 'order:view', 'finance:view', 'finance:manage', 'report:view'],
+  warehouse: ['dashboard:view', 'order:view', 'catalog:view', 'shipment:view', 'shipment:manage'],
+  cs: ['dashboard:view', 'order:view', 'shipment:view'],
+}
+
+const RBAC_SCOPES = [
+  { code: 'all', label: '全部数据' },
+  { code: 'shop', label: '指定店铺' },
+  { code: 'warehouse', label: '指定仓库' },
+  { code: 'region', label: '指定地区' },
+]
+
+const RBAC_RESOURCES = [
+  { group: 'dashboard', groupLabel: '概览', items: [{ code: 'dashboard:view', label: '查看仪表盘' }] },
+  { group: 'order', groupLabel: '订单', items: [
+    { code: 'order:view', label: '查看订单' }, { code: 'order:review', label: '审单' }, { code: 'order:push', label: '推单/履约' }] },
+  { group: 'catalog', groupLabel: '商品/SKU', items: [
+    { code: 'catalog:view', label: '查看商品' }, { code: 'catalog:manage', label: '管理商品/SKU' }] },
+  { group: 'channel', groupLabel: '渠道', items: [
+    { code: 'channel:view', label: '查看渠道' }, { code: 'channel:manage', label: '管理渠道/拉单' }] },
+  { group: 'carrier', groupLabel: '承运商', items: [
+    { code: 'carrier:view', label: '查看承运商' }, { code: 'carrier:manage', label: '管理承运商/试算' }] },
+  { group: 'pricing', groupLabel: '运费/比价', items: [
+    { code: 'pricing:view', label: '查看运费/比价' }, { code: 'pricing:manage', label: '运营配置(加价/费率卡)' }] },
+  { group: 'shipment', groupLabel: '物流履约', items: [
+    { code: 'shipment:view', label: '查看运单/轨迹' }, { code: 'shipment:manage', label: '建单/面单/轨迹' }] },
+  { group: 'finance', groupLabel: '财务', items: [
+    { code: 'finance:view', label: '查看账务/账单/利润' }, { code: 'finance:manage', label: '充值/扣款/结算' }] },
+  { group: 'report', groupLabel: '报表', items: [{ code: 'report:view', label: '查看报表指标' }] },
+  { group: 'rbac', groupLabel: '权限', items: [{ code: 'rbac:manage', label: '管理角色与权限' }] },
+  { group: 'tenant', groupLabel: '平台', items: [{ code: 'tenant:manage', label: '租户管理(平台运营方)' }] },
+  { group: 'settings', groupLabel: '系统', items: [{ code: 'settings:manage', label: '站点/系统设置' }] },
+]
+
+// 租户角色（演示态种子；super_admin 为系统内置，其余可复制蓝图建角色）
+const rbacRoles: {
+  id: string
+  name: string
+  scope: string | null
+  permissions: string[]
+  system: boolean
+  createdAt: string
+}[] = Object.keys(RBAC_BLUEPRINTS).map((name, i) => ({
+  id: 'role-' + name,
+  name,
+  scope: 'all',
+  permissions: RBAC_BLUEPRINTS[name],
+  system: true,
+  createdAt: new Date(Date.UTC(2026, 9, 1) + i * 86400000).toISOString(),
+}))
+
+function doGetCatalog(): { resources: typeof RBAC_RESOURCES; scopes: typeof RBAC_SCOPES } {
+  return { resources: RBAC_RESOURCES, scopes: RBAC_SCOPES }
+}
+function doGetBlueprints(): Record<string, string[]> {
+  return RBAC_BLUEPRINTS
+}
+function doGetRoles(): unknown[] {
+  return rbacRoles.map((r) => ({ ...r }))
+}
+function doCreateRole(body: { name?: string; permissions?: string[]; scope?: string }): unknown {
+  const name = (body.name || '').trim()
+  if (!name) return reject('角色名不能为空')
+  const role = {
+    id: 'role-' + Date.now(),
+    name,
+    scope: body.scope ?? 'all',
+    permissions: body.permissions ?? [],
+    system: false,
+    createdAt: new Date().toISOString(),
+  }
+  rbacRoles.push(role)
+  return role
+}
+
+/** 为用户分配角色（§22）：演示态仅校验入参并返回分配数量（真实后端落 UserRole 并触发权限刷新）。 */
+function doAssignRoles(userId: string, body: { roleIds?: unknown[] }): { userId: string; assigned: number } {
+  const roleIds = Array.isArray(body.roleIds) ? body.roleIds.filter((r) => typeof r === 'string') : []
+  return { userId, assigned: roleIds.length }
+}
+
 /** 利润趋势：以已生成账期为终点往前推 N 个月，逐月复用利润核算口径。 */
 function doGetProfitTrend(months: number): ProfitSummary[] {
   const n = Math.max(1, Math.min(months || 6, 12))
@@ -1106,6 +1201,10 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     }
     // 系统安全态势（§17）：隔离/加密/越权防护（演示态静态镜像后端诊断）
     if (url === '/system/security') return delay().then(() => doGetSecurity())
+    // RBAC 权限目录 / 角色（§22）
+    if (url === '/rbac/permissions') return delay().then(() => doGetCatalog())
+    if (url === '/rbac/role-blueprints') return delay().then(() => doGetBlueprints())
+    if (url === '/rbac/roles') return delay().then(() => doGetRoles())
     const billId = url.match(/^\/billing\/bills\/([^/]+)$/)
     if (billId) {
       const b = billingBills.find((x) => x.id === billId[1])
@@ -1180,6 +1279,13 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     if (url === '/settings/assets') return delay(200).then(() => doUploadAsset(body))
     // 重置演示态站点设置：清空 localStorage 快照并回到种子数据。
     if (url === '/settings/site/reset') return delay().then(() => doResetSite())
+    // RBAC 角色创建 / 用户授权（§22）：演示态内存改写（rbac:manage 权限由真实后端 PermissionsGuard 拦截）。
+    if (url === '/rbac/roles')
+      return delay(160).then(() =>
+        doCreateRole(body as { name?: string; permissions?: string[]; scope?: string }),
+      )
+    const assignRoles = url.match(/^\/rbac\/users\/([^/]+)\/roles$/)
+    if (assignRoles) return delay(160).then(() => doAssignRoles(assignRoles[1], body as { roleIds?: unknown[] }))
     return delay().then(() => reject('演示模式不支持该请求：' + method + ' ' + url))
   }
 

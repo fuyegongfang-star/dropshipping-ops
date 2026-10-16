@@ -65,7 +65,7 @@
 | 4.2 | 阶段4 | 商户账单 + 承运商对账 | bills/reconciliations（§9/§10） | 4.1/3.6 | 1.5d | ✅ |
 | 4.3 | 阶段4 | 利润核算(spread) | Σ(sell−cost)（§9/§10） | 4.2 | 1d | ✅ |
 | 4.4 | 阶段4 | 多租户隔离强化 | schema-per-tenant 评估（§17） | 0.2 | 1d | ✅ |
-| 4.5 | 阶段4 | 精细化 RBAC | 组织层级/scope（§22） | 0.3 | 1d | ⬜ |
+| 4.5 | 阶段4 | 精细化 RBAC | 组织层级/scope（§22） | 0.3 | 1d | ✅ |
 | 4.6 | 阶段4 | 运营配置后台 | 加价/产品/费率卡 UI（§23） | 3.6/3.7 | 2d | ⬜ |
 | 4.7 | 阶段4 | 报表指标口径 | 履约/物流/利润看板（§25） | 4.3 | 1.5d | ⬜ |
 | 4.8 | 阶段4 | 理赔保险 | `claims` 流程（§20） | 3.11 | 1d | ⬜ |
@@ -376,3 +376,19 @@
 - **测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**183 passed / 27 suites**，新增 12）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
 - **提交**：随本批统一提交（4.4 后端/前端/进度生成器）。
 - **下一步（次日接力）**：4.5 精细化 RBAC（§22 组织层级 / scope）→ 4.6 运营配置后台 → 4.7 报表指标 → 4.8 理赔保险 → 4.9 多语言多币种前端。
+
+### 进度更新 · 2026-10-16（续跑 · 4.5 精细化 RBAC）
+- **完成（✅）**：
+  - **4.5 精细化 RBAC（§22 权限点 / 角色蓝图 / 角色分配）** —— 后端新增 `common/auth/rbac/` 子模块：
+    - `permissions.ts`：`PERMISSION_RESOURCES`（12 个资源分组，如 dashboard/order/catalog/channel/carrier/pricing/shipment/finance/report/rbac/tenant/settings）、`ROLE_PERMISSIONS`（super_admin/operator/finance/warehouse/cs 五套系统角色 → 默认权限点集合）、`SYSTEM_ROLES`、`SCOPE_DIMENSIONS`（all/shop/warehouse/region 数据可见范围）、`ALL_PERMISSIONS`、`resolvePermissions(roles)`（角色→权限点解析）、`scopeMatches(userScope, resourceScope)`（作用域匹配）。
+    - `require-permissions.decorator.ts`：`@RequirePermissions(...)` + `REQUIRE_PERMISSIONS_KEY`，供控制器方法标注所需权限点。
+    - `permissions.guard.ts`：`PermissionsGuard` 用 `Reflector` 读取装饰器元数据，对缺权限请求返回 403（§22 运行时鉴权）。
+    - `modules/rbac/rbac.controller.ts`：`@UseGuards(JwtAuthGuard, PermissionsGuard)`；`GET /rbac/permissions`（权限点目录 + 作用域维度）、`GET /rbac/role-blueprints`（系统角色→权限点蓝图）、`GET /rbac/roles`（当前租户角色）、`POST /rbac/roles`（创建角色，需 `rbac:manage`）、`POST /rbac/users/:userId/roles`（分配角色，需 `rbac:manage`）；`rbac.module.ts` 装配并接入 `AppModule`。
+    - JWT 权限点贯通：`auth.service.ts` 登录签发把 `roles` 写入 JWT；`jwt.strategy.ts` validate 回吐 `roles`；`users.service.ts` `validate` 改由 `role` 表两查询加载角色（规避 `Role`/`UserRole` 无 Prisma 关系）。
+    - 单测 `permissions.spec.ts`（5 cases：角色解析/作用域匹配/权限并集/缺权限判定/资源分组完整性）全绿。
+  - **前端可视化（系统设置 → 权限管理）**：`web/src/views/RbacView.vue`（/rbac，super 专属）—— 态势四卡片（角色数/权限点总数/作用域维度/系统蓝图数）+ **权限矩阵**（行=权限点、列=系统角色、✓ 标记归属）+ 当前租户角色表（系统/自定义徽章、权限数、分配按钮）+ 新建角色对话框（角色名/作用域/权限点多选）+ 分配角色对话框（用户 ID + 角色选择）；`web/src/api/rbac.ts` 接口封装、`mock-data.ts` 增 RBAC 演示状态与 `doGetCatalog`/`doGetBlueprints`/`doGetRoles`/`doCreateRole`/`doAssignRoles`（演示+正式双路通）；`router` + `BasicLayout.menuNodes` 系统设置分组注册（roles super，icon `key`）；`AppIcon` 复用 `key/shield/globe/layers/check`。
+- **进行中（🔵）**：无（本批 4.5 完成）。
+- **受阻**：无。
+- **测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**188 passed / 27 suites**，新增 5）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
+- **提交**：随本批统一提交（4.5 后端/前端/进度生成器）。
+- **下一步（次日接力）**：4.6 运营配置后台（§23 加价/产品/费率卡 UI）→ 4.7 报表指标 → 4.8 理赔保险 → 4.9 多语言多币种前端。

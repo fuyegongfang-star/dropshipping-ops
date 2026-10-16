@@ -18,11 +18,16 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     })
   }
 
-  async validate(payload: { sub: string; tenantId: string; email: string }) {
+  async validate(payload: { sub: string; tenantId: string; email: string; roles?: string[] }) {
     // 租户信息缺失视为非法令牌（§17 防越权）
     if (!payload?.tenantId) {
       throw new UnauthorizedException('令牌缺少租户信息')
     }
-    return { userId: payload.sub, tenantId: payload.tenantId, email: payload.email }
+    return {
+      userId: payload.sub,
+      tenantId: payload.tenantId,
+      email: payload.email,
+      roles: payload.roles ?? [],
+    }
   }
 }

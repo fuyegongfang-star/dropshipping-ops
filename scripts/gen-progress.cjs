@@ -43,6 +43,7 @@ const EXPLICIT_ROUTES = {
   '4.2': '/billing',
   '4.3': '/profit',
   '4.4': '/security',
+  '4.5': '/rbac',
 };
 
 /** 关键词 → 路由（兜底推断，命中即用）。 */

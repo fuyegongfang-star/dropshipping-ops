@@ -25,8 +25,13 @@ export class AuthService {
     const user = await this.users.validate(email, password, tenantId)
     if (!user) throw new UnauthorizedException('账号或密码错误')
 
-    // 令牌绑定租户，后续请求据此做数据隔离（§0/§17）
-    const payload = { sub: user.id, tenantId: user.tenantId, email: user.email }
+    // 令牌绑定租户与角色（§0/§17 数据隔离；§22 RBAC 接口级权限校验）
+    const payload = {
+      sub: user.id,
+      tenantId: user.tenantId,
+      email: user.email,
+      roles: user.roles,
+    }
     return { token: await this.jwt.signAsync(payload) }
   }
 }

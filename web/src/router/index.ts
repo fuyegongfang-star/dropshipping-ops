@@ -14,6 +14,7 @@ import WalletView from '@/views/WalletView.vue'
 import BillingView from '@/views/BillingView.vue'
 import ProfitView from '@/views/ProfitView.vue'
 import SecurityView from '@/views/SecurityView.vue'
+import RbacView from '@/views/RbacView.vue'
 import PricingRulesView from '@/views/PricingRulesView.vue'
 import SiteSettingsView from '@/views/SiteSettingsView.vue'
 import ProgressView from '@/views/ProgressView.vue'
@@ -52,6 +53,7 @@ const router = createRouter({
         { path: 'progress', name: 'progress', component: ProgressView, meta: { title: '开发进度', roles: ['super'] } },
         { path: 'tenants', name: 'tenants', component: TenantsView, meta: { title: '租户', roles: ['super'] } },
         { path: 'security', name: 'security', component: SecurityView, meta: { title: '安全加固', roles: ['super'] } },
+        { path: 'rbac', name: 'rbac', component: RbacView, meta: { title: '权限管理', roles: ['super'] } },
       ],
     },
   ],
