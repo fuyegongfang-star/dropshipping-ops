@@ -1041,6 +1041,27 @@ function doGetProfitBreakdown(url: string): ProfitBreakdown {
 }
 
 /** 利润趋势：以已生成账期为终点往前推 N 个月，逐月复用利润核算口径。 */
+/** 系统安全态势（§17）：演示态静态镜像后端 /system/security 诊断（隔离/加密/越权防护）。 */
+function doGetSecurity(): Record<string, unknown> {
+  return {
+    isolationMode: '共享库 + tenant_id 行级隔离（§0/§17） + Prisma 中间件 IDOR 纵深防御',
+    tenantScopedModelCount: 39,
+    tenantScopedModels: [
+      'Asn', 'Bill', 'Bin', 'CarrierAccount', 'Claim', 'ComplianceRule', 'CycleCount', 'Inventory',
+      'LedgerEntry', 'LogisticsProduct', 'MarkupRule', 'Order', 'OrderEvent', 'OrderHold', 'OrderItem',
+      'PickTask', 'Product', 'Quote', 'RateQuote', 'ReverseOrder', 'Role', 'Shipment', 'ShipmentLeg',
+      'Shop', 'Sku', 'Supplier', 'SupplierOrder', 'SupplierSettlement', 'SupplierSku', 'SurchargeRule',
+      'TrackingEvent', 'User', 'UserRole', 'Wallet', 'Warehouse', 'WebhookEvent', 'ZoneMap',
+    ],
+    secretEncryption: 'AES-256-GCM（§17.2 凭据加密存储 / 运行时解密 / 不落明文库）',
+    rlsEnabled: false,
+    piiMasking: '规划中（§17.3：买家 PII 加密/脱敏 + 数据主体权利接口）',
+    idorGuard: 'context-bound tenantId 冲突拦截（§17.4 防 IDOR / 防客户端覆盖）',
+    transportAudit: 'TLS 全链路 + 操作审计日志（§17.5，WAF/限流见 §26）',
+  }
+}
+
+/** 利润趋势：以已生成账期为终点往前推 N 个月，逐月复用利润核算口径。 */
 function doGetProfitTrend(months: number): ProfitSummary[] {
   const n = Math.max(1, Math.min(months || 6, 12))
   const periods = billingBills.map((b) => b.period)
@@ -1083,6 +1104,8 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
       const months = q.months ? Number(q.months) : 6
       return delay().then(() => doGetProfitTrend(Number.isFinite(months) && months > 0 ? months : 6))
     }
+    // 系统安全态势（§17）：隔离/加密/越权防护（演示态静态镜像后端诊断）
+    if (url === '/system/security') return delay().then(() => doGetSecurity())
     const billId = url.match(/^\/billing\/bills\/([^/]+)$/)
     if (billId) {
       const b = billingBills.find((x) => x.id === billId[1])

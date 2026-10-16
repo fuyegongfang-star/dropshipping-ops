@@ -1,5 +1,6 @@
 import { Injectable, OnModuleInit } from '@nestjs/common'
 import { PrismaClient } from '@prisma/client'
+import { registerTenantIsolation } from '../common/tenant/tenant-isolation.middleware'
 
 /**
  * Prisma 单例服务（方案 §11）。
@@ -10,5 +11,7 @@ import { PrismaClient } from '@prisma/client'
 export class PrismaService extends PrismaClient implements OnModuleInit {
   async onModuleInit(): Promise<void> {
     await this.$connect()
+    // 租户隔离纵深防御（任务 4.4，§17.1/§17.4）：注册前拦截跨租户读写
+    registerTenantIsolation(this)
   }
 }

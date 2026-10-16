@@ -64,7 +64,7 @@
 | 4.1 | 阶段4 | 收款账务 wallet+ledger | 复式记账/预充值/账期/退款（§16） | 0.3 | 2d | ✅ |
 | 4.2 | 阶段4 | 商户账单 + 承运商对账 | bills/reconciliations（§9/§10） | 4.1/3.6 | 1.5d | ✅ |
 | 4.3 | 阶段4 | 利润核算(spread) | Σ(sell−cost)（§9/§10） | 4.2 | 1d | ✅ |
-| 4.4 | 阶段4 | 多租户隔离强化 | schema-per-tenant 评估（§17） | 0.2 | 1d | ⬜ |
+| 4.4 | 阶段4 | 多租户隔离强化 | schema-per-tenant 评估（§17） | 0.2 | 1d | ✅ |
 | 4.5 | 阶段4 | 精细化 RBAC | 组织层级/scope（§22） | 0.3 | 1d | ⬜ |
 | 4.6 | 阶段4 | 运营配置后台 | 加价/产品/费率卡 UI（§23） | 3.6/3.7 | 2d | ⬜ |
 | 4.7 | 阶段4 | 报表指标口径 | 履约/物流/利润看板（§25） | 4.3 | 1.5d | ⬜ |
@@ -360,3 +360,19 @@
 - **测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**171 passed / 25 suites**，新增 2）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
 - **提交**：随本批统一提交（4.3 后端/前端/进度生成器）。
 - **下一步（次日接力）**：4.4 多租户隔离强化（§17 schema-per-tenant 评估 / 行级隔离加固）→ 4.5 精细化 RBAC → 4.6 运营配置后台 → 4.7 报表指标 → 4.8 理赔保险 → 4.9 多语言多币种前端。
+
+### 进度更新 · 2026-10-16（续跑 · 4.4 多租户隔离强化）
+- **完成（✅）**：
+  - **4.4 多租户隔离强化（§17 评估 + 落地）** —— 评估结论：**采用共享库 + tenant_id 行级隔离**（schema-per-tenant 经评估在高并发多租户下运维/迁移/跨租户聚合成本过高，不予采用）。
+    - 后端 `common/tenant/tenant-isolation.ts`：`TENANT_SCOPED_MODELS`（全 39 个带 tenant_id 的业务模型）+ `enforceTenantIsolation` 纯函数（上下文租户与读写 tenant_id 冲突即抛 `TENANT_ISOLATION_VIOLATION`，§17.1 禁客户端覆盖 + §17.4 防 IDOR）；平台级聚合（无上下文）完全透明。
+    - `common/tenant/tenant-isolation.middleware.ts`：Prisma `$use` 注册中间件（热重载去重），把隔离校验接入全局 DB 拦截。
+    - `common/security/secret-encryption.service.ts`（§17.2）：AES-256-GCM 加密承运商凭据（加密存储/运行时解密/不落明文库），主密钥取自 `APP_MASTER_KEY`，缺失告警+开发态降级。
+    - `common/tenant/tenant.middleware.ts`：租户解析新增 **JWT 验签回退**（与鉴权同一密钥，取 payload.tenantId），使隔离上下文对 JWT 认证请求也生效（比客户端 header 更权威）。
+    - `modules/system/`：`GET /system/security` 只读诊断（隔离模式/模型数/加密算法/越权防护）；`AppModule` 装配 `SystemModule`。
+    - 单测 `tenant-isolation.spec.ts`（8 cases）+ `secret-encryption.service.spec.ts`（4 cases）。
+  - **前端可视化（系统设置 → 安全加固）**：`web/src/views/SecurityView.vue`（/security，super 专属）—— 核心态势三卡片（隔离模型数/AES-256-GCM/IDOR 已拦截）+ §17 合规清单（已落地/规划中状态）+ 隔离方案评估结论 + 39 模型标签云；`web/src/api/system.ts` + `mock-data.ts` 双路通；`router` + `BasicLayout.menuNodes` 系统设置分组注册（roles super）；`AppIcon` 复用 `shield/tenants/radar`。
+- **进行中（🔵）**：无（本批 4.4 完成）。
+- **受阻**：无。
+- **测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**183 passed / 27 suites**，新增 12）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
+- **提交**：随本批统一提交（4.4 后端/前端/进度生成器）。
+- **下一步（次日接力）**：4.5 精细化 RBAC（§22 组织层级 / scope）→ 4.6 运营配置后台 → 4.7 报表指标 → 4.8 理赔保险 → 4.9 多语言多币种前端。

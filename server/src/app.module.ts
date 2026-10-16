@@ -14,6 +14,7 @@ import { CarriersModule } from './modules/carriers/carriers.module'
 import { PricingModule } from './modules/pricing/pricing.module'
 import { FinanceModule } from './modules/finance/finance.module'
 import { BillingModule } from './modules/billing/billing.module'
+import { SystemModule } from './modules/system/system.module'
 
 /**
  * 根模块：装配全局配置、数据库、鉴权、健康检查与业务模块（方案 §0/§11）。
@@ -34,6 +35,7 @@ import { BillingModule } from './modules/billing/billing.module'
     PricingModule,
     FinanceModule,
     BillingModule,
+    SystemModule,
   ],
 })
 export class AppModule implements NestModule {

@@ -219,6 +219,7 @@ const menuNodes: MenuNode[] = [
       { path: '/settings/site', title: '站点设置', icon: 'flag', roles: ['super'] },
       { path: '/tenants', title: '租户管理', icon: 'tenants', roles: ['super'] },
       { path: '/progress', title: '开发进度', icon: 'target', roles: ['super'] },
+      { path: '/security', title: '安全加固', icon: 'shield', roles: ['super'] },
     ],
   },
 ]
