@@ -63,7 +63,7 @@
 | 3.13 | 阶段3 | 聚合平台兜底 | AfterShip/17track 尾程（§3e） | 3.11 | 0.5d | ✅ |
 | 4.1 | 阶段4 | 收款账务 wallet+ledger | 复式记账/预充值/账期/退款（§16） | 0.3 | 2d | ✅ |
 | 4.2 | 阶段4 | 商户账单 + 承运商对账 | bills/reconciliations（§9/§10） | 4.1/3.6 | 1.5d | ✅ |
-| 4.3 | 阶段4 | 利润核算(spread) | Σ(sell−cost)（§9/§10） | 4.2 | 1d | ⬜ |
+| 4.3 | 阶段4 | 利润核算(spread) | Σ(sell−cost)（§9/§10） | 4.2 | 1d | ✅ |
 | 4.4 | 阶段4 | 多租户隔离强化 | schema-per-tenant 评估（§17） | 0.2 | 1d | ⬜ |
 | 4.5 | 阶段4 | 精细化 RBAC | 组织层级/scope（§22） | 0.3 | 1d | ⬜ |
 | 4.6 | 阶段4 | 运营配置后台 | 加价/产品/费率卡 UI（§23） | 3.6/3.7 | 2d | ⬜ |
@@ -348,3 +348,15 @@
 - **测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**169 passed / 25 suites**，新增 7）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
 - **提交**：随本批统一提交（含 schema 修复、billing 模块、前端页、进度生成器）。
 - **下一步**：4.3 利润核算(spread)（报表化 §9/§10，前端利润看板/趋势，复用 4.2 的 profit 口径）→ 4.4 多租户隔离强化 → 4.5 精细化 RBAC → 4.6 运营配置后台 → 4.7 报表指标 → 4.8 理赔保险 → 4.9 多语言多币种前端。
+
+### 进度更新 · 2026-10-16（夜间自动化 23:10 启动 · 4.3 利润核算）
+- **完成（✅）**：
+  - **4.3 利润核算（spread，§9/§10 报表化）** —— 在 4.2 平台级利润核算（`profit = ΣtotalSell − ΣtotalCost`）基础上报表化拆解：
+    - 后端 `billing.service.ts` 新增 `getProfitBreakdown(period)`（总览 + **按租户** 应收/应付/利润/毛利率 + **按承运商** 应付成本，租户级利润由 `Shipment.sellPrice − carrierCost` 真实分摊，非笼统相减）+ `getProfitTrend(months=6)`（近 N 账期平台利润概览，供趋势图）；`billing.controller.ts` 新增 `GET /billing/profit/breakdown`、`GET /billing/profit/trend`；`billing.types.ts` 新增 `ProfitBreakdown`/`TenantProfit`/`CarrierCost`。
+    - 单测 `billing.service.spec.ts` 新增 2 cases（租户/承运商拆解口径 + 趋势结构）。
+  - **前端可视化（财务中心第三个落地页）**：`web/src/views/ProfitView.vue`（/profit）—— 利润总览四宫格（应收合计/应付合计/平台利润/毛利率）+ **利润趋势图（ECharts 近 6 账期 利润柱+应收/应付折线）** + 按租户利润贡献表 + 按承运商应付成本表；`web/src/api/billing.ts` 增 `getProfitBreakdown`/`getProfitTrend` + 类型；`mock-data.ts` 增 `doGetProfitBreakdown`/`doGetProfitTrend`（与后端同口径，演示+正式双路通）；`router` + `BasicLayout.menuNodes` 财务中心分组注册「利润核算」；`AppIcon` 复用 `trend/calendar/arrow-down/arrow-up/coins/percent`。
+- **进行中（🔵）**：无（本批 4.3 完成）。
+- **受阻**：无。
+- **测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**171 passed / 25 suites**，新增 2）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
+- **提交**：随本批统一提交（4.3 后端/前端/进度生成器）。
+- **下一步（次日接力）**：4.4 多租户隔离强化（§17 schema-per-tenant 评估 / 行级隔离加固）→ 4.5 精细化 RBAC → 4.6 运营配置后台 → 4.7 报表指标 → 4.8 理赔保险 → 4.9 多语言多币种前端。

@@ -14,7 +14,7 @@
 // ===== 类型（镜像后端 DTO 与前端 *Api 模块）=====
 import type { ComposeLegsRequest, ComposeLegsResult, ShipmentLeg, LabelSpec, LabelResult, CustomsSpec, CustomsIssue, CustomsValidationResult, TrackingQuery, TrackingEnvelope, TrackingChannel, TrackingEvent, NdrReport, AddressValidateRequest, AddressValidationResult, AddressIssue, ZoneInfo, CarrierFeasibility, AggregatorQuery, AggregatorResult, AggregatorCatalogItem } from './carriers'
 import type { WalletSummary, LedgerType, LedgerItem } from './finance'
-import type { BillItem, ReconciliationItem, ProfitSummary, GenerateResult } from './billing'
+import type { BillItem, ReconciliationItem, ProfitSummary, GenerateResult, ProfitBreakdown, TenantProfit, CarrierCost } from './billing'
 
 export interface MockTenant {
   id: string
@@ -1017,6 +1017,44 @@ function doCloseRecon(id: string): ReconciliationItem {
   return { ...r }
 }
 
+/** 利润核算明细：总览 + 按租户 / 承运商拆解（§9 spread 报表化），与后端同口径。 */
+function doGetProfitBreakdown(url: string): ProfitBreakdown {
+  const q = parseQ(url)
+  const period = q.period || '2026-10'
+  const summary = doGetProfit(`?period=${period}`)
+  const tenantAgg = new Map<string, { sell: number; cost: number }>()
+  const carrierAgg = new Map<string, number>()
+  for (const s of billingShipments) {
+    if (periodOf(s.createdAt) !== period) continue
+    const t = tenantAgg.get(s.tenantId) || { sell: 0, cost: 0 }
+    t.sell += s.sellPrice
+    t.cost += s.carrierCost
+    tenantAgg.set(s.tenantId, t)
+    carrierAgg.set(s.carrierCode, (carrierAgg.get(s.carrierCode) || 0) + s.carrierCost)
+  }
+  const byTenant: TenantProfit[] = [...tenantAgg.entries()].map(([tenantId, v]) => {
+    const profit = v.sell - v.cost
+    return { tenantId, totalSell: v.sell, totalCost: v.cost, profit, marginRate: v.sell === 0 ? 0 : profit / v.sell }
+  })
+  const byCarrier: CarrierCost[] = [...carrierAgg.entries()].map(([carrierCode, totalCost]) => ({ carrierCode, totalCost }))
+  return { summary, byTenant, byCarrier }
+}
+
+/** 利润趋势：以已生成账期为终点往前推 N 个月，逐月复用利润核算口径。 */
+function doGetProfitTrend(months: number): ProfitSummary[] {
+  const n = Math.max(1, Math.min(months || 6, 12))
+  const periods = billingBills.map((b) => b.period)
+  const end = periods.length ? periods.reduce((a, b) => (a < b ? b : a)) : '2026-10'
+  const [ey, em] = end.split('-').map(Number)
+  const out: ProfitSummary[] = []
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(Date.UTC(ey, em - 1 - i, 1))
+    const period = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
+    out.push(doGetProfit(`?period=${period}`))
+  }
+  return out
+}
+
 // ===== 路由分发 =====
 /** mock 模式下 http.ts 的唯一入口：按 method + url 返回对应数据或执行状态变更。
  *  body 仅在 POST/PUT 时由 http.ts 透传（用于比价试算等带参请求）。 */
@@ -1039,6 +1077,12 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     if (url === '/billing/reconciliations' || url.startsWith('/billing/reconciliations?'))
       return delay().then(() => doListRecons(url))
     if (url === '/billing/profit' || url.startsWith('/billing/profit?')) return delay().then(() => doGetProfit(url))
+    if (url.startsWith('/billing/profit/breakdown')) return delay().then(() => doGetProfitBreakdown(url))
+    if (url.startsWith('/billing/profit/trend')) {
+      const q = parseQ(url)
+      const months = q.months ? Number(q.months) : 6
+      return delay().then(() => doGetProfitTrend(Number.isFinite(months) && months > 0 ? months : 6))
+    }
     const billId = url.match(/^\/billing\/bills\/([^/]+)$/)
     if (billId) {
       const b = billingBills.find((x) => x.id === billId[1])

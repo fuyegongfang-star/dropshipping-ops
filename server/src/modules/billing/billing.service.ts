@@ -21,7 +21,7 @@ import { Prisma } from '@prisma/client'
 import { PrismaService } from '../../database/prisma.service'
 import { BusinessException } from '../../common/response/business.exception'
 import { AppLogger } from '../../common/logger/app.logger'
-import { BillItem, ReconciliationItem, ProfitSummary, GenerateResult } from './billing.types'
+import { BillItem, ReconciliationItem, ProfitSummary, GenerateResult, ProfitBreakdown, TenantProfit, CarrierCost } from './billing.types'
 
 const DEFAULT_CURRENCY = 'CNY'
 
@@ -245,6 +245,64 @@ export class BillingService {
       billCount: bills.length,
       reconciliationCount: recons.length,
     }
+  }
+
+  // ---- 利润多维拆解（§9 spread 报表化） ------------------------------------
+
+  /**
+   * 利润核算明细：总览 + 按租户（应收/应付/利润）+ 按承运商（应付成本）。
+   * 租户级利润直接由 Shipment 的 sell_price − carrier_cost 按租户聚合得出（§9 spread 真实分摊）。
+   */
+  async getProfitBreakdown(period: string): Promise<ProfitBreakdown> {
+    const { gte, lt } = this.periodRange(period)
+    const carriers = await this.prisma.carrier.findMany({ select: { id: true, code: true } })
+    const carrierCodeById = new Map(carriers.map((c) => [c.id, c.code]))
+
+    const byTenantRows = await this.prisma.shipment.groupBy({
+      by: ['tenantId'],
+      where: { createdAt: { gte, lt }, sellPrice: { not: null }, carrierCost: { not: null } },
+      _sum: { sellPrice: true, carrierCost: true },
+    })
+    const byTenant: TenantProfit[] = byTenantRows.map((g) => {
+      const sell = new Prisma.Decimal(g._sum.sellPrice ?? 0)
+      const cost = new Prisma.Decimal(g._sum.carrierCost ?? 0)
+      const profit = sell.minus(cost)
+      return {
+        tenantId: g.tenantId,
+        totalSell: Number(sell),
+        totalCost: Number(cost),
+        profit: Number(profit),
+        marginRate: sell.isZero() ? 0 : Number(profit) / Number(sell),
+      }
+    })
+
+    const byCarrierRows = await this.prisma.shipment.groupBy({
+      by: ['carrierId'],
+      where: { createdAt: { gte, lt }, carrierId: { not: null }, carrierCost: { not: null } },
+      _sum: { carrierCost: true },
+    })
+    const byCarrier: CarrierCost[] = byCarrierRows.map((g) => ({
+      carrierCode: carrierCodeById.get(g.carrierId as string) ?? (g.carrierId as string),
+      totalCost: Number(g._sum.carrierCost ?? 0),
+    }))
+
+    const summary = await this.getProfitSummary(period)
+    return { summary, byTenant, byCarrier }
+  }
+
+  /**
+   * 利润趋势：最近 months 个账期的平台利润概览（用于趋势图，§9 spread 时序化）。
+   * 从当前 UTC 月份往前推，逐月调用利润核算。
+   */
+  async getProfitTrend(months = 6): Promise<ProfitSummary[]> {
+    const now = new Date()
+    const out: ProfitSummary[] = []
+    for (let i = months - 1; i >= 0; i--) {
+      const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1))
+      const period = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
+      out.push(await this.getProfitSummary(period))
+    }
+    return out
   }
 }
 

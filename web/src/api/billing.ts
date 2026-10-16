@@ -53,6 +53,28 @@ export interface GenerateResult {
   updated: number
 }
 
+/** 单租户利润贡献（§9 spread 收入侧分摊） */
+export interface TenantProfit {
+  tenantId: string
+  totalSell: number
+  totalCost: number
+  profit: number
+  marginRate: number
+}
+
+/** 单承运商成本贡献 */
+export interface CarrierCost {
+  carrierCode: string
+  totalCost: number
+}
+
+/** 利润核算明细（§9 spread 多维拆解） */
+export interface ProfitBreakdown {
+  summary: ProfitSummary
+  byTenant: TenantProfit[]
+  byCarrier: CarrierCost[]
+}
+
 /** 账单状态中文标签 */
 export const BILL_STATUS_LABELS: Record<string, string> = {
   draft: '草稿',
@@ -109,4 +131,8 @@ export const billingApi = {
   closeReconciliation: (id: string) => http.post<ReconciliationItem>(`/billing/reconciliations/${id}/close`),
   /** 平台利润核算（§9 spread） */
   getProfit: (period: string) => http.get<ProfitSummary>(`/billing/profit?period=${period}`),
+  /** 利润核算明细：总览 + 按租户 / 承运商拆解（§9 spread 报表化） */
+  getProfitBreakdown: (period: string) => http.get<ProfitBreakdown>(`/billing/profit/breakdown?period=${period}`),
+  /** 利润趋势：最近 N 个账期平台利润概览（默认 6 个月，§9 spread 时序化） */
+  getProfitTrend: (months = 6) => http.get<ProfitSummary[]>(`/billing/profit/trend?months=${months}`),
 }

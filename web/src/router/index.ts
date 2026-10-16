@@ -12,6 +12,7 @@ import AddressView from '@/views/AddressView.vue'
 import AggregatorView from '@/views/AggregatorView.vue'
 import WalletView from '@/views/WalletView.vue'
 import BillingView from '@/views/BillingView.vue'
+import ProfitView from '@/views/ProfitView.vue'
 import PricingRulesView from '@/views/PricingRulesView.vue'
 import SiteSettingsView from '@/views/SiteSettingsView.vue'
 import ProgressView from '@/views/ProgressView.vue'
@@ -38,6 +39,7 @@ const router = createRouter({
         { path: 'aggregator', name: 'aggregator', component: AggregatorView, meta: { title: '聚合追踪' } },
         { path: 'wallet', name: 'wallet', component: WalletView, meta: { title: '收款账务' } },
         { path: 'billing', name: 'billing', component: BillingView, meta: { title: '商户账单' } },
+        { path: 'profit', name: 'profit', component: ProfitView, meta: { title: '利润核算' } },
         { path: 'pricing', name: 'pricing', component: PricingRulesView, meta: { title: '运营配置' } },
         // 内部视图：仅平台运营方（super）可见
         {

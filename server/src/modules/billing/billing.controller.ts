@@ -21,7 +21,7 @@ import { Controller, Get, Param, Post, Query } from '@nestjs/common'
 import { ApiResponse, ok } from '../../common/response/api-response'
 import { TenantId } from '../../common/tenant/tenant.decorator'
 import { BillingService } from './billing.service'
-import { BillItem, ReconciliationItem, ProfitSummary, GenerateResult } from './billing.types'
+import { BillItem, ReconciliationItem, ProfitSummary, GenerateResult, ProfitBreakdown } from './billing.types'
 
 @Controller('billing')
 export class BillingController {
@@ -95,5 +95,18 @@ export class BillingController {
   @Get('profit')
   async getProfit(@Query('period') period: string): Promise<ApiResponse<ProfitSummary>> {
     return ok(await this.billing.getProfitSummary(period))
+  }
+
+  /** 利润核算明细：总览 + 按租户 / 按承运商拆解（§9 spread 报表化） */
+  @Get('profit/breakdown')
+  async getProfitBreakdown(@Query('period') period: string): Promise<ApiResponse<ProfitBreakdown>> {
+    return ok(await this.billing.getProfitBreakdown(period))
+  }
+
+  /** 利润趋势：最近 N 个账期平台利润概览（默认 6 个月，§9 spread 时序化） */
+  @Get('profit/trend')
+  async getProfitTrend(@Query('months') months?: string): Promise<ApiResponse<ProfitSummary[]>> {
+    const n = months ? Number(months) : 6
+    return ok(await this.billing.getProfitTrend(Number.isFinite(n) && n > 0 ? n : 6))
   }
 }

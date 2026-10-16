@@ -58,3 +58,30 @@ export interface GenerateResult {
   generated: number
   updated: number
 }
+
+/** 单租户利润贡献（§9 spread 的收入侧分摊） */
+export interface TenantProfit {
+  tenantId: string
+  /** 该租户账期应收（Σ sell_price） */
+  totalSell: number
+  /** 该租户账期应付（Σ carrier_cost） */
+  totalCost: number
+  /** 利润 = totalSell − totalCost */
+  profit: number
+  marginRate: number
+}
+
+/** 单承运商成本贡献 */
+export interface CarrierCost {
+  carrierCode: string
+  totalCost: number
+}
+
+/** 利润核算明细（§9 spread 多维拆解） */
+export interface ProfitBreakdown {
+  summary: ProfitSummary
+  /** 按租户拆分（应收/应付/利润） */
+  byTenant: TenantProfit[]
+  /** 按承运商拆分（应付成本） */
+  byCarrier: CarrierCost[]
+}

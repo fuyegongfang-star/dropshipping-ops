@@ -224,4 +224,33 @@ describe('BillingService', () => {
     const svc = makeService()
     await expect(svc.generateBills('2026-10-01')).rejects.toBeInstanceOf(BusinessException)
   })
+
+  it('利润明细按租户/承运商拆解，利润 = 应收 − 应付', async () => {
+    const svc = makeService()
+    // 先生成账单/对账，使 summary 口径与 4.2 利润核算一致
+    await svc.generateBills('2026-10')
+    await svc.generateReconciliations('2026-10')
+    const bd = await svc.getProfitBreakdown('2026-10')
+    const t1 = bd.byTenant.find((t) => t.tenantId === 't1')
+    // t1: sell 128.5+210=338.5, cost 78+150=228 → profit 110.5
+    expect(t1?.totalSell).toBeCloseTo(338.5, 5)
+    expect(t1?.totalCost).toBeCloseTo(228.0, 5)
+    expect(t1?.profit).toBeCloseTo(110.5, 5)
+    const yun = bd.byCarrier.find((c) => c.carrierCode === 'yunexpress')
+    expect(yun?.totalCost).toBeCloseTo(138.0, 5) // 78 + 60
+    // 总览与 4.2 利润核算口径一致
+    expect(bd.summary.profit).toBeCloseTo(146.9, 5)
+  })
+
+  it('利润趋势返回 N 个账期概览数组（结构正确）', async () => {
+    const svc = makeService()
+    const trend = await svc.getProfitTrend(6)
+    expect(Array.isArray(trend)).toBe(true)
+    expect(trend.length).toBe(6)
+    for (const p of trend) {
+      expect(typeof p.totalSell).toBe('number')
+      expect(typeof p.totalCost).toBe('number')
+      expect(typeof p.profit).toBe('number')
+    }
+  })
 })

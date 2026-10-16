@@ -206,7 +206,8 @@ const menuNodes: MenuNode[] = [
       children: [
       { path: '/wallet', title: '收款账务', icon: 'wallet' },
       { path: '/billing', title: '商户账单', icon: 'bill' },
-      // 待阶段4 后续落地：利润核算(4.3) · 理赔(4.8)
+      { path: '/profit', title: '利润核算', icon: 'trend' },
+      // 待阶段4 后续落地：理赔(4.8)
     ],
   },
   {
