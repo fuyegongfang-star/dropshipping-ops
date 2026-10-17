@@ -42,9 +42,8 @@
       <span class="pv-hint">（含最低毛利保护 ¥5）</span>
     </div>
 
-    <el-row :gutter="16">
-      <!-- 加价规则（整宽：列多，窄栏会挤掉「操作」列） -->
-      <el-col :span="24">
+    <el-tabs v-model="activeTab" class="ops-tabs">
+      <el-tab-pane label="加价规则" name="markup">
         <el-card>
           <template #header>
             <div class="card-head">
@@ -117,10 +116,13 @@
             </el-table-column>
           </el-table>
         </el-card>
-      </el-col>
+      </el-tab-pane>
 
-      <!-- 币种与汇率 -->
-      <el-col :span="24" class="fx-col">
+      <el-tab-pane label="物流产品 / 费率卡" name="products">
+        <OperationsProducts />
+      </el-tab-pane>
+
+      <el-tab-pane label="币种与汇率" name="fx">
         <el-card>
           <template #header><span class="section-title">币种与汇率</span></template>
 
@@ -158,8 +160,8 @@
             生产环境由定时任务刷新并落库快照。
           </p>
         </el-card>
-      </el-col>
-    </el-row>
+      </el-tab-pane>
+    </el-tabs>
 
     <!-- 新增 / 编辑加价规则 -->
     <el-dialog
@@ -282,11 +284,13 @@ import { pricingApi, SCOPE_LABELS, type MarkupRule, type FxRate } from '@/api/pr
 import { resetPricingDemo } from '@/api/mock-data'
 import PageHeader from '@/components/PageHeader.vue'
 import AppIcon from '@/components/AppIcon.vue'
+import OperationsProducts from '@/views/OperationsProducts.vue'
 
 // 加价规则 / 币种配置页（阶段3.6 引擎成果 + 4.6 运营配置后台）。
-// 本页为「运营配置后台」的可视化实现：加价幅度、作用域、优先级、启停均可自定义，
+// 本页为「运营配置后台」的可视化实现：加价幅度、作用域、优先级、启停、物流产品与费率卡均可自定义，
 // 改动经 pricingApi 落库（演示模式下写入 mock 内存态，刷新后仍生效于本次会话）。
 // 表格 slot 的 row 为 any，故将标签字典放宽索引类型为 string 以避免 TS7053。
+const activeTab = ref<string>('markup')
 const scopeLabels: Record<string, string> = SCOPE_LABELS
 const rules = ref<MarkupRule[]>([])
 const fx = ref<FxRate[]>([])

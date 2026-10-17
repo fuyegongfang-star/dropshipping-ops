@@ -1219,6 +1219,13 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     if (url === '/pricing/markup-rules')
       return delay().then(() => markupRules.map((r) => ({ ...r })))
     if (url === '/pricing/fx') return delay().then(() => fxRates.map((f) => ({ ...f })))
+    if (url === '/pricing/products') return delay().then(() => doListProducts())
+    const productRate = url.match(/^\/pricing\/products\/([^/]+)\/rate$/)
+    if (productRate) {
+      const u = new URL(url, 'http://mock')
+      const w = Number(u.searchParams.get('weightKg') ?? '0')
+      return delay().then(() => doProductRate(productRate[1], w))
+    }
     // 站点设置：返回副本（含 TDK 规则数组副本），避免视图直接改写模块级状态。
     if (url === '/settings/site') return delay().then(() => cloneSite())
     const chealth = url.match(/^\/carriers\/([^/]+)\/health$/)
@@ -1274,6 +1281,7 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     const closeRec = url.match(/^\/billing\/reconciliations\/([^/]+)\/close$/)
     if (closeRec) return delay(120).then(() => doCloseRecon(closeRec[1]))
     if (url === '/pricing/markup-rules') return delay().then(() => createMarkupRule(body))
+    if (url === '/pricing/products') return delay().then(() => doCreateProduct(body))
     if (url === '/settings/tdk-rules') return delay().then(() => createTdkRule(body))
     // 品牌图片上传（LOGO / Favicon）：演示态直接回吐压缩后的 dataURL 地址。
     if (url === '/settings/assets') return delay(200).then(() => doUploadAsset(body))
@@ -1295,6 +1303,8 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     if (rule) return delay().then(() => updateMarkupRule(rule[1], body))
     const fx = url.match(/^\/pricing\/fx\/([^/]+)\/([^/]+)$/)
     if (fx) return delay().then(() => updateFxRate(fx[1], fx[2], body))
+    const prodUpd = url.match(/^\/pricing\/products\/([^/]+)$/)
+    if (prodUpd) return delay().then(() => doUpdateProduct(prodUpd[1], body))
     if (url === '/settings/site') return delay().then(() => updateSite(body))
     const tdk = url.match(/^\/settings\/tdk-rules\/([^/]+)$/)
     if (tdk) return delay().then(() => updateTdkRule(tdk[1], body))
@@ -1306,6 +1316,8 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     if (rule) return delay().then(() => deleteMarkupRule(rule[1]))
     const tdk = url.match(/^\/settings\/tdk-rules\/([^/]+)$/)
     if (tdk) return delay().then(() => deleteTdkRule(tdk[1]))
+    const prodDel = url.match(/^\/pricing\/products\/([^/]+)$/)
+    if (prodDel) return delay().then(() => doRemoveProduct(prodDel[1]))
   }
 
   return delay().then(() => reject('演示模式不支持该请求：' + method + ' ' + url))
@@ -1379,6 +1391,101 @@ function updateFxRate(base: string, quote: string, body: unknown): MockFxRate {
   fxRates[idx] = { ...fxRates[idx], rate, updatedAt: NOW() }
   persistPricing()
   return { ...fxRates[idx] }
+}
+
+// ===== 物流产品 / 费率卡（演示态内存改写，方案 §4 / §23 运营配置后台）=====
+
+let productSeq = 0
+
+/** 列出物流产品（返回副本）。 */
+export function doListProducts(): MockLogisticsProduct[] {
+  return logisticsProducts.map((p) => ({ ...p }))
+}
+
+/** 新建物流产品（承运商与产品名必填）。 */
+export function doCreateProduct(body: unknown): MockLogisticsProduct {
+  const b = (body ?? {}) as Partial<MockLogisticsProduct> & { carrierCode?: string; name?: string }
+  if (!b.carrierCode || !String(b.name ?? '').trim()) {
+    return reject('承运商与产品名必填') as unknown as MockLogisticsProduct
+  }
+  const now = NOW()
+  const p: MockLogisticsProduct = {
+    id: 'lp_' + Date.now().toString(36) + '_' + ++productSeq,
+    tenantId: TENANT_ID,
+    carrierCode: b.carrierCode,
+    name: String(b.name).trim(),
+    legType: b.legType ?? 'direct',
+    destZone: b.destZone ?? 'ALL',
+    transitDaysMin: Number(b.transitDaysMin ?? 3),
+    transitDaysMax: Number(b.transitDaysMax ?? 7),
+    volumetricDivisor: Number(b.volumetricDivisor ?? 5000),
+    cargoTypeAllowed: b.cargoTypeAllowed ?? 'normal',
+    reachableCountries: b.reachableCountries ?? '',
+    firstWeightPrice: Number(b.firstWeightPrice ?? 0),
+    additionalWeightPrice: Number(b.additionalWeightPrice ?? 0),
+    currency: b.currency ?? 'CNY',
+    enabled: b.enabled ?? true,
+    isDefault: b.isDefault ?? false,
+    visible: b.visible ?? true,
+    createdAt: now,
+    updatedAt: now,
+  }
+  logisticsProducts.push(p)
+  return { ...p }
+}
+
+/** 更新物流产品（部分字段覆盖）。 */
+export function doUpdateProduct(id: string, body: unknown): MockLogisticsProduct {
+  const idx = logisticsProducts.findIndex((p) => p.id === id)
+  if (idx < 0) return reject('物流产品不存在') as unknown as MockLogisticsProduct
+  const b = (body ?? {}) as Partial<MockLogisticsProduct>
+  const cur = logisticsProducts[idx]
+  logisticsProducts[idx] = {
+    ...cur,
+    ...(b.carrierCode !== undefined ? { carrierCode: b.carrierCode } : {}),
+    ...(b.name !== undefined ? { name: String(b.name).trim() } : {}),
+    ...(b.legType !== undefined ? { legType: b.legType } : {}),
+    ...(b.destZone !== undefined ? { destZone: b.destZone } : {}),
+    ...(b.transitDaysMin !== undefined ? { transitDaysMin: Number(b.transitDaysMin) } : {}),
+    ...(b.transitDaysMax !== undefined ? { transitDaysMax: Number(b.transitDaysMax) } : {}),
+    ...(b.volumetricDivisor !== undefined ? { volumetricDivisor: Number(b.volumetricDivisor) } : {}),
+    ...(b.cargoTypeAllowed !== undefined ? { cargoTypeAllowed: b.cargoTypeAllowed } : {}),
+    ...(b.reachableCountries !== undefined ? { reachableCountries: b.reachableCountries } : {}),
+    ...(b.firstWeightPrice !== undefined ? { firstWeightPrice: Number(b.firstWeightPrice) } : {}),
+    ...(b.additionalWeightPrice !== undefined ? { additionalWeightPrice: Number(b.additionalWeightPrice) } : {}),
+    ...(b.currency !== undefined ? { currency: b.currency } : {}),
+    ...(b.enabled !== undefined ? { enabled: Boolean(b.enabled) } : {}),
+    ...(b.isDefault !== undefined ? { isDefault: Boolean(b.isDefault) } : {}),
+    ...(b.visible !== undefined ? { visible: Boolean(b.visible) } : {}),
+    updatedAt: NOW(),
+  }
+  return { ...logisticsProducts[idx] }
+}
+
+/** 删除物流产品。 */
+export function doRemoveProduct(id: string): { deleted: boolean } {
+  const idx = logisticsProducts.findIndex((p) => p.id === id)
+  if (idx < 0) return reject('物流产品不存在') as unknown as { deleted: boolean }
+  logisticsProducts.splice(idx, 1)
+  return { deleted: true }
+}
+
+/** 费率卡成本试算：首重价 + 续重价 × max(0, 计费重kg − 1)（首重 1kg 内含，§4）。 */
+export function doProductRate(id: string, weightKg: number): unknown {
+  const p = logisticsProducts.find((x) => x.id === id)
+  if (!p) return reject('物流产品不存在')
+  const w = Math.max(0, weightKg)
+  const extra = Math.max(0, w - 1)
+  const carrierCost = Number(p.firstWeightPrice) + Number(p.additionalWeightPrice) * extra
+  return {
+    productId: p.id,
+    productName: p.name,
+    carrierCode: p.carrierCode,
+    weightKg: Number(w.toFixed(3)),
+    carrierCost: Number(carrierCost.toFixed(2)),
+    currency: p.currency,
+    transitDays: `${p.transitDaysMin}-${p.transitDaysMax}天`,
+  }
 }
 
 // ===== 过滤 =====
@@ -1705,6 +1812,40 @@ const fxRates: MockFxRate[] = [
   { base: 'EUR', quote: 'CNY', rate: 7.865, updatedAt: '2026-10-13T00:00:00.000Z' },
   { base: 'GBP', quote: 'CNY', rate: 9.184, updatedAt: '2026-10-13T00:00:00.000Z' },
   { base: 'USD', quote: 'EUR', rate: 0.921, updatedAt: '2026-10-13T00:00:00.000Z' },
+]
+
+/** 物流产品 / 费率卡（对齐后端 LogisticsProductOut，方案 §4 / §23 运营配置后台）。 */
+export interface MockLogisticsProduct {
+  id: string
+  tenantId: string
+  carrierCode: string
+  name: string
+  legType: string
+  destZone: string
+  transitDaysMin: number
+  transitDaysMax: number
+  volumetricDivisor: number
+  cargoTypeAllowed: string
+  reachableCountries: string
+  firstWeightPrice: number
+  additionalWeightPrice: number
+  currency: string
+  enabled: boolean
+  isDefault: boolean
+  visible: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+/**
+ * 物流产品种子（演示口径，对齐后端 seed 思路）。
+ * 费率卡成本 = 首重价 + 续重价 × max(0, 计费重kg − 1)（首重 1kg 内含，§4）。
+ */
+const logisticsProducts: MockLogisticsProduct[] = [
+  { id: 'lp_seed_1', tenantId: TENANT_ID, carrierCode: 'yunexpress', name: '云途-标准专线', legType: 'direct', destZone: 'ALL', transitDaysMin: 5, transitDaysMax: 9, volumetricDivisor: 5000, cargoTypeAllowed: 'normal', reachableCountries: 'US,GB,DE', firstWeightPrice: 18, additionalWeightPrice: 68, currency: 'CNY', enabled: true, isDefault: true, visible: true, createdAt: '2026-10-16T00:00:00.000Z', updatedAt: '2026-10-16T00:00:00.000Z' },
+  { id: 'lp_seed_2', tenantId: TENANT_ID, carrierCode: 'dhl', name: 'DHL-Express 优先', legType: 'direct', destZone: 'ALL', transitDaysMin: 3, transitDaysMax: 6, volumetricDivisor: 5000, cargoTypeAllowed: 'normal', reachableCountries: '', firstWeightPrice: 65, additionalWeightPrice: 120, currency: 'CNY', enabled: true, isDefault: false, visible: true, createdAt: '2026-10-16T00:00:00.000Z', updatedAt: '2026-10-16T00:00:00.000Z' },
+  { id: 'lp_seed_3', tenantId: TENANT_ID, carrierCode: '4px', name: '4PX-经济小包', legType: 'direct', destZone: 'ZONE_1', transitDaysMin: 7, transitDaysMax: 14, volumetricDivisor: 6000, cargoTypeAllowed: 'normal', reachableCountries: 'US', firstWeightPrice: 12, additionalWeightPrice: 42, currency: 'CNY', enabled: true, isDefault: false, visible: true, createdAt: '2026-10-16T00:00:00.000Z', updatedAt: '2026-10-16T00:00:00.000Z' },
+  { id: 'lp_seed_4', tenantId: TENANT_ID, carrierCode: 'yanwen', name: '燕文-带电专线', legType: 'direct', destZone: 'ALL', transitDaysMin: 6, transitDaysMax: 11, volumetricDivisor: 5000, cargoTypeAllowed: 'battery', reachableCountries: '', firstWeightPrice: 22, additionalWeightPrice: 75, currency: 'CNY', enabled: false, isDefault: false, visible: true, createdAt: '2026-10-16T00:00:00.000Z', updatedAt: '2026-10-16T00:00:00.000Z' },
 ]
 
 // ===== 演示态持久化（仅加价规则与汇率）=====

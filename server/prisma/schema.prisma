@@ -195,16 +195,27 @@ model CarrierAccount {
   @@index([tenantId])
 }
 
-// 物流产品：货代卖的是"产品"而非裸承运商（§4）
+// 物流产品：货代卖的是"产品"而非裸承运商（§4 / §23 运营配置后台核心资产）
 model LogisticsProduct {
-  id               String  @id @default(cuid())
-  tenantId         String
-  carrierId        String?
-  name             String // 例如「云途-标准专线」「DHL-Express」
-  legType          String  @default("direct") // first（头程）| last（尾程）| direct（全程，§14）
-  volumetricDivisor Int    @default(5000) // 抛比系数（§4）
-  visible          Boolean @default(true) // 租户可见性
-  createdAt        DateTime @default(now())
+  id                  String  @id @default(cuid())
+  tenantId            String
+  carrierCode         String // 承运商编码（yunexpress|dhl|4px|yanwen，§3）
+  name                String // 例如「云途-标准专线」「DHL-Express」
+  legType             String  @default("direct") // first（头程）| last（尾程）| direct（全程，§14）
+  destZone            String  @default("ALL") // 目的区（ZONE_1..5 或 ALL）
+  transitDaysMin      Int     @default(3) // 时效下限（天）
+  transitDaysMax      Int     @default(7) // 时效上限（天）
+  volumetricDivisor   Int     @default(5000) // 抛比系数（§4.2）
+  cargoTypeAllowed    String  @default("normal") // normal|battery|liquid|sensitive
+  reachableCountries  String  @default("") // 可达国家（ISO2，逗号分隔，空=不限）
+  firstWeightPrice    Decimal @db.Decimal(10, 2) @default(0) // 首重价（基准币种）
+  additionalWeightPrice Decimal @db.Decimal(10, 2) @default(0) // 续重价（基准币种/kg）
+  currency            String  @default("CNY") // 费率卡基准币种
+  enabled             Boolean @default(true) // 是否启用（§23 默认启用开关）
+  isDefault           Boolean @default(false) // 是否默认产品（§23）
+  visible             Boolean @default(true) // 租户可见性（§23）
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   @@index([tenantId])
 }

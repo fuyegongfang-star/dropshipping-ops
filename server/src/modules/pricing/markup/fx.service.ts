@@ -6,12 +6,24 @@
  * 负责人：自动开发引擎 ｜ 最后修订：2026-10-12
  */
 
-import { Injectable } from '@nestjs/common'
+import { Injectable, HttpStatus } from '@nestjs/common'
 import { AppLogger } from '../../../common/logger/app.logger'
+import { BusinessException } from '../../../common/response/business.exception'
 import { FxRateSnapshot } from './markup.types'
 
 /** 平台基准结算币种（§10.3，跨境默认 CNY；可由运营配置，TODO §23 后台） */
 export const MARKUP_BASE_CURRENCY = 'CNY'
+
+/**
+ * 前端展示所需的若干交叉汇率对（§10.3）。
+ * 仅暴露这几个常用对，避免一次性把内部中间态汇率全部吐给前端造成干扰。
+ */
+const DISPLAY_RATE_PAIRS: Array<{ from: string; to: string }> = [
+  { from: 'USD', to: 'CNY' },
+  { from: 'EUR', to: 'CNY' },
+  { from: 'GBP', to: 'CNY' },
+  { from: 'USD', to: 'EUR' },
+]
 
 /** 内存汇率种子（from → to → rate，演示口径，TODO 2026-11 接入真实 FX 源） */
 const SEED_RATES: Array<{ from: string; to: string; rate: number }> = [
@@ -80,6 +92,35 @@ export class FxService {
         rate,
         effectiveAt: new Date().toISOString(),
       },
+    }
+  }
+
+  /** 列出展示用汇率对（当前内部汇率表的快照，updatedAt 为读取时刻）。 */
+  listRates(): Array<{ base: string; quote: string; rate: number; updatedAt: string }> {
+    return DISPLAY_RATE_PAIRS.map((p) => ({
+      base: p.from,
+      quote: p.to,
+      rate: this.getRate(p.from, p.to),
+      updatedAt: new Date().toISOString(),
+    }))
+  }
+
+  /** 手动覆盖某币种对的汇率（运营在「运营配置」页调整，§10.3）。汇率必须为正数。 */
+  updateRate(
+    from: string,
+    to: string,
+    rate: number,
+  ): { base: string; quote: string; rate: number; updatedAt: string } {
+    if (!Number.isFinite(rate) || rate <= 0) {
+      throw new BusinessException('FX_RATE_INVALID', '汇率必须为正数', HttpStatus.BAD_REQUEST)
+    }
+    this.setRate(from, to, rate)
+    this.logger.log(`汇率已覆盖：${from.toUpperCase()}→${to.toUpperCase()} = ${rate}`)
+    return {
+      base: from.toUpperCase(),
+      quote: to.toUpperCase(),
+      rate,
+      updatedAt: new Date().toISOString(),
     }
   }
 }

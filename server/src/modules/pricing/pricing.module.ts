@@ -13,13 +13,33 @@ import { ReachabilityService } from './reachability.service'
 import { FxService } from './markup/fx.service'
 import { MarkupRulesService } from './markup/markup-rules.service'
 import { MarkupEngineService } from './markup/markup-engine.service'
+import { MarkupConfigService } from './markup/markup-config.service'
+import { MarkupConfigController } from './markup/markup-config.controller'
+import { FxController } from './markup/fx.controller'
 import { QuotesController } from './quote/quotes.controller'
 import { QuotesService } from './quote/quotes.service'
+import { LogisticsProductController } from './product/logistics-product.controller'
+import { LogisticsProductService } from './product/logistics-product.service'
 
 @Module({
   imports: [CarriersModule],
-  controllers: [PricingController, QuotesController],
-  providers: [PricingEngineService, ReachabilityService, FxService, MarkupRulesService, MarkupEngineService, QuotesService],
-  exports: [PricingEngineService, MarkupEngineService],
+  controllers: [
+    PricingController,
+    QuotesController,
+    LogisticsProductController,
+    MarkupConfigController,
+    FxController,
+  ],
+  providers: [
+    PricingEngineService,
+    ReachabilityService,
+    FxService,
+    MarkupRulesService,
+    MarkupEngineService,
+    MarkupConfigService,
+    QuotesService,
+    LogisticsProductService,
+  ],
+  exports: [PricingEngineService, MarkupEngineService, LogisticsProductService],
 })
 export class PricingModule {}
