@@ -13,6 +13,7 @@ import AggregatorView from '@/views/AggregatorView.vue'
 import WalletView from '@/views/WalletView.vue'
 import BillingView from '@/views/BillingView.vue'
 import ProfitView from '@/views/ProfitView.vue'
+import ReportsView from '@/views/ReportsView.vue'
 import SecurityView from '@/views/SecurityView.vue'
 import RbacView from '@/views/RbacView.vue'
 import PricingRulesView from '@/views/PricingRulesView.vue'
@@ -34,6 +35,7 @@ const router = createRouter({
         { path: 'orders', name: 'orders', component: OrdersView, meta: { title: '订单中心' } },
         { path: 'catalog', name: 'catalog', component: CatalogView, meta: { title: '商品/SKU' } },
         { path: 'channels', name: 'channels', component: ChannelsView, meta: { title: '渠道' } },
+        { path: 'reports', name: 'reports', component: ReportsView, meta: { title: '运营报表' } },
         { path: 'carriers', name: 'carriers', component: CarriersView, meta: { title: '承运商管理' } },
         { path: 'quotes', name: 'quotes', component: QuotesView, meta: { title: '运费试算' } },
         { path: 'shipments', name: 'shipments', component: ShipmentsView, meta: { title: '两段式运单' } },

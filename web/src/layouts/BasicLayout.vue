@@ -187,6 +187,7 @@ const menuNodes: MenuNode[] = [
       { path: '/orders', title: '订单中心', icon: 'orders' },
       { path: '/catalog', title: '商品 / SKU', icon: 'catalog' },
       { path: '/channels', title: '渠道 / 店铺', icon: 'channels' },
+      { path: '/reports', title: '运营报表', icon: 'chart' },
     ],
   },
   {

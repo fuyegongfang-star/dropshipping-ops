@@ -16,6 +16,7 @@ import { FinanceModule } from './modules/finance/finance.module'
 import { BillingModule } from './modules/billing/billing.module'
 import { SystemModule } from './modules/system/system.module'
 import { RbacModule } from './modules/rbac/rbac.module'
+import { ReportsModule } from './modules/reports/reports.module'
 
 /**
  * 根模块：装配全局配置、数据库、鉴权、健康检查与业务模块（方案 §0/§11）。
@@ -38,6 +39,7 @@ import { RbacModule } from './modules/rbac/rbac.module'
     BillingModule,
     SystemModule,
     RbacModule,
+    ReportsModule,
   ],
 })
 export class AppModule implements NestModule {

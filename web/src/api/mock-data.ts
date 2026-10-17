@@ -15,6 +15,7 @@
 import type { ComposeLegsRequest, ComposeLegsResult, ShipmentLeg, LabelSpec, LabelResult, CustomsSpec, CustomsIssue, CustomsValidationResult, TrackingQuery, TrackingEnvelope, TrackingChannel, TrackingEvent, NdrReport, AddressValidateRequest, AddressValidationResult, AddressIssue, ZoneInfo, CarrierFeasibility, AggregatorQuery, AggregatorResult, AggregatorCatalogItem } from './carriers'
 import type { WalletSummary, LedgerType, LedgerItem } from './finance'
 import type { BillItem, ReconciliationItem, ProfitSummary, GenerateResult, ProfitBreakdown, TenantProfit, CarrierCost } from './billing'
+import type { ReportDashboard } from './reports'
 
 export interface MockTenant {
   id: string
@@ -1205,6 +1206,8 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     if (url === '/rbac/permissions') return delay().then(() => doGetCatalog())
     if (url === '/rbac/role-blueprints') return delay().then(() => doGetBlueprints())
     if (url === '/rbac/roles') return delay().then(() => doGetRoles())
+    // 运营报表总览（§25 五类指标）：演示态同口径聚合（前端无需后端即可看板）
+    if (url === '/reports/overview') return delay().then(() => doGetReportDashboard())
     const billId = url.match(/^\/billing\/bills\/([^/]+)$/)
     if (billId) {
       const b = billingBills.find((x) => x.id === billId[1])
@@ -1485,6 +1488,70 @@ export function doProductRate(id: string, weightKg: number): unknown {
     carrierCost: Number(carrierCost.toFixed(2)),
     currency: p.currency,
     transitDays: `${p.transitDaysMin}-${p.transitDaysMax}天`,
+  }
+}
+
+/**
+ * 运营报表总览（§25 五类指标）：演示态同口径聚合，形状对齐后端 ReportsService。
+ * 真实口径（TODO(platform): 2026-11）由 §10 双价列 + §16 ledger + 订单/运单事件聚合。
+ */
+export function doGetReportDashboard(): ReportDashboard {
+  const stages = [
+    { stage: 'order→push', label: '下单→推单', avgHours: 2.5, achievedRate: 0.98 },
+    { stage: 'push→pickup', label: '推单→揽收', avgHours: 18, achievedRate: 0.95 },
+    { stage: 'pickup→sign', label: '揽收→签收', avgHours: 120, achievedRate: 0.93 },
+  ]
+  const overallAchievedRate = Number(
+    Math.pow(stages.reduce((acc, s) => acc * s.achievedRate, 1), 1 / stages.length).toFixed(4),
+  )
+  const channelName: Record<string, string> = {
+    yunexpress: '云途物流',
+    dhl: 'DHL 快递',
+    '4px': '4PX 递四方',
+    yanwen: '燕文物流',
+  }
+  const logisticsChannels = [
+    { carrierCode: 'yunexpress', carrierName: channelName.yunexpress, avgTransitDays: 7.5, exceptionRate: 0.021 },
+    { carrierCode: 'dhl', carrierName: channelName.dhl, avgTransitDays: 4.2, exceptionRate: 0.009 },
+    { carrierCode: '4px', carrierName: channelName['4px'], avgTransitDays: 11.0, exceptionRate: 0.038 },
+    { carrierCode: 'yanwen', carrierName: channelName.yanwen, avgTransitDays: 8.5, exceptionRate: 0.031 },
+  ]
+  const profitTrend = [
+    { period: '2026-05', spread: 182000, totalSell: 1320000, totalCost: 1138000 },
+    { period: '2026-06', spread: 205000, totalSell: 1450000, totalCost: 1245000 },
+    { period: '2026-07', spread: 198000, totalSell: 1510000, totalCost: 1312000 },
+    { period: '2026-08', spread: 231000, totalSell: 1680000, totalCost: 1449000 },
+    { period: '2026-09', spread: 246000, totalSell: 1750000, totalCost: 1504000 },
+    { period: '2026-10', spread: 268000, totalSell: 1890000, totalCost: 1622000 },
+  ]
+  const byTenant = [
+    { tenantId: 't_demo', tenantName: '示例租户', margin: 142000, marginRate: 0.11 },
+    { tenantId: 't_acme', tenantName: 'Acme 贸易', margin: 126000, marginRate: 0.12 },
+  ]
+  const byChannel = [
+    { carrierCode: 'yunexpress', carrierName: channelName.yunexpress, margin: 142000 },
+    { carrierCode: 'dhl', carrierName: channelName.dhl, margin: 98000 },
+    { carrierCode: '4px', carrierName: channelName['4px'], margin: 18000 },
+    { carrierCode: 'yanwen', carrierName: channelName.yanwen, margin: 10000 },
+  ]
+  const distItems = [
+    { carrierCode: 'yunexpress', carrierName: channelName.yunexpress, orderCount: 4200, weightKg: 31000, revenue: 980000, share: 0.52 },
+    { carrierCode: 'dhl', carrierName: channelName.dhl, orderCount: 1800, weightKg: 22000, revenue: 560000, share: 0.3 },
+    { carrierCode: '4px', carrierName: channelName['4px'], orderCount: 2200, weightKg: 9000, revenue: 210000, share: 0.11 },
+    { carrierCode: 'yanwen', carrierName: channelName.yanwen, orderCount: 1400, weightKg: 8000, revenue: 140000, share: 0.07 },
+  ]
+  const exceptionItems = [
+    { type: 'delay', label: '延误', count: 320, rate: 0.032 },
+    { type: 'reject', label: '拒收', count: 86, rate: 0.0086 },
+    { type: 'lost', label: '丢件', count: 12, rate: 0.0012 },
+  ]
+  return {
+    fulfillmentSla: { stages, overallAchievedRate },
+    logisticsSla: { channels: logisticsChannels },
+    profit: { trend: profitTrend, byTenant, byChannel },
+    channelDistribution: { items: distItems },
+    exceptionRate: { items: exceptionItems, overallRate: Number(exceptionItems.reduce((a, i) => a + i.rate, 0).toFixed(4)) },
+    generatedAt: new Date().toISOString(),
   }
 }
 
