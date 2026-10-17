@@ -67,7 +67,7 @@
 | 4.4 | 阶段4 | 多租户隔离强化 | schema-per-tenant 评估（§17） | 0.2 | 1d | ✅ |
 | 4.5 | 阶段4 | 精细化 RBAC | 组织层级/scope（§22） | 0.3 | 1d | ✅ |
 | 4.6 | 阶段4 | 运营配置后台 | 加价/产品/费率卡 UI（§23） | 3.6/3.7 | 2d | ✅ |
-| 4.7 | 阶段4 | 报表指标口径 | 履约/物流/利润看板（§25） | 4.3 | 1.5d | ⬜ |
+| 4.7 | 阶段4 | 报表指标口径 | 履约/物流/利润看板（§25） | 4.3 | 1.5d | ✅ |
 | 4.8 | 阶段4 | 理赔保险 | `claims` 流程（§20） | 3.11 | 1d | ⬜ |
 | 4.9 | 阶段4 | 多语言多币种前端 | i18n + 本地币展示（§27） | 0.5 | 1.5d | ⬜ |
 | 5.1 | 阶段5 | 风控体系 | 规则引擎+评分（§26） | 1.3/4.5 | 2d | ⬜ |
@@ -409,3 +409,15 @@
 - **测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**202 passed / 30 suites**，新增 7 + 修复 1）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
 - **提交**：随本批统一提交（4.6 后端/前端/进度生成器）。
 - **下一步（次日接力）**：4.7 报表指标口径（§25 履约/物流/利润看板）→ 4.8 理赔保险 → 4.9 多语言多币种前端。
+
+### 进度更新 · 2026-10-17（续跑 · 4.7 报表指标口径）
+- **完成（✅）**：
+  - **4.7 报表指标口径（§25 报表指标定义）** —— 运营报表总览，五类指标单请求聚合：
+    - 后端新增 `modules/reports/`：`reports.types.ts`（FulfillmentSla/LogisticsSla/ProfitReport/ChannelDistribution/ExceptionReport/ReportDashboard）、`reports.service.ts`（演示口径代表值，TODO §10 双价列 + §16 ledger + 事件真实聚合）、`reports.controller.ts`（`@Controller('reports')` GET `/overview`）、`reports.module.ts` 接入 `AppModule`。
+    - 单测 `reports.service.spec.ts`（6 cases：五类字段完整/履约几何均值/物流四渠道/利润拆解/渠道占比和≈1/异常率求和）全绿。
+  - **前端可视化（业务运营 → 运营报表）**：`web/src/views/ReportsView.vue`（/reports）—— 核心指标卡（整体履约达成率/综合异常率/近6期平台利润/总单量）+ 五张 ECharts（履约各段时长、物流时效+异常率双轴、利润趋势、渠道单量占比饼、异常构成饼）+ 利润拆解表（租户/渠道）；新增可复用 `components/BaseChart.vue`（ECharts 封装）；`web/src/api/reports.ts` 类型 + `reportsApi.overview`；`mock-data.ts` 增 `doGetReportDashboard`（与后端同口径，演示+正式双路通）；`router` 注册 /reports、`BasicLayout.menuNodes` 业务运营分组注册（icon `chart`）、`AppIcon` 增 `chart`。
+- **进行中（🔵）**：无（本批 4.7 完成）。
+- **受阻**：无。
+- **测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**208 passed / 31 suites**，新增 6）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
+- **提交**：随本批统一提交（4.7 后端/前端/进度生成器）。
+- **下一步（次日接力）**：4.8 理赔保险（§20 claims 流程）→ 4.9 多语言多币种前端（§27）。

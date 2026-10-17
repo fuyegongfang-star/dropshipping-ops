@@ -339,3 +339,25 @@
 **明天打开网页能看到什么**：进入「系统设置 → 运营配置」，切到新增的「物流产品 / 费率卡」Tab——可见 4 条种子物流产品（云途-标准专线/默认、DHL-Express 优先、4PX-经济小包、燕文-带电专线），支持新增/编辑（承运商、物流段、目的区、时效、抛比、首重价/续重价、币种、可达国家、启用/默认/可见）/删除，以及点「试算」输入计费重即时看到承运商成本（首重价 + 续重价 × max(0, 计费重−1)）；加价规则与币种汇率 Tab 保持可用；演示模式无需后端即可交互改写内存状态。
 
 **下一步**：4.7 报表指标口径（§25 履约/物流/利润看板）→ 4.8 理赔保险 → 4.9 多语言多币种前端。
+
+---
+
+## 2026-10-18（夜间自动化 · 4.7 报表指标口径）
+
+**背景**：阶段4 收口运营侧指标可视化。本次落地「运营报表」页（业务运营 → /reports），将 §25 五类指标（履约时效 / 物流时效 / 利润 / 渠道分布 / 异常率）聚合为单请求看板。
+
+**完成任务**：
+- **后端**：`modules/reports/` —— `reports.types.ts`（五类指标 TS 接口）、`reports.service.ts`（演示口径代表值：履约三段几何均值达成率、四渠道平均时效+异常率、近 6 账期利润趋势+租户/渠道拆解、渠道单量占比、异常构成）、`reports.controller.ts`（`GET /reports/overview`）、`reports.module.ts` 接入 `AppModule`。单测 `reports.service.spec`（6 cases）。
+- **前端**：`ReportsView.vue`（/reports）核心指标卡（整体履约达成率 / 综合异常率 / 近 6 期平台利润 / 总单量）+ 五张 ECharts（履约各段时长、物流时效+异常率双轴、利润趋势、渠道单量占比饼、异常构成饼）+ 利润拆解表（租户/渠道）；新增可复用 `components/BaseChart.vue`（ECharts 封装，统一 init/resize/dispose）；`api/reports.ts` 类型 + `reportsApi.overview`；`mock-data.ts` 增 `doGetReportDashboard`（与后端同口径，演示+正式双路通）；`router` 注册 /reports、`BasicLayout.menuNodes` 业务运营分组注册（icon `chart`）、`AppIcon` 增 `chart`。
+- **进度生成器**：`npm run progress:gen` → 45 任务 / 32 完成（71.1%）。
+
+**进行中**：无。
+**受阻**：无。
+**测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（208 passed / 31 suites，新增 6）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
+**提交**：`8d48209` feat(reports): 运营报表 五类看板 (§25 4.7)；随后检查点提交。
+**本次新增前端页面与菜单**：
+- 业务运营 → 「运营报表」（/reports）：ReportsView.vue（指标卡 + 五图 + 利润拆解表）。
+
+**明天打开网页能看到什么**：左侧「业务运营」新增「运营报表」菜单——进入后可见整体履约达成率/综合异常率/近6期平台利润/总单量四张指标卡，以及履约各段时长柱状图、物流时效+异常率双轴图、利润趋势图、渠道单量占比饼图、异常构成饼图、按租户/渠道利润拆解表；演示模式无需后端即可渲染。
+
+**下一步**：4.8 理赔保险（§20 claims 流程）→ 4.9 多语言多币种前端（§27）。
