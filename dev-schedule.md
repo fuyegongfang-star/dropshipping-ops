@@ -66,7 +66,7 @@
 | 4.3 | 阶段4 | 利润核算(spread) | Σ(sell−cost)（§9/§10） | 4.2 | 1d | ✅ |
 | 4.4 | 阶段4 | 多租户隔离强化 | schema-per-tenant 评估（§17） | 0.2 | 1d | ✅ |
 | 4.5 | 阶段4 | 精细化 RBAC | 组织层级/scope（§22） | 0.3 | 1d | ✅ |
-| 4.6 | 阶段4 | 运营配置后台 | 加价/产品/费率卡 UI（§23） | 3.6/3.7 | 2d | ⬜ |
+| 4.6 | 阶段4 | 运营配置后台 | 加价/产品/费率卡 UI（§23） | 3.6/3.7 | 2d | ✅ |
 | 4.7 | 阶段4 | 报表指标口径 | 履约/物流/利润看板（§25） | 4.3 | 1.5d | ⬜ |
 | 4.8 | 阶段4 | 理赔保险 | `claims` 流程（§20） | 3.11 | 1d | ⬜ |
 | 4.9 | 阶段4 | 多语言多币种前端 | i18n + 本地币展示（§27） | 0.5 | 1.5d | ⬜ |
@@ -392,3 +392,20 @@
 - **测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**188 passed / 27 suites**，新增 5）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
 - **提交**：随本批统一提交（4.5 后端/前端/进度生成器）。
 - **下一步（次日接力）**：4.6 运营配置后台（§23 加价/产品/费率卡 UI）→ 4.7 报表指标 → 4.8 理赔保险 → 4.9 多语言多币种前端。
+
+### 进度更新 · 2026-10-17（夜间自动化 23:10 启动 · 4.6 运营配置后台）
+- **完成（✅）**：
+  - **4.6 运营配置后台（§23 加价/产品/费率卡 UI）** —— 补完并收口「运营配置」页（/pricing，系统设置分组）：
+    - 后端新增/收口 `modules/pricing/markup/` 与 `product/`：
+      - `markup-config.types.ts`：`MarkupConfigScope`（global/tenant/carrier/channel/product）、`MarkupConfigMode`（percent/fixed）、`MarkupConfigOut`/`CreateMarkupConfigDto`/`UpdateMarkupConfigDto`（class-validator）。
+      - `markup-config.service.ts`：内存版加价规则服务（6 条种子：全局 12% / 租户 acme 5% / 承运商 DHL 8%·云途 15% / 产品 带电 6% / 渠道 Amazon 2% 停用），`list/create`(空 target 抛 MARKUP_TARGET_EMPTY)/`update`/`remove`（TODO §10.6 DB 落库）。
+      - `markup-config.controller.ts`：`@Controller('pricing/markup-rules')` GET/POST/PUT(':id')/DELETE(':id')。
+      - `fx.controller.ts` + `fx.service.ts`：`@Controller('pricing/fx')` GET 列表 + PUT(':base/:quote') 调汇率（≤0 抛 FX_RATE_INVALID）；`listRates()`/`updateRate()` + `DISPLAY_RATE_PAIRS`（USD/EUR/GBP→CNY）。
+      - `product/`（续 3.7 半截工程）：`LogisticsProduct` 全字段 CRUD + `GET :id/rate?weightKg=` 费率卡成本试算（首重价 + 续重价 × max(0, 计费重−1)）。
+    - 单测 `markup-config.service.spec.ts`（7 cases）+ `logistics-product.service.spec.ts`（修前批次按创建倒序失效）全绿。
+  - **前端可视化（系统设置 → 运营配置，三 Tab 合一）**：`web/src/views/PricingRulesView.vue` 改三 Tab——「加价规则」(既有) / 「物流产品 / 费率卡」(新增 `OperationsProducts.vue`) / 「币种与汇率」(既有)；`OperationsProducts.vue` 含产品目录表（承运商/物流段/目的区/时效/费率卡/启用开关）+ 新增编辑对话框（承运商/产品名必填等 14 字段）+ 费率卡成本试算对话框（计费重→承运商成本）；`web/src/api/pricing.ts` 增 `CarrierCode`/`LegType`/`CargoType` 类型 + `CARRIER_LABELS`/`LEG_LABELS`/`CARGO_LABELS` + `LogisticsProduct`/`RateCardQuote`/`ProductInput` + `productsApi`（list/create/update/remove/rate）；`web/src/api/mock-data.ts` 增 `MockLogisticsProduct` + 4 条种子 + `doListProducts`/`doCreateProduct`/`doUpdateProduct`/`doRemoveProduct`/`doProductRate`（演示+正式双路通）。路由与菜单沿用既有 /pricing（系统设置，图标 sliders）。
+- **进行中（🔵）**：无（本批 4.6 完成）。
+- **受阻**：无。
+- **测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**202 passed / 30 suites**，新增 7 + 修复 1）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
+- **提交**：随本批统一提交（4.6 后端/前端/进度生成器）。
+- **下一步（次日接力）**：4.7 报表指标口径（§25 履约/物流/利润看板）→ 4.8 理赔保险 → 4.9 多语言多币种前端。

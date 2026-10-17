@@ -295,3 +295,47 @@
 **下一步**：阶段3 收口完成（M3 达成）。进入阶段4：4.1 收款账务 wallet+ledger（§16 复式记账/预充值/账期/退款）→ 4.2 商户账单+承运商对账 → 4.3 利润核算 → 4.4 多租户隔离强化 → 4.5 精细化 RBAC → 4.6 运营配置后台 → 4.7 报表指标 → 4.8 理赔保险 → 4.9 多语言多币种前端。另：3.12 的 zone_maps 可在 §4.4 接入远程附加费、在比价 L2 可达性复用。
 
 **明天打开网页能看到什么**：左侧「物流履约」新增两个菜单——「地址校验」（填收件地址即见质量分、标准化地址、分区结论、各承运商可达性/远程费提示，含一键合规/脏地址示例）与「聚合追踪」（选 AfterShip/17TRACK + 尾程承运商 + 轨迹号即见归一化尾程轨迹时间线，含 fail 哨兵演示兜底）；「开发进度」页与仪表盘「最近交付」卡片新增 3.12/3.13 条目。
+
+---
+
+## 2026-10-15 ~ 2026-10-16（夜间自动化 · 补记 4.1–4.5，明细见 dev-schedule.md 进度更新）
+
+> 以下四夜批次已在 dev-schedule.md / .dev/state.json 落档，但漏写本日报；此处补记关键交付与「次日可见」。
+
+- **4.1 收款账务 wallet+ledger（§16）**：后端 finance 模块 WalletService（复式记账六类型/预充值冻结/信用账期/可用额度校验/风控冻结）+ WalletController + FinanceModule；前端 **WalletView（/wallet，财务中心）**；jest 162 passed。
+- **4.2 商户账单 + 承运商对账（§9/§10）**：bills/reconciliations 模块 + 前端账单/对账页（财务中心）。
+- **4.3 利润核算 spread 报表化（§9/§10）**：billing 增 getProfitBreakdown/getProfitTrend；前端 **ProfitView（/profit，财务中心）** 四宫格 + ECharts 利润趋势 + 按租户/承运商表；jest 171 passed。
+- **4.4 多租户隔离强化（§17）**：共享库 + tenant_id 行级隔离（评估弃用 schema-per-tenant）；tenant-isolation + secret-encryption(AES-256-GCM) + JWT 验签回退；前端 **SecurityView（/security，super 专属）**。
+- **4.5 精细化 RBAC（§22）**：rbac 子模块（权限点/角色蓝图/@RequirePermissions/PermissionsGuard）；前端 **RbacView（/rbac，super 专属）** 权限矩阵 + 角色管理；jest 188 passed。
+- **本段新增前端页面与菜单**：财务中心 → 钱包(/wallet)、利润核算(/profit)；系统设置 → 权限管理(/rbac, super)、安全加固(/security, super)。
+
+---
+
+## 2026-10-17（夜间自动化 23:10 启动 · 4.6 运营配置后台）
+
+**背景**：阶段4 运营侧配置收口。本次补完并收口「运营配置」页（系统设置 → /pricing）：加价规则、物流产品/费率卡、币种与汇率三块能力的后台 CRUD 与前端可视化。
+
+**完成任务**：
+- **后端**：
+  - `markup-config` 子模块：`MarkupConfigService`（6 条种子：全局 12% / 租户 acme 5% / 承运商 DHL 8%·云途 15% / 产品 带电 6% / 渠道 Amazon 2% 停用）+ `MarkupConfigController`（`/pricing/markup-rules` CRUD）+ `markup-config.types`（class-validator DTO）。
+  - `fx` 接口：`FxController`（`/pricing/fx` GET 列表 + PUT `:base/:quote` 调汇率，≤0 抛 FX_RATE_INVALID）；`fx.service` 增 `listRates`/`updateRate` + `DISPLAY_RATE_PAIRS`（USD/EUR/GBP→CNY）。
+  - 收口 `product` 子模块（续 3.7 半截工程）：`LogisticsProduct` 全字段 CRUD + `GET :id/rate?weightKg=` 费率卡成本试算（首重价 + 续重价 × max(0, 计费重−1)）。
+  - 单测：`markup-config.service.spec`（7 cases）+ `logistics-product.service.spec`（修前批次按创建倒序失效）全绿；全仓 **jest 202 passed / 30 suites**。
+- **前端**：
+  - `PricingRulesView.vue` 改三 Tab：「加价规则」（既有）/「物流产品 / 费率卡」（新增 `OperationsProducts.vue`）/「币种与汇率」（既有）。
+  - `OperationsProducts.vue`：产品目录表（承运商/物流段/目的区/时效/费率卡/启用开关）+ 新增编辑对话框（承运商/产品名必填等 14 字段）+ 费率卡成本试算对话框（计费重→承运商成本）。
+  - `pricing.ts` 增 `CarrierCode`/`LegType`/`CargoType` 类型 + `CARRIER_LABELS`/`LEG_LABELS`/`CARGO_LABELS` + `LogisticsProduct`/`RateCardQuote`/`ProductInput` + `productsApi`（list/create/update/remove/rate）。
+  - `mock-data.ts` 增 `MockLogisticsProduct` + 4 条种子 + `doListProducts`/`doCreateProduct`/`doUpdateProduct`/`doRemoveProduct`/`doProductRate`（演示+正式双路通）。
+  - 路由与菜单沿用既有 /pricing（系统设置，图标 sliders）。
+- **进度生成器**：`npm run progress:gen` → 45 任务 / 31 完成（68.9%）。
+
+**进行中**：无。
+**受阻**：无。
+**测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（202 passed / 30 suites，新增 7 + 修复 1）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
+**提交**：`e553483` feat(ops): 运营配置后台 加价规则+物流产品费率卡+汇率 CRUD (§23 4.6)；随后检查点提交（state/schedule/progress）。
+**本次新增/变更前端页面与菜单**：
+- 系统设置 → 「运营配置」（/pricing）：新增「物流产品 / 费率卡」Tab（OperationsProducts.vue），加价规则与币种汇率 Tab 沿用。
+
+**明天打开网页能看到什么**：进入「系统设置 → 运营配置」，切到新增的「物流产品 / 费率卡」Tab——可见 4 条种子物流产品（云途-标准专线/默认、DHL-Express 优先、4PX-经济小包、燕文-带电专线），支持新增/编辑（承运商、物流段、目的区、时效、抛比、首重价/续重价、币种、可达国家、启用/默认/可见）/删除，以及点「试算」输入计费重即时看到承运商成本（首重价 + 续重价 × max(0, 计费重−1)）；加价规则与币种汇率 Tab 保持可用；演示模式无需后端即可交互改写内存状态。
+
+**下一步**：4.7 报表指标口径（§25 履约/物流/利润看板）→ 4.8 理赔保险 → 4.9 多语言多币种前端。
