@@ -55,6 +55,7 @@ export interface TypedHttp {
   get<T = unknown>(url: string, config?: AxiosRequestConfig): Promise<T>
   post<T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T>
   put<T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T>
+  patch<T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T>
   delete<T = unknown>(url: string, config?: AxiosRequestConfig): Promise<T>
 }
 
@@ -72,6 +73,10 @@ export const http: TypedHttp = {
     USE_MOCK
       ? (mockRouter('PUT', url, data) as unknown as Promise<T>)
       : (instance.put(url, data, config) as unknown as Promise<T>),
+  patch: <T>(url: string, data?: unknown, config?: AxiosRequestConfig) =>
+    USE_MOCK
+      ? (mockRouter('PATCH', url, data) as unknown as Promise<T>)
+      : (instance.patch(url, data, config) as unknown as Promise<T>),
   delete: <T>(url: string, config?: AxiosRequestConfig) =>
     USE_MOCK
       ? (mockRouter('DELETE', url) as unknown as Promise<T>)

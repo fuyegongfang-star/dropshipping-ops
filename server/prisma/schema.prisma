@@ -513,10 +513,17 @@ model Claim {
   id          String   @id @default(cuid())
   tenantId    String
   shipmentId  String
-  type        String // lost | damage | delay（§20）
-  status      String // open | processing | closed
+  type        String // lost | damage | delay | customs_fail | reject | address_error（§20）
+  cause       String? // 异常原因描述
+  status      String // open | processing | approved | rejected | paid（§20）
   amount      Decimal? @db.Decimal(12, 2)
+  responsibleParty String? // carrier | platform | insurer（§20）
+  refCarrierClaimId String? // 承运商理赔单号
+  note        String? // 处理备注 / 审核意见
   createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId])
 }
 
 // ---- 运维 / 集成（§3/§24）--------------------------------------------------

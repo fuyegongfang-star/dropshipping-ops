@@ -124,6 +124,8 @@ const ICONS: Record<string, string> = {
   trend: '<path d="M4 17l5-5 3 3 7-7"/><path d="M15 8h4v4"/>',
   chart: '<path d="M3 21h18"/><rect x="5" y="11" width="3" height="9"/><rect x="11" y="5" width="3" height="15"/><rect x="17" y="8" width="3" height="12"/>',
   percent: '<path d="M6 18 18 6"/><circle cx="7.5" cy="7.5" r="2"/><circle cx="16.5" cy="16.5" r="2"/>',
+  claim:
+    '<path d="M12 4a8 8 0 0 1 8 8H4a8 8 0 0 1 8-8z"/><path d="M12 12v6a2 2 0 0 0 4 0"/><path d="M12 8v2M11 9h2"/>',
 }
 
 const path = computed(() => ICONS[props.name] ?? ICONS.box)

@@ -44,6 +44,9 @@ const EXPLICIT_ROUTES = {
   '4.3': '/profit',
   '4.4': '/security',
   '4.5': '/rbac',
+  '4.6': '/pricing',
+  '4.7': '/reports',
+  '4.8': '/claims',
 };
 
 /** 关键词 → 路由（兜底推断，命中即用）。 */
@@ -55,6 +58,8 @@ const KEYWORD_ROUTES = [
   [['渠道', '店铺', 'Shopify', 'Amazon', '平台接入'], '/channels'],
   [['订单', '审单', '状态机', '履约', '轨迹'], '/orders'],
   [['租户', '多租户'], '/tenants'],
+  [['报表', '看板', '指标', '运营报表'], '/reports'],
+  [['理赔', '保险', '索赔', '异常件'], '/claims'],
 ];
 
 function inferRoute(id, name, deliverable) {

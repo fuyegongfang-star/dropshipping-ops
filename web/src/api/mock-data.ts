@@ -16,6 +16,7 @@ import type { ComposeLegsRequest, ComposeLegsResult, ShipmentLeg, LabelSpec, Lab
 import type { WalletSummary, LedgerType, LedgerItem } from './finance'
 import type { BillItem, ReconciliationItem, ProfitSummary, GenerateResult, ProfitBreakdown, TenantProfit, CarrierCost } from './billing'
 import type { ReportDashboard } from './reports'
+import type { ClaimOut, ClaimType, ClaimStatus, ClaimResponsibleParty, CreateClaimDto, UpdateClaimStatusDto } from './claims'
 
 export interface MockTenant {
   id: string
@@ -1172,6 +1173,90 @@ function doGetProfitTrend(months: number): ProfitSummary[] {
   return out
 }
 
+// ===== 理赔 / 保险演示数据（任务 4.8，方案 §20）=====
+// 模块级可变状态：新建 / 推进状态会真实改写，后续 GET 立即反映变更，使演示具备可操作性。
+// 字段形状严格对齐 claims.ts 的 ClaimOut / DTO，保证视图无需改造即可消费。
+const claims: ClaimOut[] = [
+  {
+    id: 'cl_seed_1', tenantId: TENANT_ID, shipmentId: 'sh_seed_1001', type: 'lost',
+    cause: '承运商分拣丢失', status: 'paid', amount: 320.0, responsibleParty: 'carrier',
+    refCarrierClaimId: 'DHL-CLM-7781', note: '承运商已赔付并冲减对账',
+    createdAt: '2026-10-02T09:00:00.000Z', updatedAt: '2026-10-09T09:00:00.000Z',
+  },
+  {
+    id: 'cl_seed_2', tenantId: TENANT_ID, shipmentId: 'sh_seed_1002', type: 'damage',
+    cause: '运输途中挤压破损', status: 'approved', amount: 150.0, responsibleParty: 'carrier',
+    refCarrierClaimId: null, note: '已审核通过，待赔付',
+    createdAt: '2026-10-08T09:00:00.000Z', updatedAt: '2026-10-12T09:00:00.000Z',
+  },
+  {
+    id: 'cl_seed_3', tenantId: TENANT_ID, shipmentId: 'sh_seed_1003', type: 'delay',
+    cause: '清关延误导致超 SLA', status: 'processing', amount: 60.0, responsibleParty: 'carrier',
+    refCarrierClaimId: null, note: '承运商核实中',
+    createdAt: '2026-10-13T09:00:00.000Z', updatedAt: '2026-10-14T09:00:00.000Z',
+  },
+  {
+    id: 'cl_seed_4', tenantId: TENANT_ID, shipmentId: 'sh_seed_1004', type: 'customs_fail',
+    cause: '申报品类与实际不符被退运', status: 'open', amount: null, responsibleParty: 'platform',
+    refCarrierClaimId: null, note: '待平台责任判定',
+    createdAt: '2026-10-16T09:00:00.000Z', updatedAt: '2026-10-16T09:00:00.000Z',
+  },
+]
+
+/** 理赔列表：按租户隔离，支持状态 / 类型筛选（与后端同口径）。 */
+function doListClaims(url: string): ClaimOut[] {
+  const q = parseQ(url)
+  return claims
+    .filter((c) => c.tenantId === TENANT_ID)
+    .filter((c) => (q.status ? c.status === q.status : true))
+    .filter((c) => (q.type ? c.type === q.type : true))
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+    .map((c) => ({ ...c }))
+}
+
+/** 理赔详情。 */
+function doGetClaim(id: string): ClaimOut {
+  const c = claims.find((x) => x.id === id && x.tenantId === TENANT_ID)
+  if (!c) return reject('理赔单不存在') as unknown as ClaimOut
+  return { ...c }
+}
+
+/** 新建理赔（运单 + 类型必填；金额 / 责任方 / 承运商理赔号可选）。 */
+function doCreateClaim(body: unknown): ClaimOut {
+  const b = (body ?? {}) as Partial<CreateClaimDto>
+  if (!b.shipmentId) return reject('运单号不能为空') as unknown as ClaimOut
+  if (!b.type) return reject('理赔类型必选') as unknown as ClaimOut
+  const now = NOW()
+  const claim: ClaimOut = {
+    id: 'cl_' + Date.now().toString(36) + '_' + seq++,
+    tenantId: TENANT_ID,
+    shipmentId: b.shipmentId,
+    type: b.type as ClaimType,
+    cause: b.cause ?? null,
+    status: 'open',
+    amount: b.amount != null ? Number(b.amount) : null,
+    responsibleParty: (b.responsibleParty as ClaimResponsibleParty) ?? null,
+    refCarrierClaimId: b.refCarrierClaimId ?? null,
+    note: null,
+    createdAt: now,
+    updatedAt: now,
+  }
+  claims.unshift(claim)
+  return { ...claim }
+}
+
+/** 推进理赔状态（§20：open→processing→approved/rejected→paid）。 */
+function doUpdateClaimStatus(id: string, body: unknown): ClaimOut {
+  const c = claims.find((x) => x.id === id && x.tenantId === TENANT_ID)
+  if (!c) return reject('理赔单不存在') as unknown as ClaimOut
+  const b = (body ?? {}) as Partial<UpdateClaimStatusDto>
+  if (!b.status) return reject('目标状态必选') as unknown as ClaimOut
+  c.status = b.status as ClaimStatus
+  if (b.note) c.note = b.note
+  c.updatedAt = NOW()
+  return { ...c }
+}
+
 // ===== 路由分发 =====
 /** mock 模式下 http.ts 的唯一入口：按 method + url 返回对应数据或执行状态变更。
  *  body 仅在 POST/PUT 时由 http.ts 透传（用于比价试算等带参请求）。 */
@@ -1208,6 +1293,10 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     if (url === '/rbac/roles') return delay().then(() => doGetRoles())
     // 运营报表总览（§25 五类指标）：演示态同口径聚合（前端无需后端即可看板）
     if (url === '/reports/overview') return delay().then(() => doGetReportDashboard())
+    // 理赔列表 / 详情（§20）：按租户隔离 + 状态 / 类型筛选
+    if (url === '/claims' || url.startsWith('/claims?')) return delay().then(() => doListClaims(url))
+    const claimId = url.match(/^\/claims\/([^/]+)$/)
+    if (claimId) return delay().then(() => doGetClaim(claimId[1]))
     const billId = url.match(/^\/billing\/bills\/([^/]+)$/)
     if (billId) {
       const b = billingBills.find((x) => x.id === billId[1])
@@ -1297,6 +1386,15 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
       )
     const assignRoles = url.match(/^\/rbac\/users\/([^/]+)\/roles$/)
     if (assignRoles) return delay(160).then(() => doAssignRoles(assignRoles[1], body as { roleIds?: unknown[] }))
+    // 理赔新建（§20）：运单 + 类型必填
+    if (url === '/claims') return delay(160).then(() => doCreateClaim(body))
+    return delay().then(() => reject('演示模式不支持该请求：' + method + ' ' + url))
+  }
+
+  // PATCH 集合：理赔状态推进（§20：open→processing→approved/rejected→paid）
+  if (method === 'PATCH') {
+    const claimStatus = url.match(/^\/claims\/([^/]+)\/status$/)
+    if (claimStatus) return delay(140).then(() => doUpdateClaimStatus(claimStatus[1], body))
     return delay().then(() => reject('演示模式不支持该请求：' + method + ' ' + url))
   }
 

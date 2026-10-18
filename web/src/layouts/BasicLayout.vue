@@ -208,7 +208,7 @@ const menuNodes: MenuNode[] = [
       { path: '/wallet', title: '收款账务', icon: 'wallet' },
       { path: '/billing', title: '商户账单', icon: 'bill' },
       { path: '/profit', title: '利润核算', icon: 'trend' },
-      // 待阶段4 后续落地：理赔(4.8)
+      { path: '/claims', title: '理赔保险', icon: 'claim' },
     ],
   },
   {
