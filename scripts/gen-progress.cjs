@@ -47,6 +47,7 @@ const EXPLICIT_ROUTES = {
   '4.6': '/pricing',
   '4.7': '/reports',
   '4.8': '/claims',
+  '4.9': '/localization',
 };
 
 /** 关键词 → 路由（兜底推断，命中即用）。 */
@@ -60,6 +61,7 @@ const KEYWORD_ROUTES = [
   [['租户', '多租户'], '/tenants'],
   [['报表', '看板', '指标', '运营报表'], '/reports'],
   [['理赔', '保险', '索赔', '异常件'], '/claims'],
+  [['语言', '多语言', '币种', '本地币', 'i18n', '本地化'], '/localization'],
 ];
 
 function inferRoute(id, name, deliverable) {

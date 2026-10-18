@@ -102,6 +102,7 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import * as echarts from 'echarts'
 import { billingApi, type ProfitBreakdown, type ProfitSummary } from '@/api/billing'
+import { money, toDisplay, displayCurrency, CURRENCY_SYMBOLS } from '@/locales'
 import PageHeader from '@/components/PageHeader.vue'
 import AppIcon from '@/components/AppIcon.vue'
 
@@ -113,7 +114,8 @@ const chartEl = ref<HTMLDivElement | null>(null)
 let chart: echarts.ECharts | null = null
 
 function fmt(n?: number): string {
-  return '¥' + (n ?? 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  // 按当前展示币种换算显示（§27：记账仍基准币 CNY，前端仅展示换算）。
+  return money(n ?? 0)
 }
 function isNeg(n?: number): boolean {
   return (n ?? 0) < 0
@@ -144,15 +146,23 @@ function renderChart(trend: ProfitSummary[]): void {
   if (!chartEl.value) return
   if (!chart) chart = echarts.init(chartEl.value)
   const periods = trend.map((p) => p.period)
-  const profits = trend.map((p) => Number(p.profit.toFixed(2)))
-  const sells = trend.map((p) => Number(p.totalSell.toFixed(2)))
-  const costs = trend.map((p) => Number(p.totalCost.toFixed(2)))
+  // 图表序列按当前展示币种换算（§27）
+  const profits = trend.map((p) => Number(toDisplay(p.profit).toFixed(2)))
+  const sells = trend.map((p) => Number(toDisplay(p.totalSell).toFixed(2)))
+  const costs = trend.map((p) => Number(toDisplay(p.totalCost).toFixed(2)))
+  const sym = CURRENCY_SYMBOLS[displayCurrency.value]
   const option = {
-    tooltip: { trigger: 'axis', valueFormatter: (v: number) => '¥' + Number(v).toLocaleString('zh-CN') },
+    tooltip: {
+      trigger: 'axis',
+      valueFormatter: (v: number) => sym + Number(v).toLocaleString('en-US'),
+    },
     legend: { data: ['平台利润', '应收', '应付'], bottom: 0 },
-    grid: { left: 56, right: 20, top: 20, bottom: 40 },
+    grid: { left: 60, right: 20, top: 20, bottom: 40 },
     xAxis: { type: 'category', data: periods },
-    yAxis: { type: 'value', axisLabel: { formatter: (v: number) => '¥' + (v / 1000).toFixed(0) + 'k' } },
+    yAxis: {
+      type: 'value',
+      axisLabel: { formatter: (v: number) => sym + (v / 1000).toFixed(0) + 'k' },
+    },
     series: [
       {
         name: '平台利润',
@@ -183,8 +193,8 @@ onBeforeUnmount(() => {
   chart = null
 })
 
-// 切换账期重新拉取明细（趋势固定近 6 期，不随账期变化）
-watch(period, () => {
+// 切换账期 / 展示币种重新拉取明细（趋势固定近 6 期，不随账期变化；币种变化需重绘图表）
+watch([period, displayCurrency], () => {
   nextTick(() => refresh())
 })
 </script>

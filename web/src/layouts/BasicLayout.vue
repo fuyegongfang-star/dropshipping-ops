@@ -24,12 +24,12 @@
         <template v-for="node in visibleNodes" :key="'path' in node ? node.path : node.group">
           <el-menu-item v-if="'path' in node" :index="node.path">
             <AppIcon :name="node.icon" :size="19" />
-            <span>{{ node.title }}</span>
+            <span>{{ t(node.title) }}</span>
           </el-menu-item>
           <el-sub-menu v-else :index="node.group" popper-class="side-submenu-popup">
             <template #title>
               <AppIcon :name="node.groupIcon" :size="19" />
-              <span>{{ node.group }}</span>
+              <span>{{ t(node.group) }}</span>
             </template>
             <el-menu-item
               v-for="c in node.children"
@@ -37,7 +37,7 @@
               :index="c.path"
             >
               <AppIcon :name="c.icon" :size="18" />
-              <span>{{ c.title }}</span>
+              <span>{{ t(c.title) }}</span>
             </el-menu-item>
           </el-sub-menu>
         </template>
@@ -62,7 +62,23 @@
         </div>
 
         <div class="h-right">
-          <span class="demo-badge"><AppIcon name="check" :size="13" /> 演示模式</span>
+          <span class="demo-badge"><AppIcon name="check" :size="13" /> {{ t('app.demo') }}</span>
+
+          <!-- 多语言 / 多币种切换（§27）：语言 + 展示币种，全局即时生效 -->
+          <el-select
+            :model-value="locale"
+            class="locale-select"
+            @change="onLocaleChange"
+          >
+            <el-option v-for="(label, code) in LOCALE_LABELS" :key="code" :label="label" :value="code" />
+          </el-select>
+          <el-select
+            :model-value="displayCurrency"
+            class="currency-select"
+            @change="onCurrencyChange"
+          >
+            <el-option v-for="(label, code) in CURRENCY_LABELS" :key="code" :label="label" :value="code" />
+          </el-select>
 
           <!-- 演示模式：身份切换，用于验证角色隔离（平台方 / 卖家视角） -->
           <el-select
@@ -86,10 +102,10 @@
             @change="onTenantChange"
           >
             <el-option
-              v-for="t in tenantStore.tenants"
-              :key="t.code"
-              :label="t.name"
-              :value="t.code"
+              v-for="tn in tenantStore.tenants"
+              :key="tn.code"
+              :label="tn.name"
+              :value="tn.code"
             />
           </el-select>
 
@@ -122,6 +138,17 @@ import { useUserStore, type UserRole } from '@/stores/user'
 import http from '@/api/http'
 import AppIcon from '@/components/AppIcon.vue'
 import WhatsNew from '@/components/WhatsNew.vue'
+import {
+  t,
+  locale,
+  displayCurrency,
+  setLocale,
+  setCurrency,
+  LOCALE_LABELS,
+  CURRENCY_LABELS,
+  type Locale,
+  type CurrencyCode,
+} from '@/locales'
 
 // 基础布局：深色渐变侧边栏 + 顶栏 + 主内容区（方案 §0/§17 多租户透传）。
 const tenantStore = useTenantStore()
@@ -179,49 +206,50 @@ type MenuNode =
     }
 
 const menuNodes: MenuNode[] = [
-  { path: '/', title: '仪表盘', icon: 'dashboard' },
+  { path: '/', title: 'menu.dashboard', icon: 'dashboard' },
   {
-    group: '业务运营',
+    group: 'group.business',
     groupIcon: 'grid',
     children: [
-      { path: '/orders', title: '订单中心', icon: 'orders' },
-      { path: '/catalog', title: '商品 / SKU', icon: 'catalog' },
-      { path: '/channels', title: '渠道 / 店铺', icon: 'channels' },
-      { path: '/reports', title: '运营报表', icon: 'chart' },
+      { path: '/orders', title: 'menu.orders', icon: 'orders' },
+      { path: '/catalog', title: 'menu.catalog', icon: 'catalog' },
+      { path: '/channels', title: 'menu.channels', icon: 'channels' },
+      { path: '/reports', title: 'menu.reports', icon: 'chart' },
     ],
   },
   {
-    group: '物流履约',
+    group: 'group.logistics',
     groupIcon: 'globe',
     children: [
-      { path: '/carriers', title: '承运商管理', icon: 'truck' },
-      { path: '/quotes', title: '运费试算', icon: 'calculator' },
-      { path: '/shipments', title: '两段式运单', icon: 'layers' },
-      { path: '/address', title: '地址校验', icon: 'pin' },
-      { path: '/aggregator', title: '聚合追踪', icon: 'radar' },
+      { path: '/carriers', title: 'menu.carriers', icon: 'truck' },
+      { path: '/quotes', title: 'menu.quotes', icon: 'calculator' },
+      { path: '/shipments', title: 'menu.shipments', icon: 'layers' },
+      { path: '/address', title: 'menu.address', icon: 'pin' },
+      { path: '/aggregator', title: 'menu.aggregator', icon: 'radar' },
     ],
   },
   {
-    group: '财务中心',
+    group: 'group.finance',
     groupIcon: 'coins',
       children: [
-      { path: '/wallet', title: '收款账务', icon: 'wallet' },
-      { path: '/billing', title: '商户账单', icon: 'bill' },
-      { path: '/profit', title: '利润核算', icon: 'trend' },
-      { path: '/claims', title: '理赔保险', icon: 'claim' },
+      { path: '/wallet', title: 'menu.wallet', icon: 'wallet' },
+      { path: '/billing', title: 'menu.billing', icon: 'bill' },
+      { path: '/profit', title: 'menu.profit', icon: 'trend' },
+      { path: '/claims', title: 'menu.claims', icon: 'claim' },
     ],
   },
   {
-    group: '系统设置',
+    group: 'group.system',
     groupIcon: 'settings',
     children: [
-      { path: '/pricing', title: '运营配置', icon: 'sliders' },
+      { path: '/pricing', title: 'menu.pricing', icon: 'sliders' },
+      { path: '/localization', title: 'menu.localization', icon: 'globe' },
       // 平台运营方专属：站点设置（站点名称/TDK）、租户管理、开发进度，卖家租户不可见
-      { path: '/settings/site', title: '站点设置', icon: 'flag', roles: ['super'] },
-      { path: '/tenants', title: '租户管理', icon: 'tenants', roles: ['super'] },
-      { path: '/progress', title: '开发进度', icon: 'target', roles: ['super'] },
-      { path: '/security', title: '安全加固', icon: 'shield', roles: ['super'] },
-      { path: '/rbac', title: '权限管理', icon: 'key', roles: ['super'] },
+      { path: '/settings/site', title: 'menu.siteSettings', icon: 'flag', roles: ['super'] },
+      { path: '/tenants', title: 'menu.tenants', icon: 'tenants', roles: ['super'] },
+      { path: '/progress', title: 'menu.progress', icon: 'target', roles: ['super'] },
+      { path: '/security', title: 'menu.security', icon: 'shield', roles: ['super'] },
+      { path: '/rbac', title: 'menu.rbac', icon: 'key', roles: ['super'] },
     ],
   },
 ]
@@ -250,7 +278,7 @@ const flatEntries = computed<MenuEntry[]>(() => {
 })
 
 const currentTitle = computed(
-  () => flatEntries.value.find((m) => m.path === route.path)?.title ?? '仪表盘',
+  () => t(flatEntries.value.find((m) => m.path === route.path)?.title ?? 'menu.dashboard'),
 )
 
 onMounted(async () => {
@@ -276,6 +304,15 @@ function onTenantChange(code: string): void {
 // 演示模式下的身份切换：模拟平台运营方 / 卖家租户，验证菜单与提醒的显隐。
 function onRoleChange(r: string): void {
   userStore.setRole(r as UserRole)
+}
+
+// 多语言切换（§27）：即时切换导航与界面文案并持久化。
+function onLocaleChange(l: string): void {
+  setLocale(l as Locale)
+}
+// 展示币种切换（§27）：财务类金额按所选币种换算显示（记账仍基准币 CNY）。
+function onCurrencyChange(c: string): void {
+  setCurrency(c as CurrencyCode)
 }
 </script>
 
@@ -510,6 +547,13 @@ function onRoleChange(r: string): void {
 /* 演示模式身份切换（验证角色隔离） */
 .role-select {
   width: 130px;
+}
+/* 多语言 / 展示币种切换（§27） */
+.locale-select {
+  width: 96px;
+}
+.currency-select {
+  width: 118px;
 }
 .avatar {
   width: 38px;
