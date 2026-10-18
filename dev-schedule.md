@@ -421,3 +421,13 @@
 - **测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**208 passed / 31 suites**，新增 6）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
 - **提交**：随本批统一提交（4.7 后端/前端/进度生成器）。
 - **下一步（次日接力）**：4.8 理赔保险（§20 claims 流程）→ 4.9 多语言多币种前端（§27）。
+
+### 进度更新 · 2026-10-18（夜间自动化 23:10 启动 · 4.8 理赔保险 + 4.9 多语言多币种前端）
+- **完成（✅）**：
+  - **4.8 理赔保险（§20 异常 / 理赔 / 保险）** —— 后端 `claims` 模块（ClaimsService/Controller/Types/Module + DTO 校验 + 状态流转 open→processing→approved/rejected→paid）+ `Claim` schema 补全（cause/responsibleParty/refCarrierClaimId/note/updatedAt）；前端「理赔保险」页（/claims，财务中心）概览四卡 + 列表 + 新建 + 状态推进，演示/正式双路通；`claims.ts` 接口 + `mock-data` 同口径内存实现 + AppIcon `claim` + 路由/菜单/进度生成器注册。
+  - **4.9 多语言多币种前端（§27）** —— 轻量 i18n（`t()` + 响应式 `locale` + 中/英字典，未引 vue-i18n 第三方依赖，避免安装触发本机 safe-delete 守卫）+ 顶栏语言切换 + 展示币种切换（CNY/USD/EUR/GBP，复用 §10.3 汇率口径，记账与后端始终基准币 CNY）；侧栏菜单/分组/顶栏文案接入 `t()` 即时翻译；「本地化设置」页（/localization，系统设置）语言 + 展示币种 + 汇率表 + 换算演示；利润核算页金额按展示币种实时换算（`money()`/`toDisplay`）。
+- **进行中（🔵）**：无（阶段4 全部完成，M4 达成）。
+- **受阻**：无。
+- **测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（213 passed / 32 suites，新增 5 claims）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
+- **提交**：`8dde7b1`(4.8) / `e3735ce`(progress) / `fda4dc8`(检查点) / `5a5ff34`(4.9) / `e8bf89d`(progress)。
+- **下一步（次日接力）**：5.1 风控体系（§26 规则引擎 + 评分）→ 5.2 开放 API/ERP 集成 → 5.3 Amazon SP-API 完整对接 → 5.4 容量/灾备/测试强化。

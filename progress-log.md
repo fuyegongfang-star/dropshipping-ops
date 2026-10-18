@@ -361,3 +361,36 @@
 **明天打开网页能看到什么**：左侧「业务运营」新增「运营报表」菜单——进入后可见整体履约达成率/综合异常率/近6期平台利润/总单量四张指标卡，以及履约各段时长柱状图、物流时效+异常率双轴图、利润趋势图、渠道单量占比饼图、异常构成饼图、按租户/渠道利润拆解表；演示模式无需后端即可渲染。
 
 **下一步**：4.8 理赔保险（§20 claims 流程）→ 4.9 多语言多币种前端（§27）。
+
+---
+
+## 2026-10-18（夜间自动化 · 4.8 理赔保险 + 4.9 多语言多币种前端）
+
+**背景**：阶段4 收口。本次落地「理赔保险」与「多语言多币种前端」两项，阶段4（M4 结算/账务/多租户/运营后台/报表/理赔/多语言）全部完成。
+
+**完成任务**：
+- **4.8 理赔保险（§20）**：
+  - 后端 `server/src/modules/claims/` —— `claims.types.ts`（ClaimType/Status/ResponsibleParty + Create/Update DTO 校验）、`claims.service.ts`（内存实现：租户隔离 + 列表/详情/新建/状态流转）、`claims.controller.ts`（`GET /claims`、`POST /claims`、`PATCH /claims/:id/status`，`@TenantId()` 隔离）、`claims.module.ts` 接入 `AppModule`；`Claim` schema 补全 `cause`/`responsibleParty`/`refCarrierClaimId`/`note`/`updatedAt`。单测 `claims.service.spec`（5 cases：租户隔离/筛选/新建默认态/状态流转/越权 404）。
+  - 前端 `ClaimsView.vue`（/claims，财务中心）：概览四卡（总数/待处理/处理中/已赔付）+ 状态/类型筛选 + 列表（异常类型/责任方/金额/状态标签 + 展开看原因/备注/承运商理赔号）+ 新建对话框（运单/类型/责任方/金额/承运商理赔号/原因）+ 状态推进对话框（按 §20 合法后继）；`api/claims.ts`（类型 + 标签 + 合法后继 + `claimsApi`）+ `mock-data.ts` 同口径内存实现（演示+正式双路通）；`AppIcon` 增 `claim`；路由 + 菜单注册。
+- **4.9 多语言多币种前端（§27）**：
+  - 轻量 i18n：`web/src/locales/index.ts`（`t()` + 响应式 `locale` + 中/英字典 + `setLocale`/`setCurrency`/`money`/`toDisplay` + `FX_RATES`/`CURRENCY_SYMBOLS` 复用 §10.3 汇率口径）。**未引入 vue-i18n 第三方依赖**，避免安装触发本机 safe-delete 守卫导致 build 中断。
+  - 顶栏语言切换（中/English）+ 展示币种切换（CNY/USD/EUR/GBP）；侧栏菜单/分组/顶栏文案接入 `t()` 即时翻译；「本地化设置」页（/localization，系统设置）语言 + 展示币种 + 汇率表 + 换算演示；利润核算页金额按展示币种实时换算。
+  - 演示/正式双路通：mock 无需后端即可切换语言与币种。
+- **进度生成器**：`npm run progress:gen` → 45 任务 / 34 完成（75.6%）。
+
+**进行中**：无。
+**受阻**：无。
+**测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（213 passed / 32 suites，新增 5）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
+**提交**：`8dde7b1`(feat claims/web 4.8) / `e3735ce`(progress) / `fda4dc8`(chore 检查点 4.8) / `5a5ff34`(feat i18n/web 4.9) / `e8bf89d`(progress)。
+**本次新增前端页面与菜单**：
+- 财务中心 → 「理赔保险」（/claims）：ClaimsView.vue（概览 + 列表 + 新建 + 状态推进）。
+- 系统设置 → 「本地化设置」（/localization）：LocalizationView.vue（语言 + 展示币种 + 汇率表 + 换算演示）。
+- 顶栏新增「语言 / 展示币种」切换；左侧菜单与顶栏文案支持中/英切换。
+- 利润核算页金额随展示币种实时换算。
+
+**明天打开网页能看到什么**：
+- 财务中心新增「理赔保险」：可看 4 条种子理赔（丢件已赔付/破损已通过/延误处理中/清关失败待处理），按状态/类型筛选，新建理赔并推进状态（open→processing→approved/rejected→paid），演示模式无需后端即可操作。
+- 顶栏右上角新增「语言（中/English）」与「展示币种（CNY/USD/EUR/GBP）」下拉：切换语言后整个侧栏菜单、分组、顶栏文案即时中英文切换；切换展示币种后，「利润核算」页所有金额与趋势图按所选币种换算显示（记账仍基准币 CNY，仅前端展示换算）。
+- 系统设置新增「本地化设置」页：可再次设置语言/币种，查看 §10.3 汇率表（1 单位币种 = 多少 CNY / ¥1 = 多少币种），并输入基准币金额查看四种币种换算对照。
+
+**下一步**：5.1 风控体系（§26 规则引擎 + 评分）→ 5.2 开放 API/ERP 集成 → 5.3 Amazon SP-API 完整对接 → 5.4 容量/灾备/测试强化。
