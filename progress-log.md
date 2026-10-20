@@ -394,3 +394,34 @@
 - 系统设置新增「本地化设置」页：可再次设置语言/币种，查看 §10.3 汇率表（1 单位币种 = 多少 CNY / ¥1 = 多少币种），并输入基准币金额查看四种币种换算对照。
 
 **下一步**：5.1 风控体系（§26 规则引擎 + 评分）→ 5.2 开放 API/ERP 集成 → 5.3 Amazon SP-API 完整对接 → 5.4 容量/灾备/测试强化。
+
+---
+
+## 2026-10-20（夜间自动化 · 5.1 风控体系 + 5.2 开放 API/ERP 集成）
+
+**背景**：阶段5 启动。本夜完成「风控体系」与「开放 API/ERP 集成」两项，阶段5（M5 平台化/开放生态/合规）开局两关落地。
+
+**完成任务**：
+- **5.1 风控体系（§26）**：
+  - 后端 `server/src/modules/risk/` —— 规则引擎三类别（欺诈 fraud / 黑名单 blacklist / 敏感货瞒报 misdeclaration）+ 评分阈值（高风险 ≥60 / 中风险 ≥30）+ 命中黑名单强制判高 + 高风险转人工审核（pending）；黑名单覆盖地址 / 买家 / 支付；单测覆盖引擎与策略。
+  - 前端 `RiskView.vue`（/risk，业务运营）：概览四卡 + 风险订单 + 规则引擎 + 黑名单三 Tab；`api/risk.ts` + `mock-data.ts` 同口径内存实现（演示+正式双路通）；`AppIcon` 增 `risk`；路由 + 菜单注册。
+  - 注：本批接管一个前序漏提交批次，已完成全部验证并补提交。
+  - 质量门禁：server `tsc` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（222 passed / 35 suites）｜ web `vue-tsc` ✅ ｜ `eslint` ✅ ｜ `vite build` ✅。
+- **5.2 开放 API/ERP 集成（§28）**：
+  - 后端 `server/src/modules/openapi/` —— `OpenApiService`（内存实现：client_credentials 换令牌 / 客户端增删 / 密钥轮换 / 滑动窗口限流 / 开放订单 / 多家承运商报价 + 加价层（口径对齐比价引擎）/ 账单 / 借贷平衡 ERP 凭证 / Webhook 订阅 / 作用域校验 / 脱敏画像）、`OpenApiGuard`（Bearer 校验 `aud=openapi`）、`OpenApiController`（`GET oauth/token`·`me`·`orders`·`bills`·`erp/gl`、`POST quotes`·`webhooks`·`clients`、`DELETE clients/:id`、`POST clients/:id/rotate`）、types / decorator / module；单测 service.spec 11 + controller.spec 6。
+  - 前端 `OpenPlatformView.vue`（/open-platform，super 专属，系统设置）：概览四卡 + API 客户端 / Webhook / 接口文档 / 调用示例四 Tab + 新建客户端（含密钥弹窗）/ 新建 Webhook；`api/openapi.ts` + `mock-data.ts` 双路通；`AppIcon` 增 `api`；路由 + 菜单 +  locales 注册；进度生成器 `EXPLICIT_ROUTES` 补 `5.2→/open-platform`。
+  - 质量门禁：server `tsc` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（239 passed / 35 suites，新增 17）｜ web `vue-tsc` ✅ ｜ `eslint` ✅ ｜ `vite build` ✅。
+
+**进行中**：无。
+**受阻**：无。
+**看门狗**：未触发（零外部网络 / 安装）。
+**提交**：`98dc256`(feat risk 5.1) ｜ `66208dd`(chore 检查点 5.1) ｜ `b60d426`(feat openapi 5.2 + progress)。
+**本次新增前端页面与菜单**：
+- 业务运营 → 「风控中心」（/risk）：RiskView.vue（概览 + 风险订单 + 规则引擎 + 黑名单）。
+- 系统设置 → 「开放平台」（/open-platform，super 专属）：OpenPlatformView.vue（API 客户端 / Webhook / 接口文档 / 调用示例）。
+
+**明天打开网页能看到什么**：
+- 业务运营新增「风控中心」：可见风险订单概览四卡、风险订单列表、规则引擎（三类别 + 高风险 / 中风险阈值 + 黑名单强制判高 + 转人工审核）、黑名单（地址 / 买家 / 支付）三 Tab；演示模式无需后端即可查看。
+- 系统设置新增「开放平台」（仅 super 角色可见）：概览四卡 + API 客户端 Tab（列表 / 新建客户端并展示密钥弹窗 / 删除 / 轮换密钥）+ Webhook Tab（订阅 / 列表）+ 接口文档 Tab（作用域、端点、调用示例），并内置多语言 OAuth2 / REST 调用示例；演示 + 正式双路通。
+
+**下一步**：5.3 Amazon SP-API 完整对接（§29 FBA Inbound / Shipping / Reports）→ 5.4 容量 / 灾备 / 测试强化（§30）。
