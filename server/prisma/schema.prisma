@@ -526,6 +526,58 @@ model Claim {
   @@index([tenantId])
 }
 
+// ---- 风控体系（§26）-------------------------------------------------------
+// 风控规则：欺诈/刷单、黑名单、敏感货瞒报三大类，每条带分值权重（规则引擎 + 评分）
+model RiskRule {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String
+  category    String // fraud | blacklist | misdeclaration（§26）
+  description String?
+  enabled     Boolean  @default(true)
+  score       Int // 命中累加的风险分值（0-100）
+  severity    String   @default("medium") // low | medium | high
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+// 黑名单（§26）：地址 / 买家 / 支付 任一类，命中即高风险
+model Blacklist {
+  id        String   @id @default(cuid())
+  tenantId  String
+  type      String // address | buyer | payment（§26）
+  value     String // 归一地址串 / 买家标识 / 支付账户
+  reason    String?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+// 风险订单评分结果（§26 规则引擎 + 评分输出；高风险转人工审核结合 §13 待审）
+model RiskEvaluation {
+  id             String   @id @default(cuid())
+  tenantId       String
+  orderId        String
+  platformOrderNo String
+  recipientName  String?
+  country        String?
+  amount         Decimal? @db.Decimal(12, 2)
+  currency       String?
+  score          Int
+  level          String // low | medium | high
+  hits           Json // 命中规则明细数组
+  blacklisted    Boolean  @default(false)
+  reviewStatus   String   @default("auto") // pending | approved | rejected | auto
+  reviewedAt     DateTime?
+  reviewedBy     String?
+  reviewNote     String?
+  createdAt      DateTime @default(now())
+
+  @@index([tenantId])
+}
+
 // ---- 运维 / 集成（§3/§24）--------------------------------------------------
 // 入站 Webhook 事件（承运商轨迹推送等，需验签，§3/§17）
 model WebhookEvent {

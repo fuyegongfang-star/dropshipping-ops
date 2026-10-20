@@ -126,6 +126,8 @@ const ICONS: Record<string, string> = {
   percent: '<path d="M6 18 18 6"/><circle cx="7.5" cy="7.5" r="2"/><circle cx="16.5" cy="16.5" r="2"/>',
   claim:
     '<path d="M12 4a8 8 0 0 1 8 8H4a8 8 0 0 1 8-8z"/><path d="M12 12v6a2 2 0 0 0 4 0"/><path d="M12 8v2M11 9h2"/>',
+  risk:
+    '<path d="M7.86 2h8.28L22 7.86v8.28L16.14 22H7.86L2 16.14V7.86z"/><path d="M12 8v5M12 16h.01"/>',
 }
 
 const path = computed(() => ICONS[props.name] ?? ICONS.box)

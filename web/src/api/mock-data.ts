@@ -17,6 +17,7 @@ import type { WalletSummary, LedgerType, LedgerItem } from './finance'
 import type { BillItem, ReconciliationItem, ProfitSummary, GenerateResult, ProfitBreakdown, TenantProfit, CarrierCost } from './billing'
 import type { ReportDashboard } from './reports'
 import type { ClaimOut, ClaimType, ClaimStatus, ClaimResponsibleParty, CreateClaimDto, UpdateClaimStatusDto } from './claims'
+import type { RiskRule, RiskOrderEvaluation, BlacklistEntry, RiskSummary, CreateRiskRuleDto, UpdateRiskRuleDto, CreateBlacklistDto, ReviewDecisionDto } from './risk'
 
 export interface MockTenant {
   id: string
@@ -1257,6 +1258,181 @@ function doUpdateClaimStatus(id: string, body: unknown): ClaimOut {
   return { ...c }
 }
 
+// ===== 风控体系演示数据（任务 5.1，方案 §26）=====
+// 模块级可变状态：规则启停 / 黑名单增删 / 人工审核 会真实改写，GET 立即反映变更。
+// 字段形状严格对齐 risk.ts 的 RiskRule / RiskOrderEvaluation / BlacklistEntry，保证视图无需改造即可消费。
+const riskRules: RiskRule[] = [
+  mkRule('rr_seed_1', '高频下单异常', 'fraud', '近窗口同买家下单频次过高，疑似刷单', 40, 'high'),
+  mkRule('rr_seed_2', '大额订单异常', 'fraud', '单笔金额远超常规客单，疑似欺诈/洗钱', 25, 'medium'),
+  mkRule('rr_seed_3', '同地址多单', 'fraud', '同一收货地址短期内多笔订单，疑似拆单/刷单', 30, 'medium'),
+  mkRule('rr_seed_4', '虚假轨迹', 'fraud', '轨迹异常（无揽收/伪造节点），疑似虚假发货', 50, 'high'),
+  mkRule('rr_seed_5', '黑名单命中', 'blacklist', '命中地址/买家/支付黑名单，直接判高风险', 60, 'high'),
+  mkRule('rr_seed_6', '敏感货瞒报', 'misdeclaration', '申报品类与实际品类不符，疑似敏感货瞒报', 35, 'high'),
+]
+
+const riskBlacklist: BlacklistEntry[] = [
+  { id: 'bl_seed_1', tenantId: TENANT_ID, type: 'address', value: 'US|90001|123 MAIN ST|JOHN DOE', reason: '该地址历史多起丢件与拒收', createdAt: '2026-10-10T09:00:00.000Z' },
+  { id: 'bl_seed_2', tenantId: TENANT_ID, type: 'buyer', value: 'fraud-buyer@risk.test', reason: '买家账户关联多起退款欺诈', createdAt: '2026-10-10T09:00:00.000Z' },
+  { id: 'bl_seed_3', tenantId: TENANT_ID, type: 'payment', value: 'CARD-****6621', reason: '支付卡命中盗刷黑名单', createdAt: '2026-10-10T09:00:00.000Z' },
+]
+
+// 风险订单种子：评分结果与后端 evaluateRisk 同口径（阈值 高>=60 / 中>=30），覆盖低/中/高与人工审核。
+const riskOrders: RiskOrderEvaluation[] = [
+  mkRisk('rk_seed_1', 'o_risk_1', 'SO-30001', 'Alice Wang', 'US', 199.0, 'USD', 0, 'low', [], false, 'auto', '2026-10-11T09:00:00.000Z'),
+  mkRisk('rk_seed_2', 'o_risk_2', 'SO-30002', 'Bob Li', 'US', 268.0, 'USD', 70, 'high',
+    [hit('rr_seed_3', '同地址多单', 'fraud', 30, '同地址订单 3 笔（阈值 2）'), hit('rr_seed_1', '高频下单异常', 'fraud', 40, '近窗口同买家下单 3 笔（阈值 3）')], false, 'pending', '2026-10-12T10:00:00.000Z'),
+  mkRisk('rk_seed_3', 'o_risk_3', 'AMZ-30003', 'Carol Chen', 'DE', 320.0, 'EUR', 50, 'medium',
+    [hit('rr_seed_4', '虚假轨迹', 'fraud', 50, '轨迹检出虚假节点/无揽收')], false, 'auto', '2026-10-13T11:00:00.000Z'),
+  mkRisk('rk_seed_4', 'o_risk_4', 'SO-30004', 'John Doe', 'US', 159.0, 'USD', 60, 'high',
+    [hit('rr_seed_5', '黑名单命中', 'blacklist', 60, 'address:US|90001|123 MAIN ST|JOHN DOE')], true, 'pending', '2026-10-14T12:00:00.000Z'),
+  mkRisk('rk_seed_5', 'o_risk_5', 'SO-30005', 'David Zhao', 'GB', 420.0, 'GBP', 65, 'high',
+    [hit('rr_seed_6', '敏感货瞒报', 'misdeclaration', 35, '申报「normal」实际为「battery」'), hit('rr_seed_3', '同地址多单', 'fraud', 30, '同地址订单 2 笔（阈值 2）')], false, 'pending', '2026-10-15T13:00:00.000Z'),
+  mkRisk('rk_seed_6', 'o_risk_6', 'AMZ-30006', 'Eva Sun', 'US', 980.0, 'USD', 55, 'medium',
+    [hit('rr_seed_2', '大额订单异常', 'fraud', 25, '单笔金额 USD 980 超阈值 5000 CNY'), hit('rr_seed_3', '同地址多单', 'fraud', 30, '同地址订单 2 笔（阈值 2）')], false, 'auto', '2026-10-16T14:00:00.000Z'),
+  mkRisk('rk_seed_7', 'o_risk_7', 'SO-30007', 'Frank Wu', 'FR', 540.0, 'EUR', 60, 'high',
+    [hit('rr_seed_5', '黑名单命中', 'blacklist', 60, 'payment:CARD-****6621')], true, 'pending', '2026-10-17T15:00:00.000Z'),
+  mkRisk('rk_seed_8', 'o_risk_8', 'SO-30008', 'Grace Liu', 'CA', 88.0, 'USD', 30, 'medium',
+    [hit('rr_seed_3', '同地址多单', 'fraud', 30, '同地址订单 2 笔（阈值 2）')], false, 'auto', '2026-10-18T16:00:00.000Z'),
+]
+
+function mkRule(id: string, name: string, category: RiskRule['category'], description: string, score: number, severity: RiskRule['severity']): RiskRule {
+  const now = '2026-10-10T09:00:00.000Z'
+  return { id, tenantId: TENANT_ID, name, category, description, enabled: true, score, severity, createdAt: now, updatedAt: now }
+}
+function hit(ruleId: string, ruleName: string, category: RiskOrderEvaluation['hits'][number]['category'], scoreDelta: number, detail: string): RiskOrderEvaluation['hits'][number] {
+  return { ruleId, ruleName, category, scoreDelta, detail }
+}
+function mkRisk(
+  id: string, orderId: string, platformOrderNo: string, recipientName: string, country: string,
+  amount: number, currency: string, score: number, level: RiskOrderEvaluation['level'],
+  hits: RiskOrderEvaluation['hits'], blacklisted: boolean, reviewStatus: RiskOrderEvaluation['reviewStatus'], createdAt: string,
+): RiskOrderEvaluation {
+  return {
+    id, tenantId: TENANT_ID, orderId, platformOrderNo, recipientName, country, amount, currency,
+    score, level, hits, blacklisted, reviewStatus, reviewedAt: null, reviewedBy: null, reviewNote: null, createdAt,
+  }
+}
+
+/** 风控总览（四卡）。 */
+function doGetRiskSummary(): RiskSummary {
+  return {
+    scanned: riskOrders.length,
+    highRisk: riskOrders.filter((o) => o.level === 'high').length,
+    pendingReview: riskOrders.filter((o) => o.reviewStatus === 'pending').length,
+    blacklistCount: riskBlacklist.length,
+    ruleCount: riskRules.filter((r) => r.enabled).length,
+  }
+}
+
+/** 规则引擎列表（副本）。 */
+function doListRiskRules(): RiskRule[] {
+  return riskRules.map((r) => ({ ...r }))
+}
+
+/** 新建规则（名称/类别必填）。 */
+function doCreateRiskRule(body: unknown): RiskRule {
+  const b = (body ?? {}) as Partial<CreateRiskRuleDto>
+  if (!b.name) return reject('规则名称不能为空') as unknown as RiskRule
+  if (!b.category) return reject('规则类别必选') as unknown as RiskRule
+  const now = NOW()
+  const rule: RiskRule = {
+    id: 'rr_' + Date.now().toString(36) + '_' + seq++,
+    tenantId: TENANT_ID,
+    name: b.name,
+    category: b.category,
+    description: b.description ?? '',
+    enabled: b.enabled ?? true,
+    score: Number.isFinite(b.score) ? Math.max(0, Math.min(100, Math.trunc(b.score as number))) : 30,
+    severity: b.severity ?? 'medium',
+    createdAt: now,
+    updatedAt: now,
+  }
+  riskRules.push(rule)
+  return { ...rule }
+}
+
+/** 更新规则（启停开关等）。 */
+function doUpdateRiskRule(id: string, body: unknown): RiskRule {
+  const idx = riskRules.findIndex((r) => r.id === id)
+  if (idx < 0) return reject('风控规则不存在') as unknown as RiskRule
+  const b = (body ?? {}) as Partial<UpdateRiskRuleDto>
+  const cur = riskRules[idx]
+  riskRules[idx] = {
+    ...cur,
+    ...(b.name !== undefined ? { name: b.name } : {}),
+    ...(b.category !== undefined ? { category: b.category } : {}),
+    ...(b.description !== undefined ? { description: b.description } : {}),
+    ...(b.enabled !== undefined ? { enabled: Boolean(b.enabled) } : {}),
+    ...(b.score !== undefined && Number.isFinite(b.score) ? { score: Math.max(0, Math.min(100, Math.trunc(b.score))) } : {}),
+    ...(b.severity !== undefined ? { severity: b.severity } : {}),
+    updatedAt: NOW(),
+  }
+  return { ...riskRules[idx] }
+}
+
+/** 删除规则。 */
+function doDeleteRiskRule(id: string): { deleted: boolean } {
+  const idx = riskRules.findIndex((r) => r.id === id)
+  if (idx < 0) return reject('风控规则不存在') as unknown as { deleted: boolean }
+  riskRules.splice(idx, 1)
+  return { deleted: true }
+}
+
+/** 黑名单列表（副本）。 */
+function doListBlacklist(): BlacklistEntry[] {
+  return riskBlacklist.map((b) => ({ ...b }))
+}
+
+/** 新增黑名单（类型/值必填）。 */
+function doAddBlacklist(body: unknown): BlacklistEntry {
+  const b = (body ?? {}) as Partial<CreateBlacklistDto>
+  if (!b.type) return reject('黑名单类型必选') as unknown as BlacklistEntry
+  if (!b.value) return reject('黑名单值不能为空') as unknown as BlacklistEntry
+  const entry: BlacklistEntry = {
+    id: 'bl_' + Date.now().toString(36) + '_' + seq++,
+    tenantId: TENANT_ID,
+    type: b.type,
+    value: b.value,
+    reason: b.reason ?? '',
+    createdAt: NOW(),
+  }
+  riskBlacklist.push(entry)
+  return { ...entry }
+}
+
+/** 移除黑名单。 */
+function doRemoveBlacklist(id: string): { deleted: boolean } {
+  const idx = riskBlacklist.findIndex((b) => b.id === id)
+  if (idx < 0) return reject('黑名单条目不存在') as unknown as { deleted: boolean }
+  riskBlacklist.splice(idx, 1)
+  return { deleted: true }
+}
+
+/** 风险订单列表（副本）。 */
+function doListRiskOrders(): RiskOrderEvaluation[] {
+  return riskOrders.map((o) => ({ ...o, hits: o.hits.map((h) => ({ ...h })) }))
+}
+
+/** 风险订单详情（副本）。 */
+function doGetRiskOrder(id: string): RiskOrderEvaluation {
+  const o = riskOrders.find((x) => x.id === id)
+  if (!o) return reject('风险订单不存在') as unknown as RiskOrderEvaluation
+  return { ...o, hits: o.hits.map((h) => ({ ...h })) }
+}
+
+/** 人工审核（§26 高风险转人工，结合 §13 待审）。 */
+function doReviewRiskOrder(id: string, body: unknown): RiskOrderEvaluation {
+  const o = riskOrders.find((x) => x.id === id)
+  if (!o) return reject('风险订单不存在') as unknown as RiskOrderEvaluation
+  const b = (body ?? {}) as Partial<ReviewDecisionDto>
+  if (!b.decision) return reject('审核结论必选') as unknown as RiskOrderEvaluation
+  o.reviewStatus = b.decision
+  o.reviewedBy = 'risk_operator'
+  o.reviewNote = b.note ?? null
+  o.reviewedAt = NOW()
+  return { ...o, hits: o.hits.map((h) => ({ ...h })) }
+}
+
 // ===== 路由分发 =====
 /** mock 模式下 http.ts 的唯一入口：按 method + url 返回对应数据或执行状态变更。
  *  body 仅在 POST/PUT 时由 http.ts 透传（用于比价试算等带参请求）。 */
@@ -1297,6 +1473,13 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     if (url === '/claims' || url.startsWith('/claims?')) return delay().then(() => doListClaims(url))
     const claimId = url.match(/^\/claims\/([^/]+)$/)
     if (claimId) return delay().then(() => doGetClaim(claimId[1]))
+    // 风控总览 / 规则 / 黑名单 / 风险订单（§26）：演示态同口径聚合（与后端 RiskService）
+    if (url === '/risk/summary') return delay().then(() => doGetRiskSummary())
+    if (url === '/risk/rules') return delay().then(() => doListRiskRules())
+    if (url === '/risk/blacklist') return delay().then(() => doListBlacklist())
+    if (url === '/risk/orders' || url.startsWith('/risk/orders?')) return delay().then(() => doListRiskOrders())
+    const riskOrderId = url.match(/^\/risk\/orders\/([^/]+)$/)
+    if (riskOrderId) return delay().then(() => doGetRiskOrder(riskOrderId[1]))
     const billId = url.match(/^\/billing\/bills\/([^/]+)$/)
     if (billId) {
       const b = billingBills.find((x) => x.id === billId[1])
@@ -1388,6 +1571,11 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     if (assignRoles) return delay(160).then(() => doAssignRoles(assignRoles[1], body as { roleIds?: unknown[] }))
     // 理赔新建（§20）：运单 + 类型必填
     if (url === '/claims') return delay(160).then(() => doCreateClaim(body))
+    // 风控规则 / 黑名单新建 + 风险订单人工审核（§26）
+    if (url === '/risk/rules') return delay(160).then(() => doCreateRiskRule(body))
+    if (url === '/risk/blacklist') return delay(160).then(() => doAddBlacklist(body))
+    const riskReview = url.match(/^\/risk\/orders\/([^/]+)\/review$/)
+    if (riskReview) return delay(160).then(() => doReviewRiskOrder(riskReview[1], body))
     return delay().then(() => reject('演示模式不支持该请求：' + method + ' ' + url))
   }
 
@@ -1395,6 +1583,9 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
   if (method === 'PATCH') {
     const claimStatus = url.match(/^\/claims\/([^/]+)\/status$/)
     if (claimStatus) return delay(140).then(() => doUpdateClaimStatus(claimStatus[1], body))
+    // 风控规则更新（启停开关等，§26）
+    const riskRule = url.match(/^\/risk\/rules\/([^/]+)$/)
+    if (riskRule) return delay(140).then(() => doUpdateRiskRule(riskRule[1], body))
     return delay().then(() => reject('演示模式不支持该请求：' + method + ' ' + url))
   }
 
@@ -1419,6 +1610,11 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     if (tdk) return delay().then(() => deleteTdkRule(tdk[1]))
     const prodDel = url.match(/^\/pricing\/products\/([^/]+)$/)
     if (prodDel) return delay().then(() => doRemoveProduct(prodDel[1]))
+    // 风控规则 / 黑名单移除（§26）
+    const riskRuleDel = url.match(/^\/risk\/rules\/([^/]+)$/)
+    if (riskRuleDel) return delay().then(() => doDeleteRiskRule(riskRuleDel[1]))
+    const riskBlDel = url.match(/^\/risk\/blacklist\/([^/]+)$/)
+    if (riskBlDel) return delay().then(() => doRemoveBlacklist(riskBlDel[1]))
   }
 
   return delay().then(() => reject('演示模式不支持该请求：' + method + ' ' + url))

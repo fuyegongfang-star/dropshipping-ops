@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseArrayPipe, Patch, Post, Query } from '@nestjs/common'
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common'
 import { TenantId } from '../../common/tenant/tenant.decorator'
 import { ok } from '../../common/response/api-response'
 import { ClaimsService } from './claims.service'
