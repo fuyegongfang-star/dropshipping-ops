@@ -49,6 +49,7 @@ const EXPLICIT_ROUTES = {
   '4.8': '/claims',
   '4.9': '/localization',
   '5.1': '/risk',
+  '5.2': '/open-platform',
 };
 
 /** 关键词 → 路由（兜底推断，命中即用）。 */

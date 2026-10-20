@@ -1433,6 +1433,89 @@ function doReviewRiskOrder(id: string, body: unknown): RiskOrderEvaluation {
   return { ...o, hits: o.hits.map((h) => ({ ...h })) }
 }
 
+// ===== 开放平台（§28）：OAuth2 客户端 + Webhook 订阅（演示态同口径）=====
+import type {
+  ApiClient,
+  WebhookSubscription,
+  OpenApiSummary,
+  CreateApiClientDto,
+  CreateWebhookDto,
+} from './openapi'
+
+const openClients: ApiClient[] = [
+  {
+    id: 'oc_seed_1', tenantId: TENANT_ID, name: 'ERP 全量集成', clientId: 'cli_demo_full',
+    clientSecret: 'secret_demo_full_2026', scopes: ['orders', 'quotes', 'tracking', 'bills', 'erp'],
+    rateLimitPerMin: 120, status: 'enabled', createdAt: '2026-10-10T09:00:00.000Z', updatedAt: '2026-10-10T09:00:00.000Z',
+  },
+  {
+    id: 'oc_seed_2', tenantId: TENANT_ID, name: '查价机器人', clientId: 'cli_demo_quote',
+    clientSecret: 'secret_demo_quote_2026', scopes: ['quotes'],
+    rateLimitPerMin: 60, status: 'enabled', createdAt: '2026-10-10T09:00:00.000Z', updatedAt: '2026-10-10T09:00:00.000Z',
+  },
+]
+const openWebhooks: WebhookSubscription[] = [
+  { id: 'wh_seed_1', tenantId: TENANT_ID, event: 'order.shipped', url: 'https://erp.demo/hooks/ship', status: 'active', createdAt: '2026-10-12T09:00:00.000Z' },
+]
+
+function doGetOpenSummary(): OpenApiSummary {
+  return {
+    clientCount: openClients.filter((c) => c.tenantId === TENANT_ID).length,
+    webhookCount: openWebhooks.filter((w) => w.tenantId === TENANT_ID).length,
+    rateLimitTotal: openClients.filter((c) => c.tenantId === TENANT_ID).reduce((s, c) => s + c.rateLimitPerMin, 0),
+    endpointCount: 8,
+  }
+}
+function doListOpenClients(): ApiClient[] {
+  return openClients.filter((c) => c.tenantId === TENANT_ID).map((c) => ({ ...c }))
+}
+function doCreateOpenClient(body: unknown): ApiClient {
+  const b = (body ?? {}) as Partial<CreateApiClientDto>
+  if (!b.name) return reject('客户端名称不能为空') as unknown as ApiClient
+  if (!b.scopes || b.scopes.length === 0) return reject('至少选择一个作用域') as unknown as ApiClient
+  const now = NOW()
+  const c: ApiClient = {
+    id: 'oc_' + Date.now().toString(36) + '_' + seq++, tenantId: TENANT_ID, name: b.name,
+    clientId: 'cli_' + randStr(12), clientSecret: randStr(32), scopes: b.scopes,
+    rateLimitPerMin: b.rateLimitPerMin ?? 60, status: 'enabled', createdAt: now, updatedAt: now,
+  }
+  openClients.push(c)
+  return { ...c }
+}
+function doDeleteOpenClient(id: string): { deleted: boolean } {
+  const idx = openClients.findIndex((c) => c.id === id && c.tenantId === TENANT_ID)
+  if (idx < 0) return reject('开放客户端不存在') as unknown as { deleted: boolean }
+  openClients.splice(idx, 1)
+  return { deleted: true }
+}
+function doRotateOpenSecret(id: string): ApiClient {
+  const c = openClients.find((x) => x.id === id && x.tenantId === TENANT_ID)
+  if (!c) return reject('开放客户端不存在') as unknown as ApiClient
+  c.clientSecret = randStr(32)
+  c.updatedAt = NOW()
+  return { ...c }
+}
+function doListOpenWebhooks(): WebhookSubscription[] {
+  return openWebhooks.filter((w) => w.tenantId === TENANT_ID).map((w) => ({ ...w }))
+}
+function doCreateOpenWebhook(body: unknown): WebhookSubscription {
+  const b = (body ?? {}) as Partial<CreateWebhookDto>
+  if (!b.event) return reject('事件不能为空') as unknown as WebhookSubscription
+  if (!b.url) return reject('回调地址不能为空') as unknown as WebhookSubscription
+  const sub: WebhookSubscription = {
+    id: 'wh_' + Date.now().toString(36) + '_' + seq++, tenantId: TENANT_ID,
+    event: b.event, url: b.url, status: 'active', createdAt: NOW(),
+  }
+  openWebhooks.push(sub)
+  return { ...sub }
+}
+function randStr(len: number): string {
+  const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+  let s = ''
+  for (let i = 0; i < len; i++) s += chars[Math.floor(Math.random() * chars.length)]
+  return s
+}
+
 // ===== 路由分发 =====
 /** mock 模式下 http.ts 的唯一入口：按 method + url 返回对应数据或执行状态变更。
  *  body 仅在 POST/PUT 时由 http.ts 透传（用于比价试算等带参请求）。 */
@@ -1480,6 +1563,10 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     if (url === '/risk/orders' || url.startsWith('/risk/orders?')) return delay().then(() => doListRiskOrders())
     const riskOrderId = url.match(/^\/risk\/orders\/([^/]+)$/)
     if (riskOrderId) return delay().then(() => doGetRiskOrder(riskOrderId[1]))
+    // 开放平台（§28）：总览 / 客户端 / Webhook（演示态同口径）
+    if (url === '/openapi/summary') return delay().then(() => doGetOpenSummary())
+    if (url === '/openapi/clients') return delay().then(() => doListOpenClients())
+    if (url === '/openapi/webhooks') return delay().then(() => doListOpenWebhooks())
     const billId = url.match(/^\/billing\/bills\/([^/]+)$/)
     if (billId) {
       const b = billingBills.find((x) => x.id === billId[1])
@@ -1576,6 +1663,11 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     if (url === '/risk/blacklist') return delay(160).then(() => doAddBlacklist(body))
     const riskReview = url.match(/^\/risk\/orders\/([^/]+)\/review$/)
     if (riskReview) return delay(160).then(() => doReviewRiskOrder(riskReview[1], body))
+    // 开放平台（§28）：客户端 / Webhook 新建
+    if (url === '/openapi/clients') return delay(160).then(() => doCreateOpenClient(body))
+    if (url === '/openapi/webhooks') return delay(160).then(() => doCreateOpenWebhook(body))
+    const openRotate = url.match(/^\/openapi\/clients\/([^/]+)\/rotate$/)
+    if (openRotate) return delay(160).then(() => doRotateOpenSecret(openRotate[1]))
     return delay().then(() => reject('演示模式不支持该请求：' + method + ' ' + url))
   }
 
@@ -1615,6 +1707,9 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     if (riskRuleDel) return delay().then(() => doDeleteRiskRule(riskRuleDel[1]))
     const riskBlDel = url.match(/^\/risk\/blacklist\/([^/]+)$/)
     if (riskBlDel) return delay().then(() => doRemoveBlacklist(riskBlDel[1]))
+    // 开放平台（§28）：客户端移除
+    const openClientDel = url.match(/^\/openapi\/clients\/([^/]+)$/)
+    if (openClientDel) return delay().then(() => doDeleteOpenClient(openClientDel[1]))
   }
 
   return delay().then(() => reject('演示模式不支持该请求：' + method + ' ' + url))

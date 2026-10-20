@@ -18,6 +18,7 @@ import RiskView from '@/views/RiskView.vue'
 import ReportsView from '@/views/ReportsView.vue'
 import SecurityView from '@/views/SecurityView.vue'
 import RbacView from '@/views/RbacView.vue'
+import OpenPlatformView from '@/views/OpenPlatformView.vue'
 import LocalizationView from '@/views/LocalizationView.vue'
 import PricingRulesView from '@/views/PricingRulesView.vue'
 import SiteSettingsView from '@/views/SiteSettingsView.vue'
@@ -61,6 +62,7 @@ const router = createRouter({
         { path: 'tenants', name: 'tenants', component: TenantsView, meta: { title: '租户', roles: ['super'] } },
         { path: 'security', name: 'security', component: SecurityView, meta: { title: '安全加固', roles: ['super'] } },
         { path: 'rbac', name: 'rbac', component: RbacView, meta: { title: '权限管理', roles: ['super'] } },
+        { path: 'open-platform', name: 'openPlatform', component: OpenPlatformView, meta: { title: '开放平台', roles: ['super'] } },
         { path: 'localization', name: 'localization', component: LocalizationView, meta: { title: '本地化设置' } },
       ],
     },

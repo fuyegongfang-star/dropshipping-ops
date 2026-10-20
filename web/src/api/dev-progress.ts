@@ -2,8 +2,8 @@
  * 开发进度数据 —— **本文件由 scripts/gen-progress.cjs 自动生成，请勿手工修改。**
  *
  * 生成命令：`npm run progress:gen`（读取 dev-schedule.md 的任务表）
- * 生成时间：2026-10-18T15:37:28.913Z
- * 源码提交：5a5ff34
+ * 生成时间：2026-10-20T15:45:04.077Z
+ * 源码提交：66208dd
  *
  * 作用：让「演示模式」与「正式模式」都能在网页上直接看到开发进度与最近交付的能力，
  * 夜间自动开发每完成一批任务后重新生成并提交，次日刷新页面即可看到新内容。
@@ -42,10 +42,10 @@ export interface DevStats {
 }
 
 /** 数据生成时间（ISO 字符串） */
-export const DEV_PROGRESS_GENERATED_AT = "2026-10-18T15:37:29.513Z"
+export const DEV_PROGRESS_GENERATED_AT = "2026-10-20T15:45:04.677Z"
 
 /** 数据对应的源码提交号（短 SHA） */
-export const DEV_PROGRESS_COMMIT = "5a5ff34"
+export const DEV_PROGRESS_COMMIT = "66208dd"
 
 /** 全部任务（按 dev-schedule.md 顺序） */
 export const DEV_TASKS: DevTask[] = [
@@ -466,8 +466,8 @@ export const DEV_TASKS: DevTask[] = [
     "deliverable": "规则引擎+评分（§26）",
     "deps": "1.3/4.5",
     "estimate": "2d",
-    "status": "todo",
-    "route": null
+    "status": "done",
+    "route": "/risk"
   },
   {
     "id": "5.2",
@@ -476,8 +476,8 @@ export const DEV_TASKS: DevTask[] = [
     "deliverable": "OAuth2 开放 + ERP 凭证（§28）",
     "deps": "4.2",
     "estimate": "1.5d",
-    "status": "todo",
-    "route": null
+    "status": "done",
+    "route": "/open-platform"
   },
   {
     "id": "5.3",
@@ -504,16 +504,16 @@ export const DEV_TASKS: DevTask[] = [
 /** 统计汇总 */
 export const DEV_STATS: DevStats = {
   "total": 45,
-  "done": 34,
+  "done": 36,
   "doing": 0,
-  "todo": 11,
+  "todo": 9,
   "blocked": 0,
   "skipped": 0,
-  "percent": 75.6
+  "percent": 80
 }
 
 /** 阶段列表（去重，按出现顺序） */
 export const DEV_PHASES = ["阶段0","阶段1","阶段2","阶段3","阶段4","阶段5"]
 
 /** 最近交付的任务号（已完成中序号最大的若干个），用于「最近更新」高亮 */
-export const DEV_RECENT_IDS = ["4.6","4.7","4.8","4.9"]
+export const DEV_RECENT_IDS = ["4.8","4.9","5.1","5.2"]
