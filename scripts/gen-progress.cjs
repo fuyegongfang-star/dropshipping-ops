@@ -51,6 +51,7 @@ const EXPLICIT_ROUTES = {
   '5.1': '/risk',
   '5.2': '/open-platform',
   '5.3': '/amazon',
+  '5.4': '/system/capacity',
 };
 
 /** 关键词 → 路由（兜底推断，命中即用）。 */

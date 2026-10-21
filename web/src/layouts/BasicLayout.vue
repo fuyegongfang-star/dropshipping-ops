@@ -251,6 +251,7 @@ const menuNodes: MenuNode[] = [
       { path: '/tenants', title: 'menu.tenants', icon: 'tenants', roles: ['super'] },
       { path: '/progress', title: 'menu.progress', icon: 'target', roles: ['super'] },
       { path: '/security', title: 'menu.security', icon: 'shield', roles: ['super'] },
+      { path: '/capacity', title: 'menu.capacity', icon: 'bolt', roles: ['super'] },
       { path: '/rbac', title: 'menu.rbac', icon: 'key', roles: ['super'] },
       { path: '/open-platform', title: 'menu.openPlatform', icon: 'api', roles: ['super'] },
     ],

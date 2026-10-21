@@ -14,6 +14,7 @@ import { ChannelRegistryService } from './channel-registry.service'
 import { ChannelPlatform, ChannelPullOptions, ChannelPullSummary } from './channel.constants'
 import { PulledChannelOrderResult, ChannelOrderItemDto } from './dto/pulled-order.dto'
 import { CatalogService } from '../catalog/catalog.service'
+import { SyncThrottleService } from './sync-throttle.service'
 
 @Injectable()
 export class ChannelSyncService {
@@ -21,6 +22,7 @@ export class ChannelSyncService {
     private readonly prisma: PrismaClient,
     private readonly registry: ChannelRegistryService,
     private readonly logger: AppLogger,
+    private readonly throttle: SyncThrottleService,
     private readonly catalog?: CatalogService,
   ) {}
 
@@ -28,6 +30,8 @@ export class ChannelSyncService {
    * 拉单并落库（§3 拉单）。
    * 落库策略：以 (tenantId, platformOrderNo) 唯一键 upsert；新订单建 Order+OrderItem，
    * 状态置 `pending_review`（状态机初始态，§13.1）；已存在仅刷新 raw/recipient 快照。
+   * 容量保护（§30）：进入前经 SyncThrottleService 准入——同店铺在途锁 + 租户并发上限，
+   * 拒绝则抛 PULL_THROTTLED，避免重复拉单与雪崩；finally 中释放锁。
    */
   async pullAndStore(shopId: string, options: ChannelPullOptions = {}): Promise<ChannelPullSummary> {
     const shop = await this.prisma.shop.findUnique({
@@ -38,39 +42,50 @@ export class ChannelSyncService {
       throw new BusinessException('SHOP_NOT_FOUND', '店铺不存在', HttpStatus.NOT_FOUND)
     }
 
-    const adapter = this.registry.resolveForShop(shop)
-    const pulled = await adapter.pullOrders(options)
-
-    const summary: ChannelPullSummary = {
-      shopId: shop.id,
-      platform: adapter.getPlatform(),
-      created: 0,
-      updated: 0,
-      skipped: 0,
-      failed: 0,
-      errors: [],
+    // 容量准入：同店铺去重 + 租户并发上限（§30）
+    const admit = this.throttle.acquire(shop.id, shop.tenantId)
+    if (!admit.ok) {
+      throw new BusinessException('PULL_THROTTLED', admit.reason ?? '拉单被限流', HttpStatus.TOO_MANY_REQUESTS)
     }
 
-    // 逐单落库：单条失败计入 failed，不中断整体（看门狗，§0/§31）
-    for (const result of pulled) {
-      try {
-        await this.upsertOrder(shop.tenantId, shop.id, result)
-        summary.created += 1
-      } catch (err) {
-        summary.failed += 1
-        summary.errors.push(`${result.order.platformOrderNo}: ${(err as Error).message}`)
-        this.logger.error(
-          `拉单落库失败 shop=${shop.id} order=${result.order.platformOrderNo}`,
-          (err as Error).stack,
-          'ChannelSync',
-        )
+    try {
+      const adapter = this.registry.resolveForShop(shop)
+      const pulled = await adapter.pullOrders(options)
+
+      const summary: ChannelPullSummary = {
+        shopId: shop.id,
+        platform: adapter.getPlatform(),
+        created: 0,
+        updated: 0,
+        skipped: 0,
+        failed: 0,
+        errors: [],
       }
+
+      // 逐单落库：单条失败计入 failed，不中断整体（看门狗，§0/§31）
+      for (const result of pulled) {
+        try {
+          await this.upsertOrder(shop.tenantId, shop.id, result)
+          summary.created += 1
+        } catch (err) {
+          summary.failed += 1
+          summary.errors.push(`${result.order.platformOrderNo}: ${(err as Error).message}`)
+          this.logger.error(
+            `拉单落库失败 shop=${shop.id} order=${result.order.platformOrderNo}`,
+            (err as Error).stack,
+            'ChannelSync',
+          )
+        }
+      }
+
+      // 拉单确认：通知平台已接收，防重复拉取（幂等，§9.4）
+      await this.acknowledgeSafe(adapter, pulled)
+
+      return summary
+    } finally {
+      // 无论成功失败，释放在途锁（§30 限流守卫不泄漏）
+      this.throttle.release(shop.id)
     }
-
-    // 拉单确认：通知平台已接收，防重复拉取（幂等，§9.4）
-    await this.acknowledgeSafe(adapter, pulled)
-
-    return summary
   }
 
   /** 单条订单 upsert：新建 Order+OrderItem 或刷新快照 */

@@ -16,6 +16,7 @@ import { ShopsService } from './shops.service'
 import { MockChannelAdapter } from './adapters/mock-channel.adapter'
 import { ShopifyAdapterFactory } from './adapters/shopify/shopify-adapter'
 import { AmazonAdapterFactory } from './adapters/amazon/amazon-adapter'
+import { SyncThrottleService } from './sync-throttle.service'
 import { ChannelPlatform } from './channel.constants'
 import { CatalogModule } from '../catalog/catalog.module'
 
@@ -28,8 +29,9 @@ import { CatalogModule } from '../catalog/catalog.module'
     MockChannelAdapter,
     ShopifyAdapterFactory,
     AmazonAdapterFactory,
+    SyncThrottleService,
   ],
-  exports: [ChannelRegistryService, ChannelSyncService],
+  exports: [ChannelRegistryService, ChannelSyncService, SyncThrottleService],
   imports: [CatalogModule],
 })
 export class ChannelsModule implements OnModuleInit {

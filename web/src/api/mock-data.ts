@@ -1074,6 +1074,36 @@ function doGetSecurity(): Record<string, unknown> {
   }
 }
 
+/** 容量与灾备诊断（§30）：演示态静态镜像后端 /system/capacity（含限流实时统计占位）。 */
+function doGetCapacity(): Record<string, unknown> {
+  return {
+    config: {
+      maxConcurrentPullsPerTenant: 8,
+      pullInflightTtlMs: 30000,
+      pricingConcurrencyLimit: 12,
+      rtoObjectiveMs: 3600000,
+      rpoObjectiveMs: 300000,
+      dbBackupRetentionDays: 30,
+      objectBackupRetentionDays: 90,
+      dbBackupCron: '10 3 * * *',
+      objectsBackupCron: '0 */6 * * *',
+    },
+    throttle: {
+      inflightShopCount: 0,
+      perTenantActive: {},
+      maxConcurrentPullsPerTenant: 8,
+      pullInflightTtlMs: 30000,
+    },
+    notes: [
+      '拉单限流：同店铺在途锁（TTL 兜底防死锁）+ 单租户并发上限，超限返回 PULL_THROTTLED（HTTP 429）。',
+      '比价并发：L3 有界并行实时池（pricingConcurrencyLimit 上限，§5/§30）。',
+      '面单异步：BullMQ 队列异步购标（§30，待消息队列接线）。',
+      '灾备：每日全量 PG 备份 + 每 6h 对象存储增量，RPO 5min（WAL 归档），RTO 1h。',
+      '压测：限流守卫与比价池单测覆盖（§30 测试强化），端到端压测待 CI 环境。',
+    ],
+  }
+}
+
 // ===== RBAC 演示数据（任务 4.5，§22）=====
 // 系统内置角色蓝图（与后端 ROLE_PERMISSIONS 同口径）
 const RBAC_BLUEPRINTS: Record<string, string[]> = {
@@ -1556,6 +1586,8 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     }
     // 系统安全态势（§17）：隔离/加密/越权防护（演示态静态镜像后端诊断）
     if (url === '/system/security') return delay().then(() => doGetSecurity())
+    // 容量与灾备诊断（§30）：限流实时统计 + RTO/RPO + 备份策略（演示态静态镜像）
+    if (url === '/system/capacity') return delay().then(() => doGetCapacity())
     // RBAC 权限目录 / 角色（§22）
     if (url === '/rbac/permissions') return delay().then(() => doGetCatalog())
     if (url === '/rbac/role-blueprints') return delay().then(() => doGetBlueprints())

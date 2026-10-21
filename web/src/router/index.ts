@@ -18,6 +18,7 @@ import ClaimsView from '@/views/ClaimsView.vue'
 import RiskView from '@/views/RiskView.vue'
 import ReportsView from '@/views/ReportsView.vue'
 import SecurityView from '@/views/SecurityView.vue'
+import CapacityView from '@/views/CapacityView.vue'
 import RbacView from '@/views/RbacView.vue'
 import OpenPlatformView from '@/views/OpenPlatformView.vue'
 import LocalizationView from '@/views/LocalizationView.vue'
@@ -63,6 +64,7 @@ const router = createRouter({
         { path: 'progress', name: 'progress', component: ProgressView, meta: { title: '开发进度', roles: ['super'] } },
         { path: 'tenants', name: 'tenants', component: TenantsView, meta: { title: '租户', roles: ['super'] } },
         { path: 'security', name: 'security', component: SecurityView, meta: { title: '安全加固', roles: ['super'] } },
+        { path: 'capacity', name: 'capacity', component: CapacityView, meta: { title: '容量与灾备', roles: ['super'] } },
         { path: 'rbac', name: 'rbac', component: RbacView, meta: { title: '权限管理', roles: ['super'] } },
         { path: 'open-platform', name: 'openPlatform', component: OpenPlatformView, meta: { title: '开放平台', roles: ['super'] } },
         { path: 'localization', name: 'localization', component: LocalizationView, meta: { title: '本地化设置' } },

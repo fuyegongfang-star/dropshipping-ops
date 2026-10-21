@@ -9,6 +9,7 @@
 
 import { ChannelRegistryService } from './channel-registry.service'
 import { ChannelSyncService } from './channel-sync.service'
+import { SyncThrottleService } from './sync-throttle.service'
 import { MockChannelAdapter } from './adapters/mock-channel.adapter'
 import { ShopifyAdapter } from './adapters/shopify/shopify-adapter'
 import { RetryableHttpService } from '../../common/http/retryable-http.service'
@@ -56,6 +57,7 @@ describe('ChannelSyncService.pullAndStore', () => {
       prisma as unknown as PrismaClient,
       registry,
       new AppLogger(),
+      new SyncThrottleService(new AppLogger()),
     )
 
     const summary = await sync.pullAndStore('s1', {})
@@ -94,6 +96,7 @@ describe('ChannelSyncService.pullAndStore', () => {
       prisma as unknown as PrismaClient,
       registry,
       new AppLogger(),
+      new SyncThrottleService(new AppLogger()),
     )
 
     const summary = await sync.pullAndStore('s1', {})
@@ -241,6 +244,7 @@ describe('ChannelSyncService.pullAndStore · SKU 映射回填（§1.7）', () =>
       prisma as unknown as PrismaClient,
       registry,
       new AppLogger(),
+      new SyncThrottleService(new AppLogger()),
       catalogStub as never,
     )
     return { sync, prisma }
@@ -277,6 +281,7 @@ describe('ChannelSyncService.pullAndStore · SKU 映射回填（§1.7）', () =>
       prisma as unknown as PrismaClient,
       registry,
       new AppLogger(),
+      new SyncThrottleService(new AppLogger()),
     )
     const summary = await sync.pullAndStore('s1', {})
     expect(summary.created).toBe(2)

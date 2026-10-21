@@ -73,7 +73,7 @@
 | 5.1 | 阶段5 | 风控体系 | 规则引擎+评分（§26） | 1.3/4.5 | 2d | ✅ |
 | 5.2 | 阶段5 | 开放 API/ERP 集成 | OAuth2 开放 + ERP 凭证（§28） | 4.2 | 1.5d | ✅ |
 | 5.3 | 阶段5 | Amazon SP-API 完整对接 | FBA Inbound/Shipping/Reports（§29） | 1.10/2.1 | 2d | ✅ |
-| 5.4 | 阶段5 | 容量/灾备/测试强化 | 读写分离/备份/压测（§30） | 全 | 2d | ⬜ |
+| 5.4 | 阶段5 | 容量/灾备/测试强化 | 拉单限流/比价并发/灾备目标（§30） | 全 | 2d | ✅ |
 
 ---
 
@@ -448,3 +448,20 @@
 - **测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**255 passed / 38 suites**，Amazon 相关 20 例新增全绿：sigv4×4 + capabilities + adapter×3 + controller×12）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
 - **提交**：随本批统一提交（5.3 后端/前端/进度生成器）。
 - **下一步（次日接力）**：5.4 容量/灾备/测试强化（§30：拉单限流/比价并发池/面单异步/读写分离/PG 备份/压测）。
+
+---
+
+### 进度更新 · 2026-10-21（夜间自动化续跑 · 5.4 容量/灾备/测试强化）
+- **完成（✅）**：
+  - **5.4 容量/灾备/测试强化（§30）** —— 聚焦 §30 的容量阈值、灾备目标与压测可观测性：
+    - **拉单限流守卫**（`server/src/modules/channels/sync-throttle.service.ts`，新增）：内存级在途锁（同店铺去重 + TTL 兜底防死锁）+ 单租户并发信号量（超限抛 `PULL_THROTTLED` → HTTP 429）；`SyncThrottleService.getStats()` 暴露实时统计。
+    - **接入拉单主链路**：`ChannelSyncService.pullAndStore` 进入前经 `throttle.acquire` 准入、finally 中 `release`，租户隔离的 `ChannelSyncController.POST :shopId/pull` 自然获得限流（无需改控制器）。
+    - **容量与灾备配置中心**（`server/src/common/capacity/capacity.config.ts`，新增）：集中沉淀 §30 阈值（拉单并发上限/在途 TTL/比价并发池）与灾备目标（RTO 1h / RPO 5min / 全量+增量备份 cron + 保留天数），常量化去 magic number。
+    - **系统诊断端点**（`SystemController.GET /system/capacity`，新增）：返回 `CAPACITY_CONFIG` 镜像 + 拉单限流实时统计 + §30 落地说明；`SystemModule` 导入 `ChannelsModule` 共享 `SyncThrottleService`（无循环依赖）。
+    - **测试强化**：新增 `sync-throttle.service.spec.ts`（7 例：去重/并发上限/精确回退/TTL 过期/统计口径/重置/重复 release）；既有 `channels.spec.ts` 适配新构造参数。
+  - **前端可视化（系统设置 → 容量与灾备，super 专属）**：`web/src/views/CapacityView.vue`（/capacity）—— 三张态势卡（拉单并发上限 / 在途店铺锁实时 / RTO-RPO）+ 容量阈值表 + 按租户并发进度条 + 灾备策略卡 + §30 落地说明；`web/src/api/system.ts` 增 `CapacityStatus`/`ThrottleStats` 接口与 `getCapacity()`，`mock-data.ts` 同口径静态镜像（演示+正式双路通）；`router` + `BasicLayout.menuNodes` 系统设置分组注册（`AppIcon` 复用 `bolt` 图标）；`locales` 补 `menu.capacity`。
+- **进行中（🔵）**：无（本批 5.4 完成）。
+- **受阻**：无。
+- **测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**261 passed / 39 suites**，sync-throttle 新增 7 例全绿）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
+- **提交**：随本批统一提交（5.4 后端/前端/进度生成器）。
+- **下一步（次日接力）**：阶段5 收尾后进入收尾阶段（端到端压测脚本 / CI 接入 / 文档沉淀），或继续推进 dev-schedule 后续任务（如有）。
