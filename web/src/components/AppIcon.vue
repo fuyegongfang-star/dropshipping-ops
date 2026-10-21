@@ -130,6 +130,8 @@ const ICONS: Record<string, string> = {
     '<path d="M7.86 2h8.28L22 7.86v8.28L16.14 22H7.86L2 16.14V7.86z"/><path d="M12 8v5M12 16h.01"/>',
   api:
     '<circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/>',
+  amazon:
+    '<path d="M3 7.5 12 4l9 3.5v9L12 20l-9-3.5z"/><path d="M3 7.5 12 11l9-3.5M12 11v9"/><path d="M6 15c3 2 9 2 12 0"/>',
 }
 
 const path = computed(() => ICONS[props.name] ?? ICONS.box)

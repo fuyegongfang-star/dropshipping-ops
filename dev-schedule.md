@@ -72,7 +72,7 @@
 | 4.9 | 阶段4 | 多语言多币种前端 | i18n + 本地币展示（§27） | 0.5 | 1.5d | ✅ |
 | 5.1 | 阶段5 | 风控体系 | 规则引擎+评分（§26） | 1.3/4.5 | 2d | ✅ |
 | 5.2 | 阶段5 | 开放 API/ERP 集成 | OAuth2 开放 + ERP 凭证（§28） | 4.2 | 1.5d | ✅ |
-| 5.3 | 阶段5 | Amazon SP-API 完整对接 | FBA Inbound/Shipping/Reports（§29） | 1.10/2.1 | 2d | ⬜ |
+| 5.3 | 阶段5 | Amazon SP-API 完整对接 | FBA Inbound/Shipping/Reports（§29） | 1.10/2.1 | 2d | ✅ |
 | 5.4 | 阶段5 | 容量/灾备/测试强化 | 读写分离/备份/压测（§30） | 全 | 2d | ⬜ |
 
 ---
@@ -431,3 +431,20 @@
 - **测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（213 passed / 32 suites，新增 5 claims）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
 - **提交**：`8dde7b1`(4.8) / `e3735ce`(progress) / `fda4dc8`(检查点) / `5a5ff34`(4.9) / `e8bf89d`(progress)。
 - **下一步（次日接力）**：5.1 风控体系（§26 规则引擎 + 评分）→ 5.2 开放 API/ERP 集成 → 5.3 Amazon SP-API 完整对接 → 5.4 容量/灾备/测试强化。
+
+---
+
+### 进度更新 · 2026-10-21（夜间自动化 23:10 启动 · 5.3 Amazon SP-API 完整对接）
+- **完成（✅）**：
+  - **5.3 Amazon SP-API 完整对接（§29）** —— 阶段1（1.10 评估）已落地的 LWA 认证闸门 + 订单拉取/归一化基础上，补齐 §29 三大能力并启用真实 SigV4：
+    - **FBA Inbound 头程入仓**：`AmazonAdapter.createInboundShipmentPlan` / `createInboundShipment` / `getInboundShipment` / `getPrepInstructions`（/fba/inbound/v0/plans|shipments|prepInstructions），卖家货从国内发往 Amazon 分配的 FBA 仓（§14 头程）。
+    - **Shipping 买运单（FBM 推单）**：`AmazonAdapter.purchaseShippingLabel`（MerchantFulfillment /mfn/v0/shipments），取追踪号回写平台完成履约。
+    - **Reports 对账**：`AmazonAdapter.requestReport` / `getReport` / `getReportDocument` / `getSettlementSummary`（Reports 2021-06-30，结算报表 TSV/CSV 解析为入账/费用/净额/按类型归集）。
+    - **真实 AWS SigV4 签名** (`AmazonSigV4Signer`)：纯算法（Node crypto HMAC-SHA256），对照 AWS 官方 get-vanilla 测试向量离线验证一致；缺 AWS 凭证时回退 `NoopAmazonSigner`（评估/演示）。
+    - 后端 `AmazonController`（/amazon/:shopId/health|fba-inbound/plan|fba-inbound|fba-inbound/:id|fba-inbound/prep|shipping/label|reports|reports/:id|reports/settlement/:id）+ `ChannelsModule` 已注册控制器与 `AmazonAdapterFactory`，工厂按店铺 authConfig 构建（§17 加密 + SigV4 选择器）。
+  - **前端可视化（业务运营 → Amazon 对接）**：`web/src/views/AmazonView.vue`（/amazon）—— 三 Tab 闭环：① FBA 头程入仓（发货 SKU/数量→创建入库计划→分配 FBA 仓+FNSKU→创建货件→状态轮询→预处理指引）；② FBM 买运单（订单号+SKU→购面单→追踪号回写）；③ 结算报表对账（请求报表→异步状态轮询→DONE 后下载结算汇总四宫格+按类型表）。`web/src/api/amazon.ts` 接口封装 + `mock-data.ts` 同口径内存实现（演示+正式双路通）；`router` + `BasicLayout.menuNodes` 业务运营分组注册（`AppIcon` 新增 `amazon` 图标）；`locales` 补 `menu.amazon`。
+- **进行中（🔵）**：无（本批 5.3 完成，进入 5.4）。
+- **受阻**：无。
+- **测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**255 passed / 38 suites**，Amazon 相关 20 例新增全绿：sigv4×4 + capabilities + adapter×3 + controller×12）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
+- **提交**：随本批统一提交（5.3 后端/前端/进度生成器）。
+- **下一步（次日接力）**：5.4 容量/灾备/测试强化（§30：拉单限流/比价并发池/面单异步/读写分离/PG 备份/压测）。

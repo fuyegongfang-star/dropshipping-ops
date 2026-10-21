@@ -11,6 +11,7 @@ import { ChannelRegistryService } from './channel-registry.service'
 import { ChannelSyncService } from './channel-sync.service'
 import { ChannelSyncController } from './channel-sync.controller'
 import { ShopsController } from './shops.controller'
+import { AmazonController } from './amazon.controller'
 import { ShopsService } from './shops.service'
 import { MockChannelAdapter } from './adapters/mock-channel.adapter'
 import { ShopifyAdapterFactory } from './adapters/shopify/shopify-adapter'
@@ -19,7 +20,7 @@ import { ChannelPlatform } from './channel.constants'
 import { CatalogModule } from '../catalog/catalog.module'
 
 @Module({
-  controllers: [ChannelSyncController, ShopsController],
+  controllers: [ChannelSyncController, ShopsController, AmazonController],
   providers: [
     ChannelRegistryService,
     ChannelSyncService,

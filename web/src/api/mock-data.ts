@@ -18,6 +18,16 @@ import type { BillItem, ReconciliationItem, ProfitSummary, GenerateResult, Profi
 import type { ReportDashboard } from './reports'
 import type { ClaimOut, ClaimType, ClaimStatus, ClaimResponsibleParty, CreateClaimDto, UpdateClaimStatusDto } from './claims'
 import type { RiskRule, RiskOrderEvaluation, BlacklistEntry, RiskSummary, CreateRiskRuleDto, UpdateRiskRuleDto, CreateBlacklistDto, ReviewDecisionDto } from './risk'
+import type {
+  AmazonHealth,
+  AmazonInboundItemInput,
+  AmazonInboundShipmentPlan,
+  AmazonInboundShipment,
+  AmazonPrepInstruction,
+  AmazonShippingLabel,
+  AmazonReport,
+  AmazonSettlementSummary,
+} from './amazon'
 
 export interface MockTenant {
   id: string
@@ -1600,6 +1610,22 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
       const o = orders.find((x) => x.id === detail[1])
       return o ? delay().then(() => o) : delay().then(() => reject('订单不存在'))
     }
+    // Amazon SP-API 对接（§29）：FBA 头程入仓 / FBM 买运单 / 报表对账（演示态同口径）
+    const amzHealth = url.match(/^\/amazon\/([^/]+)\/health$/)
+    if (amzHealth) return delay(140).then(() => doAmazonHealth(amzHealth[1]))
+    // 注意：fba-inbound/prep 必须排在 fba-inbound/:shipmentId 之前，否则 prep 会被当作 shipmentId
+    const amzFbaPrep = url.match(/^\/amazon\/([^/]+)\/fba-inbound\/prep$/)
+    if (amzFbaPrep) {
+      const u = new URL(url, 'http://mock')
+      const skus = u.searchParams.get('skus') ?? ''
+      return delay(160).then(() => doAmazonFbaPrep(amzFbaPrep[1], skus))
+    }
+    const amzFbaGet = url.match(/^\/amazon\/([^/]+)\/fba-inbound\/([^/]+)$/)
+    if (amzFbaGet) return delay(160).then(() => doAmazonFbaGet(amzFbaGet[1], amzFbaGet[2]))
+    const amzReportGet = url.match(/^\/amazon\/([^/]+)\/reports\/([^/]+)$/)
+    if (amzReportGet) return delay(160).then(() => doAmazonGetReport(amzReportGet[1], amzReportGet[2]))
+    const amzSettle = url.match(/^\/amazon\/([^/]+)\/reports\/settlement\/([^/]+)$/)
+    if (amzSettle) return delay(200).then(() => doAmazonSettlement(amzSettle[1], amzSettle[2]))
     return delay().then(() => reject('演示模式暂未实现该接口：' + url))
   }
 
@@ -1668,6 +1694,15 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     if (url === '/openapi/webhooks') return delay(160).then(() => doCreateOpenWebhook(body))
     const openRotate = url.match(/^\/openapi\/clients\/([^/]+)\/rotate$/)
     if (openRotate) return delay(160).then(() => doRotateOpenSecret(openRotate[1]))
+    // Amazon SP-API 对接（§29）：FBA 入库计划 / FBA 建仓 / FBM 买运单 / 报表请求（演示态同口径）
+    const amzFbaPlan = url.match(/^\/amazon\/([^/]+)\/fba-inbound\/plan$/)
+    if (amzFbaPlan) return delay(220).then(() => doAmazonFbaPlan(amzFbaPlan[1], (body ?? {}) as { items?: AmazonInboundItemInput[] }))
+    const amzFbaCreate = url.match(/^\/amazon\/([^/]+)\/fba-inbound$/)
+    if (amzFbaCreate) return delay(240).then(() => doAmazonFbaCreate(amzFbaCreate[1], (body ?? {}) as { shipmentName: string; plan: AmazonInboundShipmentPlan }))
+    const amzShipping = url.match(/^\/amazon\/([^/]+)\/shipping\/label$/)
+    if (amzShipping) return delay(240).then(() => doAmazonShippingLabel(amzShipping[1], (body ?? {}) as { amazonOrderId: string }))
+    const amzReportReq = url.match(/^\/amazon\/([^/]+)\/reports$/)
+    if (amzReportReq) return delay(220).then(() => doAmazonRequestReport(amzReportReq[1], (body ?? {}) as { reportType: string }))
     return delay().then(() => reject('演示模式不支持该请求：' + method + ' ' + url))
   }
 
@@ -1713,6 +1748,138 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
   }
 
   return delay().then(() => reject('演示模式不支持该请求：' + method + ' ' + url))
+}
+
+// ===== Amazon SP-API 对接（§29 完整对接：FBA 头程入仓 / FBM 买运单 / 报表对账）=====
+// 演示态：与后端 AmazonController 同口径返回，无需真实 AWS 凭证即可体验完整链路。
+// 真实对接需开发者账号/应用审核 + AWS SigV4（见后端 AmazonSigV4Signer）。
+
+/** 报表状态跟踪：requestReport 落库为 IN_QUEUE，超过 1.5s 后轮询视为 DONE（模拟异步报表）。 */
+const amazonReports = new Map<string, { reportType: string; status: string; createdAt: number }>()
+/** 结算文档：报表 DONE 后可据此拉取结算汇总。 */
+const amazonReportDocs = new Map<string, string>()
+
+/** 连接健康：演示态直接判定 LWA 可达（真实后端会真正申请令牌）。 */
+export function doAmazonHealth(_shopId: string): AmazonHealth {
+  return { healthy: true, latencyMs: 118, message: 'LWA reachable (demo)' }
+}
+
+/** FBA 入库计划：按发货 SKU/数量，模拟 Amazon 分配目的 FBA 仓与 FNSKU（头程目的）。 */
+export function doAmazonFbaPlan(_shopId: string, body: { items?: AmazonInboundItemInput[] }): AmazonInboundShipmentPlan[] {
+  const items = body.items ?? []
+  if (items.length === 0) return []
+  return [
+    {
+      shipmentPlanId: `PLAN-${Date.now().toString().slice(-8)}`,
+      destinationFulfillmentCenterId: 'IND9', // 示例：印第安纳 FBA 仓
+      items: items.map((it) => ({
+        sellerSku: it.sellerSku,
+        quantity: it.quantity,
+        fulfillmentNetworkSku: `X${it.sellerSku.slice(0, 6).toUpperCase()}`, // Amazon 分配的 FNSKU
+      })),
+    },
+  ]
+}
+
+/** FBA 建仓：按入库计划创建实际货件（状态初始 WORKING）。 */
+export function doAmazonFbaCreate(_shopId: string, body: { shipmentName: string; plan: AmazonInboundShipmentPlan }): AmazonInboundShipment {
+  const plan = body.plan
+  return {
+    shipmentId: `FBA${Date.now().toString().slice(-9)}`,
+    shipmentName: body.shipmentName || `入仓-${plan.destinationFulfillmentCenterId}`,
+    destinationFulfillmentCenterId: plan.destinationFulfillmentCenterId,
+    status: 'WORKING',
+    items: plan.items.map((it) => ({ sellerSku: it.sellerSku, quantity: it.quantity })),
+  }
+}
+
+/** FBA 货件查询：演示态以时间推移模拟 WORKING→IN_TRANSIT→DELIVERED（每 3s 升一级）。 */
+export function doAmazonFbaGet(_shopId: string, shipmentId: string): AmazonInboundShipment {
+  const seed = Number(shipmentId.replace(/\D/g, '').slice(-9) || '0')
+  const elapsed = Date.now() - (seed || Date.now())
+  const status = elapsed > 9000 ? 'DELIVERED' : elapsed > 3000 ? 'IN_TRANSIT' : 'WORKING'
+  return {
+    shipmentId,
+    shipmentName: `入仓-${shipmentId}`,
+    destinationFulfillmentCenterId: 'IND9',
+    status,
+    items: [{ sellerSku: 'SKU-A', quantity: 10 }],
+  }
+}
+
+/** FBA 预处理指引：按 SKU 给出 Amazon 要求的预处理方式（演示态固定规则）。 */
+export function doAmazonFbaPrep(_shopId: string, skus: string): AmazonPrepInstruction[] {
+  return skus
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((sku) => ({
+      sellerSku: sku,
+      prepGuidance: 'NO_PREP_NEEDED',
+      prepOwner: 'SELLER',
+    }))
+}
+
+/** FBM 买运单：经 MerchantFulfillment 购末程面单并取追踪号（FBM 推单用）。 */
+export function doAmazonShippingLabel(_shopId: string, _body: { amazonOrderId: string }): AmazonShippingLabel {
+  return {
+    shipmentId: `SHIP-${Date.now().toString().slice(-8)}`,
+    trackingId: `TZ${Date.now().toString().slice(-10)}`, // 追踪号：FBM 推单后回写 Amazon
+    labelFileType: 'PDF',
+    labelFileContents: 'JVBERi0xLjQKJ...（演示 base64 面单，真实后端返回可用 PDF）',
+    downloadUrl: 'https://mock.amazon.com/label/demo',
+  }
+}
+
+/** 报表请求：落入 IN_QUEUE，并登记文档（用于后续 DONE 与结算汇总）。 */
+export function doAmazonRequestReport(_shopId: string, body: { reportType: string }): AmazonReport {
+  const reportId = `RPT-${Date.now().toString().slice(-10)}`
+  amazonReports.set(reportId, { reportType: body.reportType, status: 'IN_QUEUE', createdAt: Date.now() })
+  amazonReportDocs.set(reportId, `DOC-${reportId.slice(4)}`)
+  return {
+    reportId,
+    reportType: body.reportType,
+    processingStatus: 'IN_QUEUE',
+    createdTime: new Date().toISOString(),
+  }
+}
+
+/** 报表状态查询：超过 1.5s 后由 IN_QUEUE → DONE（模拟异步报表处理）。 */
+export function doAmazonGetReport(_shopId: string, reportId: string): AmazonReport {
+  const rec = amazonReports.get(reportId)
+  if (!rec) return { reportId, reportType: '', processingStatus: 'FATAL' }
+  // 超过 1.5s 视为处理完成
+  rec.status = Date.now() - rec.createdAt > 1500 ? 'DONE' : rec.status
+  return {
+    reportId,
+    reportType: rec.reportType,
+    processingStatus: rec.status,
+    createdTime: new Date(rec.createdAt).toISOString(),
+  }
+}
+
+/** 结算汇总：下载指定结算文档并解析（演示态生成一份结算平文件并实时聚合）。 */
+export function doAmazonSettlement(_shopId: string, documentId: string): AmazonSettlementSummary {
+  // 演示态：以文档 ID 派生确定性金额，呈现「总入账 / 总费用 / 净额」结构。
+  const seed = Number(documentId.replace(/\D/g, '').slice(-6) || '0')
+  const gross = 1280 + (seed % 500) // 总入账（订单收入，单位：商城币种最小展示单位→此处以元计）
+  const fee = 96 + (seed % 40) // 总费用（平台佣金/履约费/运费）
+  const byType = [
+    { type: 'Order', amount: gross },
+    { type: 'Commission', amount: -(fee * 0.6) },
+    { type: 'FBA Fee', amount: -(fee * 0.4) },
+    { type: 'Refund', amount: -(12 + (seed % 20)) },
+  ]
+  const totalAmount = byType.filter((b) => b.amount > 0).reduce((s, b) => s + b.amount, 0)
+  const totalFee = byType.filter((b) => b.amount < 0).reduce((s, b) => s + Math.abs(b.amount), 0)
+  return {
+    currency: 'USD',
+    totalAmount,
+    totalFee,
+    net: totalAmount - totalFee,
+    transactionCount: 18 + (seed % 9),
+    byType,
+  }
 }
 
 // ===== 加价规则 / 汇率 可写操作（演示态内存改写）=====

@@ -6,7 +6,6 @@
  * 负责人：自动开发引擎 ｜ 最后修订：2026-10-10
  */
 
-import { HttpStatus } from '@nestjs/common'
 import { RetryableHttpService } from '../../../../common/http/retryable-http.service'
 import { AppLogger } from '../../../../common/logger/app.logger'
 import { ChannelPlatform, ChannelOrderStatus } from '../../channel.constants'
@@ -121,10 +120,29 @@ describe('AmazonAdapter（§29 评估）', () => {
     expect((fetchMock.mock.calls[0][1] as { headers: Record<string, string> }).headers['x-amz-access-token']).toBe('tok')
   })
 
-  it('pushFulfillment：SigV4 占位门控，标记待阶段5 完整对接（NOT_IMPLEMENTED）', async () => {
+  it('pushFulfillment：FBM 经 MerchantFulfillment 购单取追踪号（§29 Shipping 能力已实现）', async () => {
+    const fetchMock = jest.fn().mockImplementation((url: string) => {
+      if (url.includes('/mfn/v0/shipments')) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          text: async () =>
+            JSON.stringify({
+              payload: {
+                ShipmentId: 'SHIP-1',
+                TrackingId: 'TZ-999',
+                Label: { FileType: 'PDF', FileContents: 'BASE64==', DownloadUrl: 'https://x/label' },
+              },
+            }),
+        })
+      }
+      return Promise.resolve({ ok: true, status: 200, text: async () => '{}' })
+    })
+    globalThis.fetch = fetchMock as never
+
     const adapter = buildAdapter()
-    await expect(
-      adapter.pushFulfillment({ platformOrderNo: 'A1', trackingNo: 'T1' }),
-    ).rejects.toMatchObject({ status: HttpStatus.NOT_IMPLEMENTED })
+    const result = await adapter.pushFulfillment({ platformOrderNo: 'A1', trackingNo: 'T1' })
+    expect(result.success).toBe(true)
+    expect(result.trackingNo).toBe('TZ-999')
   })
 })
