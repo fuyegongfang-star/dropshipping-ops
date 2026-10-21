@@ -225,6 +225,7 @@ const menuNodes: MenuNode[] = [
     children: [
       { path: '/carriers', title: 'menu.carriers', icon: 'truck' },
       { path: '/quotes', title: 'menu.quotes', icon: 'calculator' },
+      { path: '/fulfillment', title: 'menu.fulfillment', icon: 'swap' },
       { path: '/shipments', title: 'menu.shipments', icon: 'layers' },
       { path: '/address', title: 'menu.address', icon: 'pin' },
       { path: '/aggregator', title: 'menu.aggregator', icon: 'radar' },

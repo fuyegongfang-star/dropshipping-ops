@@ -1672,6 +1672,8 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     const pull = url.match(/^\/channels\/([^/]+)\/pull$/)
     if (pull) return delay().then(() => doPull(pull[1]))
     if (url === '/pricing/compare') return delay(260).then(() => doCompare(body))
+    // 履约路由（模式A 自动选渠道，§4/§5）：给定发货上下文 + 策略，自动挑最优渠道
+    if (url === '/pricing/route') return delay(280).then(() => doRoute(body))
     if (url === '/carriers/shipments/compose') return delay(300).then(() => doCompose(body))
     if (url === '/carriers/labels') return delay(200).then(() => doCreateLabel(body))
     if (url === '/carriers/customs/validate') return delay(200).then(() => doValidateCustoms(body))
@@ -2736,6 +2738,82 @@ function doCompare(body: unknown): unknown {
     trace,
     generatedAt: NOW(),
   } as MockCompareResult
+}
+
+/** 履约路由（模式A 自动选渠道，§4/§5）：与 doCompare 同口径构建报价，再按策略挑最优。 */
+function doRoute(body: unknown): unknown {
+  const req = (body ?? {}) as {
+    destCountry?: string
+    parcels?: { weightKg?: number; lengthCm?: number; widthCm?: number; heightCm?: number }[]
+    cargoType?: string
+    strategy?: string
+  }
+  const country = (req.destCountry || 'US').toUpperCase()
+  const cargo = req.cargoType || 'normal'
+  const strategy = (req.strategy || 'cheapest') as 'cheapest' | 'fastest'
+
+  // 计费重：各箱实重与体积重（长×宽×高/5000）取大后求和（§4.2）
+  const parcels = req.parcels && req.parcels.length ? req.parcels : [{ weightKg: 0.5, lengthCm: 20, widthCm: 15, heightCm: 10 }]
+  let chargeableKg = 0
+  for (const p of parcels) {
+    const w = Number(p.weightKg) || 0
+    const v = Math.round(((Number(p.lengthCm) || 0) * (Number(p.widthCm) || 0) * (Number(p.heightCm) || 0)) / 5000 * 1000) / 1000
+    chargeableKg += Math.max(w, v)
+  }
+  chargeableKg = Math.round(chargeableKg * 100) / 100
+
+  const banned = BANNED_COUNTRIES.includes(country)
+  const quotes: Record<string, unknown>[] = []
+  if (!banned) {
+    for (const rc of RATE_CARDS) {
+      if (cargo === 'sensitive' && !rc.allowSensitive) continue
+      const costCny = rc.baseCny + rc.perKgCny * chargeableKg
+      const costPrice = Math.round((costCny / USD_CNY) * 100) / 100
+      const sellPrice = Math.round(costPrice * (1 + effectiveMarkup(rc.carrierName, cargo) / 100) * 100) / 100
+      const [minS, maxS] = rc.transit.split('-')
+      quotes.push({
+        carrierCode: rc.code,
+        productCode: rc.productCode,
+        productName: rc.productName,
+        chargeableWeightKg: chargeableKg,
+        currency: 'USD',
+        carrierCost: costPrice,
+        sellPrice,
+        margin: Math.round((sellPrice - costPrice) * 100) / 100,
+        estimatedLeadDaysMin: Number(minS),
+        estimatedLeadDaysMax: Number(maxS),
+        reachable: true,
+        note: cargo === 'battery' && rc.code === 'dhl' ? '带电需走专用渠道，仅作参考' : '',
+      })
+    }
+  }
+
+  const ranked = [...quotes].sort((a, b) => {
+    if (strategy === 'fastest') {
+      return (a.estimatedLeadDaysMin as number) - (b.estimatedLeadDaysMin as number)
+    }
+    return (a.sellPrice as number) - (b.sellPrice as number)
+  })
+  const recommended = ranked[0]
+  const alternatives = ranked.slice(1, 4)
+  const rationale = recommended
+    ? `基于「${strategy === 'fastest' ? '最快' : '最省钱'}」策略，自动推荐 ${recommended.productName}（$${recommended.sellPrice}，时效 ${recommended.estimatedLeadDaysMin}-${recommended.estimatedLeadDaysMax} 工作日），从 ${quotes.length} 条候选中胜出。`
+    : `未找到可达渠道（候选经可达性/护栏过滤后无可用项），请检查目的国/货物类型或手动指定渠道。`
+
+  return {
+    strategy,
+    recommended,
+    alternatives,
+    rationale,
+    layers: {
+      l1RateCardHits: RATE_CARDS.length,
+      l2Reachable: banned ? [] : RATE_CARDS.map((r) => r.code),
+      l3Queried: banned ? [] : RATE_CARDS.map((r) => r.code),
+      l3Failed: [],
+      l4Returned: quotes.length,
+    },
+    generatedAt: NOW(),
+  }
 }
 
 // ===== 站点设置（站点名称 / 品牌标识 / TDK·SEO / 统计代码）=====

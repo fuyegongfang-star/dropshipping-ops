@@ -34,6 +34,7 @@ const EXPLICIT_ROUTES = {
   '1.2': '/channels',
   '1.3': '/orders',
   '1.4': '/orders',
+  '1.5': '/fulfillment',
   '1.7': '/catalog',
   '3.6': '/pricing',
   '3.7': '/quotes',

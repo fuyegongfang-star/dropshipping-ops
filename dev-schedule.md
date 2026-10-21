@@ -39,7 +39,7 @@
 | 1.2 | 阶段1 | Shopify 接入（首渠道） | 首个适配器跑通（§3） | 1.1 | 1d | ✅ |
 | 1.3 | 阶段1 | 订单归集 + 状态机 | 正向 8 态 + 逆向 + `order_events`（§13） | 0.2 | 2d | ✅ |
 | 1.4 | 阶段1 | 审单引擎 | 地址/黑名单/库存/合规校验（§13/§18/§19） | 1.3 | 1d | ✅ |
-| 1.5 | 阶段1 | 履约路由（模式A 自动） | 系统自动选渠道（§4/§5） | 1.1 | 1d | ⬜ |
+| 1.5 | 阶段1 | 履约路由（模式A 自动） | 系统自动选渠道（§4/§5） | 1.1 | 1d | ✅ |
 | 1.6 | 阶段1 | 物流回传 + 轨迹(基础) | 回写运单/基础轨迹（§3） | 1.2 | 1d | ⬜ |
 | 1.7 | 阶段1 | 商品/SKU 中心 | 平台↔内部↔供应商映射（§1） | 0.2 | 1.5d | ✅ |
 | 1.8 | 阶段1 | 运费试算最小版 | 重量/体积→计费重→选渠道（§4） | 1.1 | 1.5d | ⬜ |
@@ -465,3 +465,18 @@
 - **测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**261 passed / 39 suites**，sync-throttle 新增 7 例全绿）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
 - **提交**：随本批统一提交（5.4 后端/前端/进度生成器）。
 - **下一步（次日接力）**：阶段5 收尾后进入收尾阶段（端到端压测脚本 / CI 接入 / 文档沉淀），或继续推进 dev-schedule 后续任务（如有）。
+
+---
+
+### 进度更新 · 2026-10-21（夜间自动化续跑 · 1.5 履约路由）
+- **完成（✅）**：
+  - **1.5 履约路由（模式A 自动选渠道，§4/§5）** —— 在 3.5 比价引擎（四层 + §10 加价层）已成熟基础上，新增订单级自动选渠能力，避免重复询价逻辑、口径漂移：
+    - **FulfillmentRouterService**（`server/src/modules/pricing/fulfillment-router.service.ts`，新增）：`route(tenantId, req)` 复用比价引擎（trial 模式拿护栏后报价），按策略选优——`cheapest` 看加价后售价最低、`fastest` 看时效下限最小；返回推荐项 + 次优 3 条备选 + 可读推荐理由（诚实原则：无可行渠道时推荐为空并说明）。
+    - **端点** `PricingController.POST /pricing/route`（新增）：注入 `FulfillmentRouterService`，`PricingModule` 注册该服务；`RouteStrategy`/`RouteRequest`/`RouteSuggestion` 类型与 `RateQuote` 对齐。
+    - **测试强化**：`fulfillment-router.service.spec.ts` 3 例（cheapest/fastest 选优、无可行渠道返回空 + 说明）以桩替换比价引擎，专注验证路由层策略与解释。
+  - **前端可视化（物流履约 → 履约路由）**：`web/src/views/FulfillmentView.vue`（/fulfillment）—— 发货上下文表单（目的国/货物类型/包裹实重+尺寸/策略：最省钱·最快）+ 一键「自动选渠道」→ 推荐渠道高亮卡（产品/售价/成本/时效）+ 推荐理由 + 备选渠道表；`web/src/api/fulfillment.ts` 接口封装 + `mock-data.ts` 同口径内存实现（演示+正式双路通）；`router` + `BasicLayout.menuNodes` 物流履约分组注册（AppIcon 复用 `swap` 图标）；`locales` 补 `menu.fulfillment`；进度生成器 EXPLICIT_ROUTES 补 1.5→/fulfillment。
+- **进行中（🔵）**：无（本批 1.5 完成）。
+- **受阻**：无。
+- **测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**264 passed / 39 suites**，fulfillment-router 新增 3 例全绿）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
+- **提交**：随本批统一提交（1.5 后端/前端/进度生成器）。
+- **下一步（次日接力）**：继续推进剩余 ⬜ 早期任务 1.6/1.8/1.9/2.1/2.2/2.3（部分已被 3.x/4.x/5.x 交付覆盖，将按序补齐或标注 superseded）。

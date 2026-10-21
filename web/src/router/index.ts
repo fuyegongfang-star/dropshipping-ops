@@ -19,6 +19,7 @@ import RiskView from '@/views/RiskView.vue'
 import ReportsView from '@/views/ReportsView.vue'
 import SecurityView from '@/views/SecurityView.vue'
 import CapacityView from '@/views/CapacityView.vue'
+import FulfillmentView from '@/views/FulfillmentView.vue'
 import RbacView from '@/views/RbacView.vue'
 import OpenPlatformView from '@/views/OpenPlatformView.vue'
 import LocalizationView from '@/views/LocalizationView.vue'
@@ -45,6 +46,7 @@ const router = createRouter({
         { path: 'reports', name: 'reports', component: ReportsView, meta: { title: '运营报表' } },
         { path: 'carriers', name: 'carriers', component: CarriersView, meta: { title: '承运商管理' } },
         { path: 'quotes', name: 'quotes', component: QuotesView, meta: { title: '运费试算' } },
+        { path: 'fulfillment', name: 'fulfillment', component: FulfillmentView, meta: { title: '履约路由' } },
         { path: 'shipments', name: 'shipments', component: ShipmentsView, meta: { title: '两段式运单' } },
         { path: 'address', name: 'address', component: AddressView, meta: { title: '地址校验' } },
         { path: 'aggregator', name: 'aggregator', component: AggregatorView, meta: { title: '聚合追踪' } },

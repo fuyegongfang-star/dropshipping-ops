@@ -20,6 +20,7 @@ import { QuotesController } from './quote/quotes.controller'
 import { QuotesService } from './quote/quotes.service'
 import { LogisticsProductController } from './product/logistics-product.controller'
 import { LogisticsProductService } from './product/logistics-product.service'
+import { FulfillmentRouterService } from './fulfillment-router.service'
 
 @Module({
   imports: [CarriersModule],
@@ -39,6 +40,7 @@ import { LogisticsProductService } from './product/logistics-product.service'
     MarkupConfigService,
     QuotesService,
     LogisticsProductService,
+    FulfillmentRouterService,
   ],
   exports: [PricingEngineService, MarkupEngineService, LogisticsProductService],
 })
