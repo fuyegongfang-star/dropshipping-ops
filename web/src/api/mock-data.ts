@@ -296,6 +296,198 @@ let orders: MockOrder[] = seedOrders.map((o) => ({
   events: [...o.events],
 }))
 
+// ===== 物流回传 + 轨迹基础（任务 1.6，方案 §3 推单回传 / §6 轨迹）=====
+// 演示态：与后端 ShipmentsModule 同口径，建单 / 回传 / 上报均真实改写内存，
+// 使「订单 → 建单 → 回传平台 → 轨迹上报」基础闭环可在纯前端交互验证。
+
+/** 运单分段（§14 头程/尾程/全程） */
+export interface MockShipmentLeg {
+  legType: string
+  carrierCode?: string
+  carrierName?: string
+  trackingNo?: string
+  status: string
+}
+/** 运单（镜像后端 ShipmentVo） */
+export interface MockShipment {
+  id: string
+  orderId: string
+  carrierCode?: string
+  carrierName?: string
+  trackingNo?: string
+  waybillNo?: string
+  status: string
+  legType: string
+  carrierCost?: number
+  sellPrice?: number
+  currency?: string
+  labelUrl?: string
+  legs: MockShipmentLeg[]
+  createdAt: string
+}
+/** 轨迹节点（镜像后端 TrackingEvent） */
+export interface MockTrackingEvent {
+  id: string
+  shipmentId: string
+  legType?: string
+  status: string
+  location?: string
+  description?: string
+  occurredAt: string
+}
+
+let shippingSeq = 100
+let trackingSeq = 100
+/** 种子运单：绑定既有订单，刷新即见基础闭环数据（建单 + 回传 + 揽收 + 在途） */
+const shipments: MockShipment[] = [
+  {
+    id: 'sh_seed1',
+    orderId: 'o3',
+    carrierCode: 'yunexpress',
+    carrierName: '云途物流',
+    trackingNo: 'TRK-YUNEXPRESS-SEED1',
+    waybillNo: 'WB-YUNEXPRESS-SEED1',
+    status: 'pushed',
+    legType: 'direct',
+    carrierCost: 46.62,
+    sellPrice: 53.61,
+    currency: 'USD',
+    createdAt: '2026-10-03T10:00:00.000Z',
+    legs: [{ legType: 'direct', carrierCode: 'yunexpress', carrierName: '云途物流', trackingNo: 'TRK-YUNEXPRESS-SEED1', status: 'pushed' }],
+  },
+  {
+    id: 'sh_seed2',
+    orderId: 'o5',
+    carrierCode: 'fourpx',
+    carrierName: '4PX 递四方',
+    trackingNo: 'TRK-4PX-SEED2',
+    waybillNo: 'WB-4PX-SEED2',
+    status: 'in_transit',
+    legType: 'direct',
+    carrierCost: 57.24,
+    sellPrice: 65.83,
+    currency: 'USD',
+    createdAt: '2026-10-05T11:00:00.000Z',
+    legs: [{ legType: 'direct', carrierCode: 'fourpx', carrierName: '4PX 递四方', trackingNo: 'TRK-4PX-SEED2', status: 'in_transit' }],
+  },
+]
+const trackingEvents: MockTrackingEvent[] = [
+  { id: 'te_s1_1', shipmentId: 'sh_seed1', legType: 'direct', status: 'booked', location: '系统', description: '已为订单 o3 向 云途物流 建单', occurredAt: '2026-10-03T10:00:00.000Z' },
+  { id: 'te_s1_2', shipmentId: 'sh_seed1', legType: 'direct', status: 'pushed', location: '渠道回传', description: '已回传运单号 WB-YUNEXPRESS-SEED1 至销售渠道', occurredAt: '2026-10-03T12:00:00.000Z' },
+  { id: 'te_s1_3', shipmentId: 'sh_seed1', legType: 'direct', status: 'picked_up', location: '深圳', description: '已揽收', occurredAt: '2026-10-04T09:00:00.000Z' },
+  { id: 'te_s2_1', shipmentId: 'sh_seed2', legType: 'direct', status: 'booked', location: '系统', description: '已为订单 o5 向 4PX 递四方 建单', occurredAt: '2026-10-05T11:00:00.000Z' },
+  { id: 'te_s2_2', shipmentId: 'sh_seed2', legType: 'direct', status: 'pushed', location: '渠道回传', description: '已回传运单号 WB-4PX-SEED2 至销售渠道', occurredAt: '2026-10-05T13:00:00.000Z' },
+  { id: 'te_s2_3', shipmentId: 'sh_seed2', legType: 'direct', status: 'picked_up', location: '上海', description: '已揽收', occurredAt: '2026-10-06T09:00:00.000Z' },
+  { id: 'te_s2_4', shipmentId: 'sh_seed2', legType: 'direct', status: 'in_transit', location: '上海转运中心', description: '运输中', occurredAt: '2026-10-07T09:00:00.000Z' },
+]
+
+/** 运单列表（可按订单过滤），返回副本避免视图直接改写内存 */
+function doListShipments(orderId?: string): MockShipment[] {
+  const list = orderId ? shipments.filter((s) => s.orderId === orderId) : shipments
+  return list.map((s) => ({ ...s }))
+}
+
+/** 为订单建单：向承运商下单并落库运单 + 首条「已建单」轨迹 */
+function doBookShipment(body: unknown): MockShipment {
+  const req = body as {
+    orderId?: string
+    carrierCode?: string
+    legType?: string
+    cargoType?: string
+    declaredValue?: number
+    currency?: string
+  }
+  if (!req.orderId) throw new Error('orderId 必填')
+  const order = orders.find((o) => o.id === req.orderId)
+  if (!order) throw new Error('订单不存在')
+  const code = req.carrierCode || 'yunexpress'
+  const name = carriers.find((c) => c.code === code)?.name || code
+  const id = 'sh_' + shippingSeq++
+  const waybillNo = `WB-${code.toUpperCase()}-${shippingSeq++}`
+  const trackingNo = `TRK-${code.toUpperCase()}-${shippingSeq++}`
+  // 演示口径：运费≈货值 18%，售价含 15% 毛利
+  const carrierCost = Number((order.totalAmount * 0.18).toFixed(2))
+  const legType = req.legType || 'direct'
+  const shipment: MockShipment = {
+    id,
+    orderId: req.orderId,
+    carrierCode: code,
+    carrierName: name,
+    trackingNo,
+    waybillNo,
+    status: 'booked',
+    legType,
+    carrierCost,
+    sellPrice: Number((carrierCost * 1.15).toFixed(2)),
+    currency: 'USD',
+    legs: [{ legType, carrierCode: code, carrierName: name, trackingNo, status: 'booked' }],
+    createdAt: NOW(),
+  }
+  shipments.push(shipment)
+  trackingEvents.push({
+    id: 'te_' + trackingSeq++,
+    shipmentId: id,
+    legType,
+    status: 'booked',
+    location: '系统',
+    description: `已为订单 ${req.orderId} 向 ${name} 建单`,
+    occurredAt: NOW(),
+  })
+  return { ...shipment }
+}
+
+/** 推单回传：将运单号回写销售渠道，推进运单与订单至 pushed */
+function doFulfillShipment(id: string): { success: boolean; message: string } {
+  const s = shipments.find((x) => x.id === id)
+  if (!s) return { success: false, message: '运单不存在' }
+  s.status = 'pushed'
+  if (s.legs[0]) s.legs[0].status = 'pushed'
+  trackingEvents.push({
+    id: 'te_' + trackingSeq++,
+    shipmentId: id,
+    legType: s.legType,
+    status: 'pushed',
+    location: '渠道回传',
+    description: `已回传运单号 ${s.waybillNo} 至销售渠道`,
+    occurredAt: NOW(),
+  })
+  return { success: true, message: '已回传平台，订单推进至 pushed' }
+}
+
+/** 上报轨迹节点（Webhook / 轮询入口），并同步更新运单当前状态 */
+function doRecordTracking(id: string, body: unknown): MockTrackingEvent {
+  const s = shipments.find((x) => x.id === id)
+  if (!s) throw new Error('运单不存在')
+  const req = body as {
+    status?: string
+    location?: string
+    description?: string
+    occurredAt?: string
+  }
+  const status = req.status || 'in_transit'
+  const ev: MockTrackingEvent = {
+    id: 'te_' + trackingSeq++,
+    shipmentId: id,
+    legType: s.legType,
+    status,
+    location: req.location,
+    description: req.description || `轨迹更新：${status}`,
+    occurredAt: req.occurredAt || NOW(),
+  }
+  trackingEvents.push(ev)
+  s.status = status
+  if (s.legs[0]) s.legs[0].status = status
+  return { ...ev }
+}
+
+/** 查询运单轨迹时间线（按发生时间升序） */
+function doListTracking(id: string): MockTrackingEvent[] {
+  return trackingEvents
+    .filter((e) => e.shipmentId === id)
+    .sort((a, b) => a.occurredAt.localeCompare(b.occurredAt))
+    .map((e) => ({ ...e }))
+}
+
 // 订单工厂：补齐 shop 引用与轨迹事件
 function mk(
   id: string,
@@ -1642,6 +1834,13 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
       const o = orders.find((x) => x.id === detail[1])
       return o ? delay().then(() => o) : delay().then(() => reject('订单不存在'))
     }
+    // 物流回传 + 轨迹基础（任务 1.6，§3）：运单列表 + 轨迹时间线（演示态同口径改写内存）
+    if (url === '/shipments' || url.startsWith('/shipments?')) {
+      const q = parseQ(url)
+      return delay().then(() => doListShipments(q.orderId))
+    }
+    const shipTrackGet = url.match(/^\/shipments\/([^/]+)\/tracking$/)
+    if (shipTrackGet) return delay().then(() => doListTracking(shipTrackGet[1]))
     // Amazon SP-API 对接（§29）：FBA 头程入仓 / FBM 买运单 / 报表对账（演示态同口径）
     const amzHealth = url.match(/^\/amazon\/([^/]+)\/health$/)
     if (amzHealth) return delay(140).then(() => doAmazonHealth(amzHealth[1]))
@@ -1674,6 +1873,12 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     if (url === '/pricing/compare') return delay(260).then(() => doCompare(body))
     // 履约路由（模式A 自动选渠道，§4/§5）：给定发货上下文 + 策略，自动挑最优渠道
     if (url === '/pricing/route') return delay(280).then(() => doRoute(body))
+    // 物流回传 + 轨迹基础（任务 1.6，§3）：建单 / 回传平台 / 轨迹上报（演示态同口径）
+    if (url === '/shipments') return delay(160).then(() => doBookShipment(body))
+    const shipFulfill = url.match(/^\/shipments\/([^/]+)\/fulfill$/)
+    if (shipFulfill) return delay(160).then(() => doFulfillShipment(shipFulfill[1]))
+    const shipTrackPost = url.match(/^\/shipments\/([^/]+)\/tracking$/)
+    if (shipTrackPost) return delay(160).then(() => doRecordTracking(shipTrackPost[1], body))
     if (url === '/carriers/shipments/compose') return delay(300).then(() => doCompose(body))
     if (url === '/carriers/labels') return delay(200).then(() => doCreateLabel(body))
     if (url === '/carriers/customs/validate') return delay(200).then(() => doValidateCustoms(body))

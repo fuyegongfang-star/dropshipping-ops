@@ -40,7 +40,7 @@
 | 1.3 | 阶段1 | 订单归集 + 状态机 | 正向 8 态 + 逆向 + `order_events`（§13） | 0.2 | 2d | ✅ |
 | 1.4 | 阶段1 | 审单引擎 | 地址/黑名单/库存/合规校验（§13/§18/§19） | 1.3 | 1d | ✅ |
 | 1.5 | 阶段1 | 履约路由（模式A 自动） | 系统自动选渠道（§4/§5） | 1.1 | 1d | ✅ |
-| 1.6 | 阶段1 | 物流回传 + 轨迹(基础) | 回写运单/基础轨迹（§3） | 1.2 | 1d | ⬜ |
+| 1.6 | 阶段1 | 物流回传 + 轨迹(基础) | 回写运单/基础轨迹（§3） | 1.2 | 1d | ✅ |
 | 1.7 | 阶段1 | 商品/SKU 中心 | 平台↔内部↔供应商映射（§1） | 0.2 | 1.5d | ✅ |
 | 1.8 | 阶段1 | 运费试算最小版 | 重量/体积→计费重→选渠道（§4） | 1.1 | 1.5d | ⬜ |
 | 1.9 | 阶段1 | 供应商代发链路(基础) | 推单→回传→转平台运单（§21） | 1.1 | 1d | ⬜ |
@@ -480,3 +480,16 @@
 - **测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**264 passed / 39 suites**，fulfillment-router 新增 3 例全绿）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
 - **提交**：随本批统一提交（1.5 后端/前端/进度生成器）。
 - **下一步（次日接力）**：继续推进剩余 ⬜ 早期任务 1.6/1.8/1.9/2.1/2.2/2.3（部分已被 3.x/4.x/5.x 交付覆盖，将按序补齐或标注 superseded）。
+
+### 进度更新 · 2026-10-22（夜间自动化续跑 · 1.6 物流回传 + 轨迹基础）
+- **完成（✅）**：
+  - **1.6 物流回传 + 轨迹(基础)（§3 推单回传 / §6 轨迹）** —— 在既有 CarriersService.ship / ChannelRegistryService / OrderStateMachineService 之上新建 ShipmentsModule，沉淀「订单 → 建单 → 回传平台 → 轨迹上报」基础闭环，避免各业务重复造轮：
+    - **ShipmentsService**（`server/src/modules/shipments/shipments.service.ts`）：`book` 调承运商建单落库运单 + 首段运单 + 首条「已建单」轨迹；`fulfill` 经渠道适配器回写平台并推进订单至 pushed；`recordTracking` 追加轨迹节点并按状态映射推进订单；`list/listTracking` 支持租户隔离。
+    - **端点**（`ShipmentsController`，`/shipments`）：`POST /` 建单、`POST /:id/fulfill` 回传、`POST /:id/tracking` 上报、`GET /:id/tracking` 时间线、`GET /` 列表（可按 orderId 过滤）；`ShipmentsModule` 接入 `AppModule`，复用 carriers/channels/orders 三模块。Prisma schema 为 `TrackingEvent` 补 `description` 字段并 `prisma generate`。
+    - **测试**：`shipments.service.spec.ts` 6 例（建单落库/缺单报错/回传推进/轨迹映射/时间线升序/租户隔离）全绿。
+  - **前端可视化（物流履约 → 物流回传与轨迹）**：`web/src/views/ShipmentTrackingView.vue`（/shipment-tracking）—— 订单建单卡（选单 + 选承运商 + 运单类型）+ 运单列表 + 选中详情（回传平台按钮 + 轨迹上报表单 + 时间线）；`web/src/api/shipments.ts` 接口封装（book/fulfill/recordTracking/listTracking/list + 状态中文标签）；`mock-data.ts` 同口径内存实现（种子 2 运单 + 7 轨迹，建单/回传/上报均改写内存，演示+正式双路通）；`router` + `BasicLayout.menuNodes` 物流履约分组注册（图标 `link`）；`locales` 补 `menu.shipmentTracking`；进度生成器 EXPLICIT_ROUTES 补 1.6→/shipment-tracking。
+- **进行中（🔵）**：无（本批 1.6 完成）。
+- **受阻**：无。
+- **测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**270 passed / 41 suites**，shipments 新增 6 例全绿）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
+- **提交**：随本批统一提交（1.6 后端/前端/进度生成器/进度表）。
+- **下一步（次日接力）**：继续推进剩余 ⬜ 早期任务 1.8/1.9/2.1/2.2/2.3（部分已被 3.x/4.x/5.x 交付覆盖，将按序补齐或标注 superseded）。

@@ -300,6 +300,7 @@ model TrackingEvent {
   legType     String? // 轨迹所属段（头程/尾程）
   status      String
   location    String?
+  description String? // 节点描述（§6 轨迹基础，可选备注/异常说明）
   occurredAt  DateTime // 事件发生时间（UTC）
   createdAt   DateTime @default(now())
 
