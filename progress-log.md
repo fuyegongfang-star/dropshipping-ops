@@ -425,3 +425,28 @@
 - 系统设置新增「开放平台」（仅 super 角色可见）：概览四卡 + API 客户端 Tab（列表 / 新建客户端并展示密钥弹窗 / 删除 / 轮换密钥）+ Webhook Tab（订阅 / 列表）+ 接口文档 Tab（作用域、端点、调用示例），并内置多语言 OAuth2 / REST 调用示例；演示 + 正式双路通。
 
 **下一步**：5.3 Amazon SP-API 完整对接（§29 FBA Inbound / Shipping / Reports）→ 5.4 容量 / 灾备 / 测试强化（§30）。
+
+---
+
+## 2026-10-22 夜间批次（23:10 启动 · 1.6 物流回传 + 轨迹基础）
+
+**完成（✅）**：
+- 后端 ShipmentsModule（任务 1.6，§3 推单回传 / §6 轨迹）：复用既有 CarriersService.ship / ChannelRegistryService / OrderStateMachineService，沉淀「订单 → 建单 → 回传平台 → 轨迹上报」基础闭环。
+  - `ShipmentsService`：book（调承运商建单落库运单 + 首段 + 首条 booked 轨迹）、fulfill（经渠道适配器回写平台并推进订单至 pushed）、recordTracking（追加轨迹并按状态映射推进订单）、list/listTracking（租户隔离）。
+  - `ShipmentsController`：`POST /shipments` 建单、`POST /:id/fulfill` 回传、`POST /:id/tracking` 上报、`GET /:id/tracking` 时间线、`GET /` 列表（可按 orderId 过滤）。
+  - Prisma `TrackingEvent` 补 `description` 字段并 `prisma generate`；`shipments.service.spec` 6 例全绿。
+- 前端可视化（物流履约 → 物流回传与轨迹）：`web/src/views/ShipmentTrackingView.vue`（/shipment-tracking）—— 订单建单卡（选单 + 选承运商 + 运单类型）+ 运单列表 + 选中详情（回传平台按钮 + 轨迹上报表单 + 时间线）；`web/src/api/shipments.ts` 接口 + 状态中文标签；`mock-data.ts` 同口径内存实现（种子 2 运单 + 7 轨迹，建单/回传/上报均改写内存，演示 + 正式双路通）；`router` + `BasicLayout.menuNodes` 物流履约分组注册（图标 link）；`locales` 补 `menu.shipmentTracking`；`progress:gen` EXPLICIT_ROUTES 补 1.6→/shipment-tracking。
+- 顺带收口前序未提交 `server/src/modules/suppliers/` 模块修复（AppLogger.info→log）。
+
+**质量门禁**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**270 passed / 41 suites**，新增 6）｜ web `vue-tsc` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
+**进行中**：无。
+**受阻**：无。
+**看门狗**：未触发（零外部网络 / 安装）。
+**提交**：`f27f19d`(feat 1.6 后端 + 前端 + 进度生成器) ｜ `9d66ba7`(chore 检查点 state.json)。
+**本次新增前端页面与菜单**：
+- 物流履约 → 「物流回传与轨迹」（/shipment-tracking）：订单建单 + 运单列表 + 回传平台 + 轨迹时间线；演示模式无需后端即可交互。
+
+**明天打开网页能看到什么**：
+- 物流履约新增「物流回传与轨迹」：选订单一键建单 → 运单落库并生成运单号/轨迹号 → 「回传平台」推进至 pushed → 上报轨迹节点（揽收/在途/清关/派送/妥投/异常）实时追加时间线；种子含 2 张已建运单与 7 条轨迹，刷新即见基础闭环；演示 + 正式双路通。
+
+**下一步**：1.8 运费试算最小版（已被 3.5 比价引擎 / 3.7 运费试算门户 /quotes + /pricing 覆盖，标注 superseded 或补最小链路）→ 1.9 供应商代发 → 2.1 国内渠道。
