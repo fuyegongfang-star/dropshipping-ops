@@ -21,6 +21,8 @@ import { ClaimsModule } from './modules/claims/claims.module'
 import { RiskModule } from './modules/risk/risk.module'
 import { OpenApiModule } from './modules/openapi/openapi.module'
 import { ShipmentsModule } from './modules/shipments/shipments.module'
+import { SuppliersModule } from './modules/suppliers/suppliers.module'
+import { WmsModule } from './modules/wms/wms.module'
 
 /**
  * 根模块：装配全局配置、数据库、鉴权、健康检查与业务模块（方案 §0/§11）。
@@ -48,6 +50,8 @@ import { ShipmentsModule } from './modules/shipments/shipments.module'
     RiskModule,
     OpenApiModule,
     ShipmentsModule,
+    SuppliersModule,
+    WmsModule,
   ],
 })
 export class AppModule implements NestModule {

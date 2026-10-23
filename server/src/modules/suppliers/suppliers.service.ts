@@ -38,6 +38,14 @@ export interface SupplierOrderDto {
   createdAt: string
 }
 
+/** 供应商档案（归一化返回，§21） */
+export interface SupplierDto {
+  id: string
+  tenantId: string
+  name: string
+  createdAt: string
+}
+
 @Injectable()
 export class SuppliersService {
   constructor(
@@ -52,6 +60,22 @@ export class SuppliersService {
       orderBy: { createdAt: 'desc' },
     })
     return rows.map((r) => this.toDto(r))
+  }
+
+  /** 列出当前租户的供应商档案（§21，租户隔离） */
+  async listSuppliers(tenantId: string): Promise<SupplierDto[]> {
+    const rows = await this.prisma.supplier.findMany({
+      where: { tenantId },
+      orderBy: { createdAt: 'desc' },
+    })
+    return rows.map((r) => this.toSupplierDto(r))
+  }
+
+  /** 新建供应商档案（§21） */
+  async createSupplier(tenantId: string, name: string): Promise<SupplierDto> {
+    const row = await this.prisma.supplier.create({ data: { tenantId, name } })
+    this.logger.log(`[Supplier] 创建供应商档案 ${row.id} (${name})`, 'Suppliers')
+    return this.toSupplierDto(row)
   }
 
   /** 创建供应商代发单（推单，初始态 pushed，§21） */
@@ -107,6 +131,15 @@ export class SuppliersService {
       supplierId: r.supplierId,
       orderId: r.orderId,
       status: r.status as SupplierOrderStatus,
+      createdAt: r.createdAt.toISOString(),
+    }
+  }
+
+  private toSupplierDto(r: Prisma.SupplierGetPayload<object>): SupplierDto {
+    return {
+      id: r.id,
+      tenantId: r.tenantId,
+      name: r.name,
       createdAt: r.createdAt.toISOString(),
     }
   }

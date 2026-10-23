@@ -16,6 +16,8 @@ import { ShopsService } from './shops.service'
 import { MockChannelAdapter } from './adapters/mock-channel.adapter'
 import { ShopifyAdapterFactory } from './adapters/shopify/shopify-adapter'
 import { AmazonAdapterFactory } from './adapters/amazon/amazon-adapter'
+import { TaobaoAdapter } from './adapters/taobao/taobao-adapter'
+import { DouyinAdapter } from './adapters/douyin/douyin-adapter'
 import { SyncThrottleService } from './sync-throttle.service'
 import { ChannelPlatform } from './channel.constants'
 import { CatalogModule } from '../catalog/catalog.module'
@@ -29,6 +31,8 @@ import { CatalogModule } from '../catalog/catalog.module'
     MockChannelAdapter,
     ShopifyAdapterFactory,
     AmazonAdapterFactory,
+    TaobaoAdapter,
+    DouyinAdapter,
     SyncThrottleService,
   ],
   exports: [ChannelRegistryService, ChannelSyncService, SyncThrottleService],
@@ -40,6 +44,8 @@ export class ChannelsModule implements OnModuleInit {
     private readonly mock: MockChannelAdapter,
     private readonly shopifyFactory: ShopifyAdapterFactory,
     private readonly amazonFactory: AmazonAdapterFactory,
+    private readonly taobao: TaobaoAdapter,
+    private readonly douyin: DouyinAdapter,
   ) {}
 
   /** 模块初始化时注册无状态实例与工厂型适配器 */
@@ -50,5 +56,8 @@ export class ChannelsModule implements OnModuleInit {
     this.registry.registerFactory(ChannelPlatform.SHOPIFY, (shop) => this.shopifyFactory.build(shop))
     // Amazon：按店铺凭证构建适配器实例（阶段1 评估，完整对接见阶段5，§29）
     this.registry.registerFactory(ChannelPlatform.AMAZON, (shop) => this.amazonFactory.build(shop))
+    // 淘宝 / 抖音：国内渠道（任务 2.1）；无状态演示适配器，真实凭证工厂接入待 2026-11 联调
+    this.registry.registerAdapter(this.taobao)
+    this.registry.registerAdapter(this.douyin)
   }
 }

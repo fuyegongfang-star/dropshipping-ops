@@ -1751,12 +1751,275 @@ function randStr(len: number): string {
 // ===== 路由分发 =====
 /** mock 模式下 http.ts 的唯一入口：按 method + url 返回对应数据或执行状态变更。
  *  body 仅在 POST/PUT 时由 http.ts 透传（用于比价试算等带参请求）。 */
+// ===== 供应商代发（§21，演示态内存实现，与后端 SuppliersService 同口径）=====
+// 演示态：供应商档案与代发单（推单）均在内存维护，创建/推进会真实改写状态。
+export interface MockSupplier {
+  id: string
+  tenantId: string
+  name: string
+  createdAt: string
+}
+export interface MockSupplierOrder {
+  id: string
+  tenantId: string
+  supplierId: string
+  orderId: string | null
+  status: 'pushed' | 'accepted' | 'shipped' | 'done'
+  createdAt: string
+}
+const SUPPLIER_STATUS_FLOW = ['pushed', 'accepted', 'shipped', 'done'] as const
+let supplierSeq = 0
+let supplierOrderSeq = 0
+
+const suppliers: MockSupplier[] = [
+  { id: 'sup_1', tenantId: TENANT_ID, name: '深圳华强北数码供货商', createdAt: '2026-09-12T08:00:00.000Z' },
+  { id: 'sup_2', tenantId: TENANT_ID, name: '义乌小商品代发仓', createdAt: '2026-09-20T08:00:00.000Z' },
+]
+const supplierOrders: MockSupplierOrder[] = [
+  {
+    id: 'so_1',
+    tenantId: TENANT_ID,
+    supplierId: 'sup_1',
+    orderId: 'ORD-1001',
+    status: 'shipped',
+    createdAt: '2026-10-15T08:00:00.000Z',
+  },
+  {
+    id: 'so_2',
+    tenantId: TENANT_ID,
+    supplierId: 'sup_2',
+    orderId: null,
+    status: 'pushed',
+    createdAt: '2026-10-20T08:00:00.000Z',
+  },
+]
+
+/** 供应商档案列表（演示态，租户隔离） */
+export function doListSuppliers(): MockSupplier[] {
+  return suppliers.filter((s) => s.tenantId === TENANT_ID).map((s) => ({ ...s }))
+}
+/** 新建供应商档案（演示态） */
+export function doCreateSupplier(name: string): MockSupplier {
+  const row: MockSupplier = {
+    id: `sup_demo_${++supplierSeq}`,
+    tenantId: TENANT_ID,
+    name,
+    createdAt: NOW(),
+  }
+  suppliers.push(row)
+  return { ...row }
+}
+/** 代发单列表（演示态，租户隔离） */
+export function doListSupplierOrders(): MockSupplierOrder[] {
+  return supplierOrders.filter((o) => o.tenantId === TENANT_ID).map((o) => ({ ...o }))
+}
+/** 新建代发单（推单，演示态） */
+export function doCreateSupplierOrder(body: { supplierId?: string; orderId?: string }): MockSupplierOrder {
+  const row: MockSupplierOrder = {
+    id: `so_demo_${++supplierOrderSeq}`,
+    tenantId: TENANT_ID,
+    supplierId: body.supplierId ?? 'sup_1',
+    orderId: body.orderId ?? null,
+    status: 'pushed',
+    createdAt: NOW(),
+  }
+  supplierOrders.push(row)
+  return { ...row }
+}
+/** 推进代发单状态（演示态，与后端状态机同口径） */
+export function doAdvanceSupplierOrder(
+  id: string,
+  to: 'accepted' | 'shipped' | 'done',
+): MockSupplierOrder {
+  const o = supplierOrders.find((x) => x.id === id && x.tenantId === TENANT_ID)
+  if (!o) throw new Error('代发单不存在或无权限')
+  if (o.status === 'done') throw new Error('代发单已处于终态 done，不可变更')
+  const fromIdx = SUPPLIER_STATUS_FLOW.indexOf(o.status)
+  const toIdx = SUPPLIER_STATUS_FLOW.indexOf(to)
+  if (toIdx <= fromIdx) throw new Error(`非法状态推进：${o.status} → ${to}（仅允许向前一步或直达 done）`)
+  o.status = to
+  return { ...o }
+}
+
+// ===== 仓储 / 海外仓（§15，演示态内存实现，与后端 WmsService 同口径）=====
+// 演示态：仓库(国内/海外)、入库预报(ASN)、上架、库存调整、拣货波次均在内存维护，
+// 创建/收货/上架/调整/波次会真实改写状态（与 WmsService 同口径）。
+export interface MockWarehouse {
+  id: string
+  tenantId: string
+  name: string
+  type: 'domestic' | 'overseas'
+  region: string | null
+  createdAt: string
+}
+export interface MockAsn {
+  id: string
+  tenantId: string
+  warehouseId: string
+  status: 'pending' | 'received' | 'closed'
+  createdAt: string
+}
+export interface MockInventory {
+  id: string
+  tenantId: string
+  warehouseId: string
+  skuId: string
+  binId: string | null
+  qty: number
+  lockedQty: number
+}
+export interface MockPickTask {
+  id: string
+  tenantId: string
+  warehouseId: string
+  orderId: string | null
+  status: 'pending' | 'picking' | 'done'
+  createdAt: string
+}
+let whSeq = 0
+let asnSeq = 0
+let invSeq = 0
+let pickSeq = 0
+
+const warehouses: MockWarehouse[] = [
+  { id: 'wh_dom_1', tenantId: TENANT_ID, name: '深圳前海国内仓', type: 'domestic', region: null, createdAt: '2026-08-01T08:00:00.000Z' },
+  { id: 'wh_ovs_1', tenantId: TENANT_ID, name: 'US-West 洛杉矶海外仓', type: 'overseas', region: 'US', createdAt: '2026-08-10T08:00:00.000Z' },
+]
+const asns: MockAsn[] = [
+  { id: 'asn_1', tenantId: TENANT_ID, warehouseId: 'wh_dom_1', status: 'received', createdAt: '2026-10-18T08:00:00.000Z' },
+]
+const inventory: MockInventory[] = [
+  { id: 'inv_1', tenantId: TENANT_ID, warehouseId: 'wh_dom_1', skuId: 'SKU-A100', binId: 'bin_A01', qty: 120, lockedQty: 0 },
+  { id: 'inv_2', tenantId: TENANT_ID, warehouseId: 'wh_dom_1', skuId: 'SKU-B200', binId: 'bin_A02', qty: 60, lockedQty: 0 },
+  { id: 'inv_3', tenantId: TENANT_ID, warehouseId: 'wh_ovs_1', skuId: 'SKU-A100', binId: 'bin_US01', qty: 300, lockedQty: 0 },
+]
+const pickTasks: MockPickTask[] = [
+  { id: 'pick_1', tenantId: TENANT_ID, warehouseId: 'wh_dom_1', orderId: 'ORD-2001', status: 'pending', createdAt: '2026-10-22T08:00:00.000Z' },
+]
+
+/** 仓库列表（演示态，租户隔离） */
+export function doListWarehouses(): MockWarehouse[] {
+  return warehouses.filter((w) => w.tenantId === TENANT_ID).map((w) => ({ ...w }))
+}
+/** 新建仓库（演示态，海外仓必填区域） */
+export function doCreateWarehouse(body: { name?: string; type?: 'domestic' | 'overseas'; region?: string }): MockWarehouse {
+  const name = (body.name ?? '').trim()
+  if (!name) throw new Error('仓库名称必填')
+  if (body.type === 'overseas' && !(body.region ?? '').trim()) throw new Error('海外仓必须填写所在国家/区域')
+  const row: MockWarehouse = {
+    id: `wh_demo_${++whSeq}`,
+    tenantId: TENANT_ID,
+    name,
+    type: body.type ?? 'domestic',
+    region: body.type === 'overseas' ? (body.region ?? null) : null,
+    createdAt: NOW(),
+  }
+  warehouses.push(row)
+  return { ...row }
+}
+/** 入库单(ASN)列表（演示态，租户隔离，可按仓库过滤） */
+export function doListAsns(warehouseId?: string): MockAsn[] {
+  return asns.filter((a) => a.tenantId === TENANT_ID && (!warehouseId || a.warehouseId === warehouseId)).map((a) => ({ ...a }))
+}
+/** 新建入库预报(ASN)（演示态，校验仓库归属） */
+export function doCreateAsn(body: { warehouseId?: string }): MockAsn {
+  const wh = warehouses.find((w) => w.id === body.warehouseId && w.tenantId === TENANT_ID)
+  if (!wh) throw new Error('仓库不存在或无权限')
+  const row: MockAsn = { id: `asn_demo_${++asnSeq}`, tenantId: TENANT_ID, warehouseId: wh.id, status: 'pending', createdAt: NOW() }
+  asns.push(row)
+  return { ...row }
+}
+/** 收货质检：ASN pending → received（演示态） */
+export function doReceiveAsn(id: string): MockAsn {
+  const a = asns.find((x) => x.id === id && x.tenantId === TENANT_ID)
+  if (!a) throw new Error('入库单不存在或无权限')
+  if (a.status !== 'pending') throw new Error('仅 pending 状态的 ASN 可收货')
+  a.status = 'received'
+  return { ...a }
+}
+/** 上架：收货实物入到库位并增加库存；上架后关闭 ASN（演示态，与后端同口径） */
+export function doPutaway(id: string, body: { skuId?: string; qty?: number; binCode?: string }): MockInventory {
+  const a = asns.find((x) => x.id === id && x.tenantId === TENANT_ID)
+  if (!a) throw new Error('入库单不存在或无权限')
+  if (a.status === 'closed') throw new Error('ASN 已关闭，不可再次上架')
+  const skuId = (body.skuId ?? '').trim()
+  const qty = Number(body.qty ?? 0)
+  const binCode = (body.binCode ?? '').trim()
+  if (!skuId || qty < 1 || !binCode) throw new Error('上架需填写 SKU / 数量≥1 / 库位编码')
+  const binId = 'bin_' + binCode
+  const existing = inventory.find(
+    (i) => i.tenantId === TENANT_ID && i.warehouseId === a.warehouseId && i.skuId === skuId && (i.binId ?? null) === (binId ?? null),
+  )
+  if (existing) {
+    existing.qty += qty
+  } else {
+    inventory.push({ id: `inv_demo_${++invSeq}`, tenantId: TENANT_ID, warehouseId: a.warehouseId, skuId, binId, qty, lockedQty: 0 })
+  }
+  a.status = 'closed'
+  return { ...(existing ?? inventory[inventory.length - 1]) }
+}
+/** 库存列表（演示态，租户隔离，可按仓库过滤） */
+export function doListInventory(warehouseId?: string): MockInventory[] {
+  return inventory.filter((i) => i.tenantId === TENANT_ID && (!warehouseId || i.warehouseId === warehouseId)).map((i) => ({ ...i }))
+}
+/** 库存调整（入库 / 出库 / 盘点损益；出库不得使库存为负，演示态） */
+export function doAdjustInventory(body: { warehouseId?: string; skuId?: string; delta?: number; binId?: string }): MockInventory {
+  const warehouseId = body.warehouseId ?? ''
+  const skuId = (body.skuId ?? '').trim()
+  const delta = Number(body.delta ?? 0)
+  const binId = body.binId ?? null
+  if (!warehouseId || !skuId) throw new Error('库存调整需填写仓库与 SKU')
+  const existing = inventory.find(
+    (i) => i.tenantId === TENANT_ID && i.warehouseId === warehouseId && i.skuId === skuId && (i.binId ?? null) === (binId ?? null),
+  )
+  const currentQty = existing?.qty ?? 0
+  const nextQty = currentQty + delta
+  if (nextQty < 0) throw new Error(`库存不足：当前 ${currentQty}，出库 ${Math.abs(delta)} 将使库存为负`)
+  const row =
+    existing ?? { id: `inv_demo_${++invSeq}`, tenantId: TENANT_ID, warehouseId, skuId, binId, qty: 0, lockedQty: 0 }
+  row.qty = nextQty
+  if (!existing) inventory.push(row)
+  return { ...row }
+}
+/** 拣货任务列表（演示态，租户隔离，可按仓库过滤） */
+export function doListPicks(warehouseId?: string): MockPickTask[] {
+  return pickTasks.filter((p) => p.tenantId === TENANT_ID && (!warehouseId || p.warehouseId === warehouseId)).map((p) => ({ ...p }))
+}
+/** 创建拣货波次（演示态，按订单生成拣货任务） */
+export function doCreateWave(body: { warehouseId?: string; orderIds?: string[] }): MockPickTask[] {
+  const warehouseId = body.warehouseId ?? ''
+  const wh = warehouses.find((w) => w.id === warehouseId && w.tenantId === TENANT_ID)
+  if (!wh) throw new Error('仓库不存在或无权限')
+  const orderIds = (body.orderIds ?? []).filter((x) => x && x.trim())
+  const tasks: MockPickTask[] = orderIds.map((orderId) => {
+    const row: MockPickTask = { id: `pick_demo_${++pickSeq}`, tenantId: TENANT_ID, warehouseId, orderId, status: 'pending', createdAt: NOW() }
+    pickTasks.push(row)
+    return { ...row }
+  })
+  return tasks
+}
+/** 完成拣货任务（演示态，pending → done） */
+export function doCompletePick(id: string): MockPickTask {
+  const p = pickTasks.find((x) => x.id === id && x.tenantId === TENANT_ID)
+  if (!p) throw new Error('拣货任务不存在或无权限')
+  p.status = 'done'
+  return { ...p }
+}
+
 export function mockRouter(method: string, url: string, body?: unknown): Promise<unknown> {
   // GET 集合
   if (method === 'GET') {
     if (url === '/tenants') return delay().then(() => tenants)
     if (url === '/shops') return delay().then(() => shops)
-    if (url === '/channels/platforms') return delay().then(() => ['shopify', 'amazon', 'mock'])
+    // 供应商代发（§21）：档案列表 + 代发单列表（演示态内存）
+    if (url === '/suppliers') return delay().then(() => doListSuppliers())
+    if (url === '/suppliers/orders') return delay().then(() => doListSupplierOrders())
+    // 仓储 / 海外仓（§15）：仓库 / 入库单 / 库存 / 拣货任务（演示态内存）
+    if (url === '/wms/warehouses') return delay().then(() => doListWarehouses())
+    if (url === '/wms/asns' || url.startsWith('/wms/asns?')) return delay().then(() => doListAsns(parseQ(url).warehouseId))
+    if (url === '/wms/inventory' || url.startsWith('/wms/inventory?')) return delay().then(() => doListInventory(parseQ(url).warehouseId))
+    if (url === '/wms/picks' || url.startsWith('/wms/picks?')) return delay().then(() => doListPicks(parseQ(url).warehouseId))
+    if (url === '/channels/platforms') return delay().then(() => ['shopify', 'amazon', 'taobao', 'douyin', 'mock'])
     if (url === '/catalog/products') return delay().then(() => products)
     if (url.startsWith('/catalog/skus')) return delay().then(() => filterSkus(url))
     if (url === '/orders') return delay().then(() => orders)
@@ -1912,6 +2175,27 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     if (url === '/settings/tdk-rules') return delay().then(() => createTdkRule(body))
     // 品牌图片上传（LOGO / Favicon）：演示态直接回吐压缩后的 dataURL 地址。
     if (url === '/settings/assets') return delay(200).then(() => doUploadAsset(body))
+    // 供应商代发（§21）：新建供应商档案 / 新建代发单（演示态内存）
+    if (url === '/suppliers') return delay().then(() => doCreateSupplier((body as { name?: string })?.name ?? ''))
+    if (url === '/suppliers/orders')
+      return delay().then(() =>
+        doCreateSupplierOrder((body as { supplierId?: string; orderId?: string }) ?? {}),
+      )
+    // 仓储 / 海外仓（§15）：仓库 / 入库单 / 上架 / 库存调整 / 拣货波次（演示态内存）
+    if (url === '/wms/warehouses')
+      return delay().then(() => doCreateWarehouse((body ?? {}) as { name?: string; type?: 'domestic' | 'overseas'; region?: string }))
+    if (url === '/wms/asns') return delay().then(() => doCreateAsn((body ?? {}) as { warehouseId?: string }))
+    const wmsReceive = url.match(/^\/wms\/asns\/([^/]+)\/receive$/)
+    if (wmsReceive) return delay(140).then(() => doReceiveAsn(wmsReceive[1]))
+    const wmsPutaway = url.match(/^\/wms\/asns\/([^/]+)\/putaway$/)
+    if (wmsPutaway)
+      return delay(160).then(() => doPutaway(wmsPutaway[1], (body ?? {}) as { skuId?: string; qty?: number; binCode?: string }))
+    if (url === '/wms/inventory/adjust')
+      return delay(160).then(() => doAdjustInventory((body ?? {}) as { warehouseId?: string; skuId?: string; delta?: number; binId?: string }))
+    if (url === '/wms/pick/wave')
+      return delay(160).then(() => doCreateWave((body ?? {}) as { warehouseId?: string; orderIds?: string[] }))
+    const wmsComplete = url.match(/^\/wms\/picks\/([^/]+)\/complete$/)
+    if (wmsComplete) return delay(140).then(() => doCompletePick(wmsComplete[1]))
     // 重置演示态站点设置：清空 localStorage 快照并回到种子数据。
     if (url === '/settings/site/reset') return delay().then(() => doResetSite())
     // RBAC 角色创建 / 用户授权（§22）：演示态内存改写（rbac:manage 权限由真实后端 PermissionsGuard 拦截）。
@@ -1952,6 +2236,12 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     // 风控规则更新（启停开关等，§26）
     const riskRule = url.match(/^\/risk\/rules\/([^/]+)$/)
     if (riskRule) return delay(140).then(() => doUpdateRiskRule(riskRule[1], body))
+    // 供应商代发（§21）：推进代发单状态（演示态内存）
+    const supAdv = url.match(/^\/suppliers\/orders\/([^/]+)\/advance$/)
+    if (supAdv)
+      return delay(140).then(() =>
+        doAdvanceSupplierOrder(supAdv[1], (body as { to?: 'accepted' | 'shipped' | 'done' })?.to ?? 'done'),
+      )
     return delay().then(() => reject('演示模式不支持该请求：' + method + ' ' + url))
   }
 

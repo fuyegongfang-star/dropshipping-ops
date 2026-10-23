@@ -1,0 +1,80 @@
+/**
+ * WMS（仓储 / 海外仓）DTO（任务 2.2/2.3，方案 §15 海外仓与一件代发）。
+ * 入口参数校验：仓库、入库预报(ASN)、上架、库存调整、拣货波次。
+ *
+ * 负责人：自动开发引擎 ｜ 创建：2026-10-23
+ */
+
+import { IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Min } from 'class-validator'
+
+/** 仓库类型：国内仓 / 海外仓 */
+export type WarehouseType = 'domestic' | 'overseas'
+
+/** 入库单(ASN)状态：待收货 / 已收货 / 已关闭 */
+export type AsnStatus = 'pending' | 'received' | 'closed'
+
+/** 拣货任务状态：待拣 / 拣货中 / 已完成 */
+export type PickStatus = 'pending' | 'picking' | 'done'
+
+/** 新建仓库 */
+export class CreateWarehouseDto {
+  @IsString()
+  @IsNotEmpty()
+  name: string // 仓库名称（如「深圳前海仓」「US-West 海外仓」）
+
+  @IsIn(['domestic', 'overseas'])
+  type: WarehouseType // 仓库类型：国内 / 海外（§15）
+
+  @IsOptional()
+  @IsString()
+  region?: string // 区域 / 国家（海外仓必填国家）
+}
+
+/** 新建入库预报(ASN) */
+export class CreateAsnDto {
+  @IsString()
+  @IsNotEmpty()
+  warehouseId: string // 目标仓库（必须属于当前租户）
+}
+
+/** 上架：把收货实物入到库位并增加库存 */
+export class PutawayDto {
+  @IsString()
+  @IsNotEmpty()
+  skuId: string // 内部 SKU ID
+
+  @IsInt()
+  @Min(1)
+  qty: number // 上架数量（≥1）
+
+  @IsString()
+  @IsNotEmpty()
+  binCode: string // 库位编码（不存在则自动建库位）
+}
+
+/** 库存调整（入库 / 出库 / 盘点损益） */
+export class AdjustInventoryDto {
+  @IsString()
+  @IsNotEmpty()
+  warehouseId: string
+
+  @IsString()
+  @IsNotEmpty()
+  skuId: string
+
+  @IsInt()
+  delta: number // 数量变动：正=入库，负=出库（出库不得使库存为负）
+
+  @IsOptional()
+  @IsString()
+  binId?: string // 库位（缺省走该仓库该 SKU 的默认行）
+}
+
+/** 创建拣货波次（按订单生成拣货任务） */
+export class CreateWaveDto {
+  @IsString()
+  @IsNotEmpty()
+  warehouseId: string
+
+  orderIds?: string[] // 波次包含的订单（生成对应拣货任务）
+}

@@ -450,3 +450,30 @@
 - 物流履约新增「物流回传与轨迹」：选订单一键建单 → 运单落库并生成运单号/轨迹号 → 「回传平台」推进至 pushed → 上报轨迹节点（揽收/在途/清关/派送/妥投/异常）实时追加时间线；种子含 2 张已建运单与 7 条轨迹，刷新即见基础闭环；演示 + 正式双路通。
 
 **下一步**：1.8 运费试算最小版（已被 3.5 比价引擎 / 3.7 运费试算门户 /quotes + /pricing 覆盖，标注 superseded 或补最小链路）→ 1.9 供应商代发 → 2.1 国内渠道。
+
+---
+
+## 2026-10-23 夜间批次（23:10 启动 · 跨日 00:10 收口 · 1.9 供应商代发 / 2.1 国内渠道 / 2.2-2.3 WMS 海外仓）
+
+**完成（✅）**：
+- **1.8 运费试算最小版**：标记 ⏭️ superseded（已被 3.5 比价引擎 / 3.7 运费试算门户 /quotes + /pricing 完整覆盖）。
+- **1.9 供应商代发链路(基础)（§21）**：后端 `SuppliersModule`（`SuppliersService` 供应商档案 + 代发单推单，租户隔离；`SuppliersController` /suppliers、/suppliers/orders、/suppliers/orders/:id/advance；状态机 pushed→accepted→shipped→done）+ 单测 8 例；前端 `SuppliersView`（/suppliers-dropship，双 Tab 档案+代发单，演示+正式双路通）、`suppliers.ts`、`mock-data` 同口径内存实现、`menuNodes`+`locales`+`AppIcon(supplier)`。
+- **2.1 国内渠道(淘宝/抖音)（§3）**：`TaobaoAdapter`/`DouyinAdapter` 继承 `AbstractChannelAdapter`，实现拉单/确认/回传/查单/撤单/轨迹六能力（无状态演示适配器，真实凭证工厂接入待 2026-11 联调，已注释 TODO）；注册进 `ChannelRegistryService`（GET /channels/platforms 自动露出）；单测 `domestic-adapters.spec.ts` 2 例；前端 `ChannelsView` 平台标签补 taobao(粉)/douyin(青) 配色 + `mock-data` 平台列表纳入 taobao/douyin。
+- **2.2/2.3 WMS 入库/库存/拣货 + 海外仓模型（§15）**：后端 `WmsModule`（`WmsService` 仓库 domestic/overseas、ASN pending→received→closed、上架按 仓+SKU+库位 累加库存、库存调整出库不得为负、拣货波次→任务 done、全租户隔离；`WmsController` /wms/warehouses|asns|inventory|picks 及 receive/putaway/adjust/wave/complete；单测 6 例）+ 前端 `WarehouseView`（/warehouse，四 Tab 仓库/入库/库存/拣货，演示+正式双路通）、`wms.ts`、`mock-data` 同口径内存实现、`menuNodes`+`locales`+`AppIcon(warehouse)`；`progress:gen` EXPLICIT_ROUTES 补 2.2/2.3→/warehouse。
+- **修复（本批）**：`WmsService` 库存 `upsert` 复合唯一键类型改用 `findFirst`+`update`/`create`；`SuppliersView` 补 `reactive` 导入并改用类型安全标签助手（vue-tsc 通过）；WMS 单测 fake Prisma 去除重复键并补 `inventory.findFirst`/`create`/`update`。
+
+**质量门禁**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**286 passed / 44 suites**）｜ web `vue-tsc` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
+**进行中**：无。
+**受阻**：无。
+**看门狗**：未触发（零外部网络 / 安装）。
+**本次新增前端页面与菜单**：
+- 业务运营 → 「供应商代发」（/suppliers-dropship）：供应商档案 + 代发单推单/推进。
+- 业务运营 → 「仓储管理」（/warehouse）：仓库(国内/海外) + 入库 ASN + 库存 + 拣货波次四视图。
+- 渠道（/channels）：平台列表新增 淘宝 / 抖音（演示适配器已注册）。
+
+**明天打开网页能看到什么**：
+- 供应商代发页：新建供应商、推送代发单并逐步推进状态（pushed→accepted→shipped→done），演示+正式双路通。
+- 仓储管理页：仓库台账（国内/海外）、ASN 收货上架闭环、库存调整（出库不为负诚实报错）、拣货波次生成与完成；种子含 2 仓库/1 ASN/3 库存/1 拣货任务，刷新即见。
+- 渠道页平台列表含 淘宝 / 抖音（粉/青标签）。
+
+**下一步**：早期 ⬜ 任务（1.9/2.1/2.2/2.3）已全部补齐，1.8 标注 superseded；方案 v1.5 主线收口。后续：a) 真实平台凭证工厂化接入（淘宝 TOP / 抖音开放平台 / 云途·DHL·4PX·燕文 联调，标注 TODO）；b) 本机 PG 端到端验证；c) §31 收尾文档与回归。

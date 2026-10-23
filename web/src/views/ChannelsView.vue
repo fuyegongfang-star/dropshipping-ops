@@ -89,6 +89,8 @@ function platformClass(platform: string): string {
   const p = (platform || '').toLowerCase()
   if (p.includes('shopify')) return 'tag-green'
   if (p.includes('amazon')) return 'tag-orange'
+  if (p.includes('taobao')) return 'tag-pink'
+  if (p.includes('douyin')) return 'tag-cyan'
   if (p.includes('mock')) return 'tag-violet'
   return 'tag-gray'
 }
@@ -196,5 +198,37 @@ onMounted(load)
 }
 .muted {
   color: var(--ink-500);
+}
+.tag-soft {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+.tag-green {
+  color: #16a34a;
+  background: rgba(22, 163, 74, 0.12);
+}
+.tag-orange {
+  color: #ea580c;
+  background: rgba(234, 88, 12, 0.12);
+}
+.tag-pink {
+  color: #db2777;
+  background: rgba(219, 39, 119, 0.12);
+}
+.tag-cyan {
+  color: #0891b2;
+  background: rgba(8, 145, 178, 0.12);
+}
+.tag-violet {
+  color: #7c3aed;
+  background: rgba(124, 58, 237, 0.12);
+}
+.tag-gray {
+  color: #64748b;
+  background: rgba(100, 116, 139, 0.12);
 }
 </style>

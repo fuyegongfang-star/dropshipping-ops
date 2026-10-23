@@ -2,8 +2,8 @@
  * 开发进度数据 —— **本文件由 scripts/gen-progress.cjs 自动生成，请勿手工修改。**
  *
  * 生成命令：`npm run progress:gen`（读取 dev-schedule.md 的任务表）
- * 生成时间：2026-10-22T15:43:23.272Z
- * 源码提交：09e89ea
+ * 生成时间：2026-10-23T16:02:58.418Z
+ * 源码提交：46bea49
  *
  * 作用：让「演示模式」与「正式模式」都能在网页上直接看到开发进度与最近交付的能力，
  * 夜间自动开发每完成一批任务后重新生成并提交，次日刷新页面即可看到新内容。
@@ -42,10 +42,10 @@ export interface DevStats {
 }
 
 /** 数据生成时间（ISO 字符串） */
-export const DEV_PROGRESS_GENERATED_AT = "2026-10-22T15:43:23.862Z"
+export const DEV_PROGRESS_GENERATED_AT = "2026-10-23T16:02:58.500Z"
 
 /** 数据对应的源码提交号（短 SHA） */
-export const DEV_PROGRESS_COMMIT = "09e89ea"
+export const DEV_PROGRESS_COMMIT = "46bea49"
 
 /** 全部任务（按 dev-schedule.md 顺序） */
 export const DEV_TASKS: DevTask[] = [
@@ -166,7 +166,7 @@ export const DEV_TASKS: DevTask[] = [
     "deliverable": "回写运单/基础轨迹（§3）",
     "deps": "1.2",
     "estimate": "1d",
-    "status": "todo",
+    "status": "done",
     "route": "/shipment-tracking"
   },
   {
@@ -186,7 +186,7 @@ export const DEV_TASKS: DevTask[] = [
     "deliverable": "重量/体积→计费重→选渠道（§4）",
     "deps": "1.1",
     "estimate": "1.5d",
-    "status": "todo",
+    "status": "skipped",
     "route": "/quotes"
   },
   {
@@ -196,8 +196,8 @@ export const DEV_TASKS: DevTask[] = [
     "deliverable": "推单→回传→转平台运单（§21）",
     "deps": "1.1",
     "estimate": "1d",
-    "status": "todo",
-    "route": null
+    "status": "done",
+    "route": "/suppliers-dropship"
   },
   {
     "id": "1.10",
@@ -216,7 +216,7 @@ export const DEV_TASKS: DevTask[] = [
     "deliverable": "验证多平台适配（§3）",
     "deps": "1.2",
     "estimate": "1.5d",
-    "status": "todo",
+    "status": "done",
     "route": "/channels"
   },
   {
@@ -226,8 +226,8 @@ export const DEV_TASKS: DevTask[] = [
     "deliverable": "ASN/上架/锁定/拣货波次（§15）",
     "deps": "0.4",
     "estimate": "2d",
-    "status": "todo",
-    "route": null
+    "status": "done",
+    "route": "/warehouse"
   },
   {
     "id": "2.3",
@@ -236,8 +236,8 @@ export const DEV_TASKS: DevTask[] = [
     "deliverable": "`warehouses`/`inventory`/海外仓备货（§15）",
     "deps": "2.2",
     "estimate": "1.5d",
-    "status": "todo",
-    "route": null
+    "status": "done",
+    "route": "/warehouse"
   },
   {
     "id": "3.1",
@@ -504,12 +504,12 @@ export const DEV_TASKS: DevTask[] = [
 /** 统计汇总 */
 export const DEV_STATS: DevStats = {
   "total": 45,
-  "done": 39,
+  "done": 44,
   "doing": 0,
-  "todo": 6,
+  "todo": 0,
   "blocked": 0,
-  "skipped": 0,
-  "percent": 86.7
+  "skipped": 1,
+  "percent": 97.8
 }
 
 /** 阶段列表（去重，按出现顺序） */

@@ -42,12 +42,12 @@
 | 1.5 | 阶段1 | 履约路由（模式A 自动） | 系统自动选渠道（§4/§5） | 1.1 | 1d | ✅ |
 | 1.6 | 阶段1 | 物流回传 + 轨迹(基础) | 回写运单/基础轨迹（§3） | 1.2 | 1d | ✅ |
 | 1.7 | 阶段1 | 商品/SKU 中心 | 平台↔内部↔供应商映射（§1） | 0.2 | 1.5d | ✅ |
-| 1.8 | 阶段1 | 运费试算最小版 | 重量/体积→计费重→选渠道（§4） | 1.1 | 1.5d | ⬜ |
-| 1.9 | 阶段1 | 供应商代发链路(基础) | 推单→回传→转平台运单（§21） | 1.1 | 1d | ⬜ |
+| 1.8 | 阶段1 | 运费试算最小版 | 重量/体积→计费重→选渠道（§4） | 1.1 | 1.5d | ⏭️ |
+| 1.9 | 阶段1 | 供应商代发链路(基础) | 推单→回传→转平台运单（§21） | 1.1 | 1d | ✅ |
 | 1.10 | 阶段1 | Amazon SP-API 评估 | FBA/FBM/LWA 可行性（§29） | 1.1 | 0.5d | ✅ |
-| 2.1 | 阶段2 | 国内渠道(淘宝/抖音) | 验证多平台适配（§3） | 1.2 | 1.5d | ⬜ |
-| 2.2 | 阶段2 | WMS 入库/库存/拣货 | ASN/上架/锁定/拣货波次（§15） | 0.4 | 2d | ⬜ |
-| 2.3 | 阶段2 | 海外仓模型 | `warehouses`/`inventory`/海外仓备货（§15） | 2.2 | 1.5d | ⬜ |
+| 2.1 | 阶段2 | 国内渠道(淘宝/抖音) | 验证多平台适配（§3） | 1.2 | 1.5d | ✅ |
+| 2.2 | 阶段2 | WMS 入库/库存/拣货 | ASN/上架/锁定/拣货波次（§15） | 0.4 | 2d | ✅ |
+| 2.3 | 阶段2 | 海外仓模型 | `warehouses`/`inventory`/海外仓备货（§15） | 2.2 | 1.5d | ✅ |
 | 3.1 | 阶段3 | CarrierAdapter 框架 | 镜像 ChannelAdapter（§3） | 0.3 | 1d | ✅ |
 | 3.2 | 阶段3 | 云途接入(SDK优先) | `yunexpress-sdk` OAuth2+HMAC（§3 调研） | 3.1 | 1d | ✅ |
 | 3.3 | 阶段3 | DHL 接入 | OAuth2 + 沙箱审批（§3 调研） | 3.1 | 1.5d | ✅ |
@@ -493,3 +493,17 @@
 - **测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**270 passed / 41 suites**，shipments 新增 6 例全绿）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
 - **提交**：随本批统一提交（1.6 后端/前端/进度生成器/进度表）。
 - **下一步（次日接力）**：继续推进剩余 ⬜ 早期任务 1.8/1.9/2.1/2.2/2.3（部分已被 3.x/4.x/5.x 交付覆盖，将按序补齐或标注 superseded）。
+
+### 进度更新 · 2026-10-23（夜间自动化续跑 · 1.9 供应商代发 + 2.1 国内渠道 + 2.2/2.3 WMS 海外仓）
+
+- **完成（✅）**：
+  - **1.9 供应商代发链路(基础)（§21）** —— SuppliersModule（后端）：`SuppliersService`（供应商档案 + 代发单推单，租户隔离）、`SuppliersController`（`/suppliers`、`/suppliers/orders`、`/suppliers/orders/:id/advance`）、`SupplierDto`/`SupplierOrderDto`（状态机 pushed→accepted→shipped→done）、单测 8 例全绿；前端 `SuppliersView`（/suppliers-dropship，双 Tab 档案+代发单，演示+正式双路通）、`suppliers.ts` 接口、`mock-data` 同口径内存实现、`BasicLayout.menuNodes` + `locales` + `AppIcon(supplier)` 注册。
+  - **1.8 运费试算最小版**：标记 ⏭️ superseded（已被 3.5/3.7 运费试算门户完整覆盖，QuotesView /quotes 已落地）。
+  - **2.1 国内渠道(淘宝/抖音)（§3）** —— `TaobaoAdapter`/`DouyinAdapter` 继承 `AbstractChannelAdapter`，实现拉单/确认/回传/查单/撤单/轨迹六能力（无状态演示适配器，真实凭证工厂接入待 2026-11 联调，已注释 TODO）；注册进 `ChannelRegistryService`（GET /channels/platforms 自动露出）；单测 `domestic-adapters.spec.ts` 2 例；前端 `ChannelsView` 平台标签补 taobao(粉)/douyin(青) 配色 + `mock-data` 平台列表纳入 taobao/douyin。
+  - **2.2/2.3 WMS 入库/库存/拣货 + 海外仓模型（§15）** —— `WmsModule`（后端）：`WmsService`（仓库 domestic/overseas、ASN pending→received→closed、上架按 仓+SKU+库位 累加库存、库存调整出库不得为负、拣货波次→任务 done、全租户隔离）、`WmsController`（`/wms/warehouses|asns|inventory|picks` 及 receive/putaway/adjust/wave/complete）、`WmsDto`/`WmsService` 单测 6 例全绿；前端 `WarehouseView`（/warehouse，四 Tab 仓库/入库/库存/拣货，演示+正式双路通）、`wms.ts` 接口、`mock-data` 同口径内存实现、`menuNodes` + `locales` + `AppIcon(warehouse)` 注册；进度生成器 EXPLICIT_ROUTES 补 2.2/2.3→/warehouse。
+- **修复（本批）**：`WarehouseService` 库存 `upsert` 复合唯一键类型问题改用 `findFirst`+`update`/`create`；`SuppliersView` 补 `reactive` 导入并改用类型安全标签助手（vue-tsc 通过）；WMS 单测 fake Prisma 去除重复键并补 `inventory.findFirst`/`create`/`update`。
+- **进行中（🔵）**：无（本批 1.9/2.1/2.2/2.3 全部完成）。
+- **受阻**：无。
+- **测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**286 passed / 44 suites**）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
+- **提交**：随本批统一提交（1.9/2.1/2.2/2.3 后端/前端/进度生成器/进度表）。
+- **下一步（次日接力）**：早期 ⬜ 任务（1.9/2.1/2.2/2.3）已全部补齐，1.8 标注 superseded；方案 v1.5 主线任务收口。后续可推进：a) 真实平台凭证工厂化接入（淘宝 TOP / 抖音开放平台 / 云途·DHL·4PX·燕文 联调，标注 TODO）；b) 端到端真实验证（需本机按 README 起 PG）；c) 按 §31 收尾文档与回归。
