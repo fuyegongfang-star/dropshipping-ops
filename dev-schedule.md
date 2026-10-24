@@ -74,6 +74,15 @@
 | 5.2 | 阶段5 | 开放 API/ERP 集成 | OAuth2 开放 + ERP 凭证（§28） | 4.2 | 1.5d | ✅ |
 | 5.3 | 阶段5 | Amazon SP-API 完整对接 | FBA Inbound/Shipping/Reports（§29） | 1.10/2.1 | 2d | ✅ |
 | 5.4 | 阶段5 | 容量/灾备/测试强化 | 拉单限流/比价并发/灾备目标（§30） | 全 | 2d | ✅ |
+| 6.1 | 阶段6 | 店铺增删绑定 API | 后端 POST /shops、DELETE /shops/:id + 前端渠道中心增删 UI（演示/正式双路） | 1.2 | 0.5d | ⬜ |
+| 6.2 | 阶段6 | 采购单实体与 CRUD（后端） | PurchaseOrder + PurchaseOrderItem（快递单号/物流公司/平台订单号/采购链接/产品图URL/数量/SKU/状态）+ service/controller/单测 | 1.3 | 1d | ⬜ |
+| 6.3 | 阶段6 | 采购单录入前端页 | 录入界面（快递单号/物流公司/订单号/采购链接/产品图上传/数量/SKU）+ 关联订单展示 + 菜单/路由 + 演示/正式双路 | 6.2/1.7 | 1d | ⬜ |
+| 6.4 | 阶段6 | 采购单↔店铺订单 匹配/关联 | 自动匹配（按平台订单号/收件人/SKU）+ 手动关联；订单详情可见采购单 | 6.2/1.3 | 1d | ⬜ |
+| 6.5 | 阶段6 | 中转仓模型 + 看板 | Warehouse.type 加 transfer；中转仓看板（货代侧待作业采购单可见） | 2.2 | 1d | ⬜ |
+| 6.6 | 阶段6 | 扫码到货入库端点 | POST /transfer/scan：快递单号/条码→解析采购单→匹配订单→到货登记；Asn 扩展 purchaseOrderId/scanSource/receivedItems | 6.4/6.5 | 1.5d | ⬜ |
+| 6.7 | 阶段6 | 中转仓作业：打包任务 + 核对 | 按匹配订单聚合采购单生成打包任务；核对采购单 vs 店铺订单差异；PickTask 扩展 channelCode/labelId/shipmentId | 6.6 | 1.5d | ⬜ |
+| 6.8 | 阶段6 | 跨境面单生成（中转仓出单） | 选渠道→承运商建单 + LabelService 出 PDF/ZPL；面单关联店铺订单与平台；Shipment 加 purchaseOrderId | 3.9/1.5/6.7 | 1d | ⬜ |
+| 6.9 | 阶段6 | 出库闭环 + 物流同步 | 出库扫码→Shipment 建单/fulfill→承运商回传→TrackingEvent→正式跨境物流；状态机贯通采购单/订单 | 6.8/1.6 | 1d | ⬜ |
 
 ---
 
@@ -85,6 +94,7 @@
 - **M3（阶段3 完成）**：国际物流段全通（云途/DHL/4PX/燕文 + 比价 + 加价 + 试算门户 + 两段式）。
 - **M4（阶段4 完成）**：结算/账务/多租户/运营后台闭环，具备对外收费运营能力。
 - **M5（阶段5 完成）**：风控/开放生态/Amazon 完整对接/容量灾备，达到生产级。
+- **M6（阶段6 完成）**：货代中转仓作业流全通——采购单录入/匹配 → 中转仓扫码到货入库 → 打包贴跨境面单 → 出库同步跨境物流，与既有订单/渠道/承运商底座闭环。
 
 ---
 
@@ -507,3 +517,53 @@
 - **测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**286 passed / 44 suites**）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
 - **提交**：随本批统一提交（1.9/2.1/2.2/2.3 后端/前端/进度生成器/进度表）。
 - **下一步（次日接力）**：早期 ⬜ 任务（1.9/2.1/2.2/2.3）已全部补齐，1.8 标注 superseded；方案 v1.5 主线任务收口。后续可推进：a) 真实平台凭证工厂化接入（淘宝 TOP / 抖音开放平台 / 云途·DHL·4PX·燕文 联调，标注 TODO）；b) 端到端真实验证（需本机按 README 起 PG）；c) 按 §31 收尾文档与回归。
+
+---
+
+## 阶段6 详细设计（货代中转仓作业流）
+
+> 背景：v1.5 主线（阶段0–5）已完成订单/渠道/比价/承运商/账务/风控等底座，但「采购 → 中转仓 → 扫码 → 打包贴单 → 出库」这一核心作业流从未立项（详见 `中转仓流程审计.md`）。本阶段补齐，复用既有底座，不推倒重来。
+> 执行纪律：沿用本表「〇、自动化执行约定」全部红线；业务能力类任务必须 页面 + 菜单 + 路由 + 演示/正式双路通；每批末跑 `npm run progress:gen` 并随代码提交。
+
+### 6.1 店铺增删绑定 API
+- 后端：`ShopsController` 补 `POST /shops`（入参 platform/name/authConfig，租户隔离）、`DELETE /shops/:id`（解绑，校验归属）；`ShopsService` 补 create/remove。
+- 前端：`ChannelsView` 补「新增店铺 / 解绑」操作；`channels.ts` + `mock-data` 同口径；菜单/路由已存在无需新增。
+- 验收：`POST/DELETE` 在演示与正式模式均通；列表实时反映增删。
+
+### 6.2 采购单实体与 CRUD（后端）
+- 新增 Prisma：`PurchaseOrder`（tenantId, shopId?, orderId?, trackingNo, carrier, platformOrderNo, purchaseUrl, productImages Json[String], remark, status, createdAt/updatedAt）、`PurchaseOrderItem`（purchaseOrderId, skuId?, productName, quantity, imageUrl?, unitPrice?, createdAt）。
+- `PurchaseOrderService`：list（租户隔离、按 status/shop 过滤）、create（字段校验）、updateStatus、getById；`PurchaseOrderController`：`GET /purchase-orders`、`POST /purchase-orders`、`PATCH /purchase-orders/:id/status`。
+- 单测覆盖租户隔离 + 状态机；prisma generate。
+
+### 6.3 采购单录入前端页
+- 新增 `PurchaseOrderView`（/purchase-orders）：录入表单（快递单号/物流公司/平台订单号/采购链接/产品图上传/数量/SKU 选择/备注）+ 列表 + 状态标签；`purchase-order.ts` 接口 + `mock-data` 内存实现（演示/正式双路）。
+- `BasicLayout.menuNodes` 业务运营分组注册、`locales` 补 `menu.purchaseOrders`、`AppIcon` 补 icon；路由注册。
+
+### 6.4 采购单↔店铺订单 匹配/关联
+- `PurchaseOrderService.match(orderId)`：按 `platformOrderNo` 精确匹配 `Order`；模糊候选（收件人/手机号/SKU 集合相似度）给出建议列表供手动关联。
+- 手动关联：`PATCH /purchase-orders/:id/link`（orderId）。
+- 前端：`OrdersView` 订单详情抽屉新增「关联采购单」区块，展示已关联采购单与待匹配建议。
+
+### 6.5 中转仓模型 + 看板
+- `Warehouse.type` 扩 `transfer`（枚举 domestic/overseas/transfer）；新增 `TransferView`（/transfer 或中转仓 Tab）：展示该租户中转仓 + 待作业采购单（status 未出库且已到仓/已匹配）。
+- 货代侧可见：中转仓看板列出到货采购单及关联店铺订单概览。
+
+### 6.6 扫码到货入库端点
+- 新增 `TransferModule`：`POST /transfer/scan`，body `{ warehouseId, scanValue, scanType: trackingNo|barcode|purchaseNo }`。
+  - 解析：scanValue → 定位 `PurchaseOrder`（按 trackingNo / barcode(Sku) / purchaseNo）；命中后按 6.4 逻辑匹配 `Order`；生成到货登记（扩展 `Asn`：加 `purchaseOrderId`、`scanSource`、`receivedItems` Json）并将 `PurchaseOrder.status` 置 `arrived`/`matched`。
+  - 返回：采购单 + 匹配订单 + 入库结果，供 PDA/扫码枪屏幕回显。
+- 单测：扫码解析 + 匹配 + 入库状态推进。
+
+### 6.7 中转仓作业：打包任务 + 核对
+- 按匹配后的店铺订单聚合采购单，生成打包任务（扩展 `PickTask`：加 `channelCode`、`labelId`、`shipmentId`、`packedAt`；或新增 `PackTask`）。
+- 核对：对比采购单行项（SKU/数量）与店铺订单 `OrderItem`，差异高亮提示。
+- 前端：中转仓作业页——待打包队列 → 选单 → 核对差异 → 标记打包。
+
+### 6.8 跨境面单生成（中转仓出单）
+- 打包完成后选跨境渠道（复用比价/履约路由 1.5 + 承运商适配器）：`Shipment.book` 建单 + `LabelService` 出 PDF/ZPL；`Shipment` 加 `purchaseOrderId` 关联；面单收件人取自店铺订单 `recipient`，面单标题按平台/店铺呈现。
+- 前端：打包页「生成面单」按钮 → 预览 PDF/ZPL → 打印。
+
+### 6.9 出库闭环 + 物流同步
+- 出库扫码：`POST /transfer/outbound`（shipmentId/purchaseOrderId）→ `Shipment.fulfill` 回写平台 + `TrackingEvent` 追加出库节点 → 流转正式跨境物流轨迹。
+- 状态机贯通：`PurchaseOrder` → `shipped/outbound`；关联 `Order` → `pushed/shipped`；物流轨迹在 `ShipmentTrackingView` 可查。
+- 验收：出库后跨境物流单号与轨迹在演示与正式模式均可见、可追踪。
