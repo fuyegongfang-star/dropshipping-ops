@@ -25,8 +25,16 @@ export interface PullSummary {
   errors: string[]
 }
 
+export interface CreateShopPayload {
+  platform: string
+  name: string
+  authConfig?: Record<string, unknown> | null
+}
+
 export const channelsApi = {
   platforms: () => http.get<string[]>('/channels/platforms'),
   shops: () => http.get<Shop[]>('/shops'),
   pull: (shopId: string) => http.post<PullSummary>(`/channels/${shopId}/pull`, {}),
+  createShop: (payload: CreateShopPayload) => http.post<Shop>('/shops', payload),
+  deleteShop: (id: string) => http.delete<void>(`/shops/${id}`),
 }

@@ -7,6 +7,9 @@
       accent="teal"
     >
       <template #actions>
+        <el-button @click="openCreate">
+          <AppIcon name="plus" :size="15" class="btn-ico" />新增店铺
+        </el-button>
         <el-button @click="load">
           <AppIcon name="refresh" :size="15" class="btn-ico" />刷新
         </el-button>
@@ -50,10 +53,13 @@
         <el-table-column label="创建时间" min-width="175">
           <template #default="{ row }"><span class="muted">{{ fmt(row.createdAt) }}</span></template>
         </el-table-column>
-        <el-table-column label="操作" width="130">
+        <el-table-column label="操作" width="220">
           <template #default="{ row }">
             <el-button size="small" type="primary" :loading="pulling === row.id" @click="pull(row)">
               <AppIcon name="refresh" :size="14" class="btn-ico" />拉单
+            </el-button>
+            <el-button size="small" type="danger" plain @click="unbind(row)">
+              <AppIcon name="unlink" :size="14" class="btn-ico" />解绑
             </el-button>
           </template>
         </el-table-column>
@@ -66,12 +72,37 @@
         </template>
       </el-table>
     </el-card>
+
+    <!-- 新增店铺对话框 -->
+    <el-dialog v-model="createVisible" title="新增店铺 / 渠道绑定" width="460px" @closed="resetCreate">
+      <el-form :model="createForm" label-width="82px">
+        <el-form-item label="平台">
+          <el-select v-model="createForm.platform" placeholder="选择渠道平台" style="width: 100%">
+            <el-option v-for="p in platformOptions" :key="p.value" :label="p.label" :value="p.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="店铺名称">
+          <el-input v-model="createForm.name" maxlength="60" show-word-limit placeholder="如：Shopify 欧洲店" />
+        </el-form-item>
+        <el-alert
+          type="info"
+          :closable="false"
+          show-icon
+          title="演示说明"
+          description="新增店铺仅登记平台与名称，授权信息（authConfig）留空即可。真实平台凭证在对接时由「系统设置 → 站点设置 / 开放平台」接管加密存储（§17）。"
+        />
+      </el-form>
+      <template #footer>
+        <el-button @click="createVisible = false">取消</el-button>
+        <el-button type="primary" :loading="creating" @click="submitCreate">确定绑定</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ref, reactive, onMounted } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { channelsApi, type Shop } from '@/api/channels'
 import PageHeader from '@/components/PageHeader.vue'
 import AppIcon from '@/components/AppIcon.vue'
@@ -79,6 +110,22 @@ import AppIcon from '@/components/AppIcon.vue'
 const shops = ref<Shop[]>([])
 const loading = ref(false)
 const pulling = ref('')
+
+// 新增店铺对话框
+const createVisible = ref(false)
+const creating = ref(false)
+const createForm = reactive<{ platform: string; name: string }>({ platform: 'mock', name: '' })
+
+// 可选渠道平台（对齐 Shop.platform 枚举）
+const platformOptions = [
+  { value: 'shopify', label: 'Shopify' },
+  { value: 'amazon', label: 'Amazon' },
+  { value: 'taobao', label: '淘宝' },
+  { value: 'douyin', label: '抖音' },
+  { value: 'tiktok', label: 'TikTok' },
+  { value: 'independent', label: '独立站' },
+  { value: 'mock', label: 'Mock 演示店' },
+]
 
 function fmt(ts: string): string {
   return ts ? new Date(ts).toLocaleString('zh-CN', { hour12: false }) : '-'
@@ -119,6 +166,56 @@ async function pull(row: Shop): Promise<void> {
     ElMessage.error(`拉单失败（${row.platform} 需配置凭证）：${(e as Error).message}`)
   } finally {
     pulling.value = ''
+  }
+}
+
+function openCreate(): void {
+  createVisible.value = true
+}
+
+function resetCreate(): void {
+  createForm.platform = 'mock'
+  createForm.name = ''
+}
+
+async function submitCreate(): Promise<void> {
+  if (!createForm.name.trim()) {
+    ElMessage.warning('请填写店铺名称')
+    return
+  }
+  creating.value = true
+  try {
+    const shop = await channelsApi.createShop({
+      platform: createForm.platform,
+      name: createForm.name.trim(),
+      authConfig: null,
+    })
+    shops.value = [shop, ...shops.value]
+    createVisible.value = false
+    ElMessage.success(`已绑定店铺「${shop.name}」`)
+  } catch (e) {
+    ElMessage.error('绑定失败：' + (e as Error).message)
+  } finally {
+    creating.value = false
+  }
+}
+
+async function unbind(row: Shop): Promise<void> {
+  try {
+    await ElMessageBox.confirm(
+      `确定解绑店铺「${row.name}」吗？解绑后该店铺的拉单入口将不可用，已落库订单不受影响。`,
+      '解绑店铺',
+      { type: 'warning', confirmButtonText: '确定解绑', cancelButtonText: '取消' },
+    )
+  } catch {
+    return // 用户取消
+  }
+  try {
+    await channelsApi.deleteShop(row.id)
+    shops.value = shops.value.filter((s) => s.id !== row.id)
+    ElMessage.success(`已解绑店铺「${row.name}」`)
+  } catch (e) {
+    ElMessage.error('解绑失败：' + (e as Error).message)
   }
 }
 

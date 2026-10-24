@@ -40,7 +40,7 @@ export interface MockShop {
   tenantId: string
   platform: string
   name: string
-  authConfig: null
+  authConfig: Record<string, unknown> | null
   createdAt: string
 }
 export interface MockProduct {
@@ -2006,6 +2006,34 @@ export function doCompletePick(id: string): MockPickTask {
   return { ...p }
 }
 
+// ===== 店铺（渠道）增删（任务 6.1，方案 §3）=====
+// 演示态：新增归入 demo 租户、解绑从内存数组移除，与后端 ShopsService 同口径。
+/** 新增店铺：演示态默认归入 demo 租户，authConfig 留空（真实后端见 §17 加密存储）。 */
+export function doCreateShop(body: {
+  platform: string
+  name: string
+  authConfig?: Record<string, unknown> | null
+}): MockShop {
+  const shop: MockShop = {
+    id: 's_' + Date.now().toString(36),
+    tenantId: TENANT_ID,
+    platform: body.platform,
+    name: body.name,
+    authConfig: body.authConfig ?? null,
+    createdAt: NOW(),
+  }
+  shops.unshift(shop) // 新建置顶，列表即时可见
+  return { ...shop }
+}
+
+/** 解绑店铺：从内存数组移除；不存在抛错（与后端 SHOP_NOT_FOUND 一致）。 */
+export function doDeleteShop(id: string): { id: string } {
+  const idx = shops.findIndex((s) => s.id === id)
+  if (idx < 0) throw new Error('店铺不存在')
+  shops.splice(idx, 1)
+  return { id }
+}
+
 export function mockRouter(method: string, url: string, body?: unknown): Promise<unknown> {
   // GET 集合
   if (method === 'GET') {
@@ -2133,6 +2161,8 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     if (rev) return delay().then(() => doReverse(rev[1]))
     const pull = url.match(/^\/channels\/([^/]+)\/pull$/)
     if (pull) return delay().then(() => doPull(pull[1]))
+    // 渠道店铺新增绑定（任务 6.1）：演示态归入 demo 租户（§3）。
+    if (url === '/shops') return delay(120).then(() => doCreateShop((body ?? {}) as { platform: string; name: string; authConfig?: Record<string, unknown> | null }))
     if (url === '/pricing/compare') return delay(260).then(() => doCompare(body))
     // 履约路由（模式A 自动选渠道，§4/§5）：给定发货上下文 + 策略，自动挑最优渠道
     if (url === '/pricing/route') return delay(280).then(() => doRoute(body))
@@ -2274,6 +2304,9 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     // 开放平台（§28）：客户端移除
     const openClientDel = url.match(/^\/openapi\/clients\/([^/]+)$/)
     if (openClientDel) return delay().then(() => doDeleteOpenClient(openClientDel[1]))
+    // 渠道店铺解绑（任务 6.1）：演示态从内存数组移除（§3）。
+    const shopDel = url.match(/^\/shops\/([^/]+)$/)
+    if (shopDel) return delay(120).then(() => doDeleteShop(shopDel[1]))
   }
 
   return delay().then(() => reject('演示模式不支持该请求：' + method + ' ' + url))
