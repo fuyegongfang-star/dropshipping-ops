@@ -111,6 +111,7 @@ const ICONS: Record<string, string> = {
   link: '<path d="M10.5 13.5a3.5 3.5 0 0 0 5 0l3-3a3.5 3.5 0 0 0-5-5l-1 1"/><path d="M13.5 10.5a3.5 3.5 0 0 0-5 0l-3 3a3.5 3.5 0 0 0 5 5l1-1"/>',
   unlink:
     '<path d="M9 15.5a3.5 3.5 0 0 1-5-5l3-3a3.5 3.5 0 0 1 5 5"/><path d="M15 8.5a3.5 3.5 0 0 1 5 5l-3 3a3.5 3.5 0 0 1-5-5"/><path d="M4 4l16 16"/>',
+  purchase: '<path d="M3 4h2l2.2 11.3a1.5 1.5 0 0 0 1.5 1.2h8.4a1.5 1.5 0 0 0 1.5-1.2L21 8H6"/><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/>',
   radar:
     '<circle cx="12" cy="12" r="8.5"/><path d="M12 12 19 6"/><path d="M12 12 5.5 15"/><circle cx="12" cy="12" r="1.6"/>',
   pin:

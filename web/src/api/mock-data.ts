@@ -43,6 +43,32 @@ export interface MockShop {
   authConfig: Record<string, unknown> | null
   createdAt: string
 }
+export interface MockPurchaseOrderItem {
+  id: string
+  purchaseOrderId: string
+  skuId: string | null
+  productName: string
+  quantity: number
+  imageUrl: string | null
+  unitPrice: number | null
+  createdAt: string
+}
+export interface MockPurchaseOrder {
+  id: string
+  tenantId: string
+  shopId: string | null
+  orderId: string | null
+  trackingNo: string
+  carrier: string
+  platformOrderNo: string | null
+  purchaseUrl: string | null
+  productImages: string[]
+  remark: string | null
+  status: string
+  createdAt: string
+  updatedAt: string
+  items: MockPurchaseOrderItem[]
+}
 export interface MockProduct {
   id: string
   tenantId: string
@@ -128,6 +154,28 @@ const shops: MockShop[] = [
     name: 'Mock 演示店（可拉单）',
     authConfig: null,
     createdAt: '2026-09-10T08:00:00.000Z',
+  },
+]
+
+// ===== 采购单（阶段6 中转仓作业流，任务 6.2/6.3，方案 §21 衍生）=====
+const purchaseOrders: MockPurchaseOrder[] = [
+  {
+    id: 'po_demo_1', tenantId: TENANT_ID, shopId: 's_shopify', orderId: null, trackingNo: 'SF1234567890',
+    carrier: '顺丰速运', platformOrderNo: null, purchaseUrl: 'https://item.demo.com/p/earbud',
+    productImages: ['https://img.demo.com/earbud.jpg'], remark: '首批蓝牙耳机采购', status: 'pending',
+    createdAt: '2026-10-23T09:00:00.000Z', updatedAt: '2026-10-23T09:00:00.000Z',
+    items: [
+      { id: 'poi_1', purchaseOrderId: 'po_demo_1', skuId: 'sk1', productName: '无线蓝牙耳机 Pro', quantity: 30, imageUrl: 'https://img.demo.com/earbud.jpg', unitPrice: 68, createdAt: '2026-10-23T09:00:00.000Z' },
+    ],
+  },
+  {
+    id: 'po_demo_2', tenantId: TENANT_ID, shopId: 's_amazon', orderId: null, trackingNo: 'YT9876543210',
+    carrier: '圆通速递', platformOrderNo: null, purchaseUrl: 'https://item.demo.com/p/case',
+    productImages: ['https://img.demo.com/case.jpg'], remark: null, status: 'arrived',
+    createdAt: '2026-10-23T10:30:00.000Z', updatedAt: '2026-10-24T08:00:00.000Z',
+    items: [
+      { id: 'poi_2', purchaseOrderId: 'po_demo_2', skuId: null, productName: '手机壳', quantity: 100, imageUrl: 'https://img.demo.com/case.jpg', unitPrice: 5, createdAt: '2026-10-23T10:30:00.000Z' },
+    ],
   },
 ]
 
@@ -2034,11 +2082,90 @@ export function doDeleteShop(id: string): { id: string } {
   return { id }
 }
 
+// ===== 采购单（阶段6，任务 6.2/6.3，方案 §21 衍生）=====
+// 演示态：新增归入 demo 租户、状态机推进（pending→arrived→matched→packed→outbound），
+// 与后端 PurchaseOrderService 同口径；productImages 为外部供应商图 URL 数组。
+/** 采购单列表（演示态：demo 租户，支持 status/shopId 过滤）。 */
+export function doListPurchaseOrders(filters: { status?: string; shopId?: string } = {}): MockPurchaseOrder[] {
+  return purchaseOrders
+    .filter((p) => p.tenantId === TENANT_ID)
+    .filter((p) => !filters.status || p.status === filters.status)
+    .filter((p) => !filters.shopId || p.shopId === filters.shopId)
+    .map((p) => ({ ...p, items: p.items.map((i) => ({ ...i })) }))
+}
+
+/** 新增采购单（演示态：租户隔离 + 至少 1 行项）。 */
+export function doCreatePurchaseOrder(body: {
+  trackingNo: string
+  carrier: string
+  platformOrderNo?: string
+  purchaseUrl?: string
+  productImages?: string[]
+  remark?: string
+  shopId?: string
+  orderId?: string
+  items: { productName: string; quantity: number; skuId?: string; imageUrl?: string; unitPrice?: number }[]
+}): MockPurchaseOrder {
+  if (!body.items || body.items.length === 0) throw new Error('采购单至少需要 1 个行项')
+  const now = NOW()
+  const po: MockPurchaseOrder = {
+    id: 'po_' + Date.now().toString(36),
+    tenantId: TENANT_ID,
+    shopId: body.shopId ?? null,
+    orderId: body.orderId ?? null,
+    trackingNo: body.trackingNo,
+    carrier: body.carrier,
+    platformOrderNo: body.platformOrderNo ?? null,
+    purchaseUrl: body.purchaseUrl ?? null,
+    productImages: body.productImages ?? [],
+    remark: body.remark ?? null,
+    status: 'pending',
+    createdAt: now,
+    updatedAt: now,
+    items: body.items.map((it, i) => ({
+      id: `poi_${Date.now().toString(36)}_${i}`,
+      purchaseOrderId: '',
+      skuId: it.skuId ?? null,
+      productName: it.productName,
+      quantity: it.quantity,
+      imageUrl: it.imageUrl ?? null,
+      unitPrice: it.unitPrice ?? null,
+      createdAt: now,
+    })),
+  }
+  po.items.forEach((it) => (it.purchaseOrderId = po.id))
+  purchaseOrders.unshift(po)
+  return { ...po, items: po.items.map((i) => ({ ...i })) }
+}
+
+/** 推进采购单状态（演示态：校验状态机合法转移，§6）。 */
+const PO_TRANSITIONS: Record<string, string[]> = {
+  pending: ['arrived'],
+  arrived: ['matched'],
+  matched: ['packed'],
+  packed: ['outbound'],
+  outbound: [],
+}
+export function doUpdatePurchaseStatus(id: string, status: string): MockPurchaseOrder {
+  const po = purchaseOrders.find((p) => p.id === id && p.tenantId === TENANT_ID)
+  if (!po) throw new Error('采购单不存在')
+  const allowed = PO_TRANSITIONS[po.status] ?? []
+  if (!allowed.includes(status)) throw new Error(`状态不可从 ${po.status} 直接转为 ${status}`)
+  po.status = status
+  po.updatedAt = NOW()
+  return { ...po, items: po.items.map((i) => ({ ...i })) }
+}
+
+// ===== 模拟路由分发（演示模式核心）：按 method+url 匹配 doXxx 实现，返回数据体 =====
+// 与真实后端 /api 路由同口径；无匹配时 reject 提示演示模式不支持该请求。
 export function mockRouter(method: string, url: string, body?: unknown): Promise<unknown> {
   // GET 集合
   if (method === 'GET') {
     if (url === '/tenants') return delay().then(() => tenants)
     if (url === '/shops') return delay().then(() => shops)
+    // 采购单列表（阶段6，任务 6.2/6.3）：demo 租户隔离 + status/shopId 过滤。
+    if (url === '/purchase-orders' || url.startsWith('/purchase-orders?'))
+      return delay().then(() => doListPurchaseOrders(parseQ(url)))
     // 供应商代发（§21）：档案列表 + 代发单列表（演示态内存）
     if (url === '/suppliers') return delay().then(() => doListSuppliers())
     if (url === '/suppliers/orders') return delay().then(() => doListSupplierOrders())
@@ -2163,6 +2290,8 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     if (pull) return delay().then(() => doPull(pull[1]))
     // 渠道店铺新增绑定（任务 6.1）：演示态归入 demo 租户（§3）。
     if (url === '/shops') return delay(120).then(() => doCreateShop((body ?? {}) as { platform: string; name: string; authConfig?: Record<string, unknown> | null }))
+    // 采购单新增（阶段6，任务 6.2/6.3）：演示态归入 demo 租户（§21 衍生）。
+    if (url === '/purchase-orders') return delay(160).then(() => doCreatePurchaseOrder((body ?? {}) as any))
     if (url === '/pricing/compare') return delay(260).then(() => doCompare(body))
     // 履约路由（模式A 自动选渠道，§4/§5）：给定发货上下文 + 策略，自动挑最优渠道
     if (url === '/pricing/route') return delay(280).then(() => doRoute(body))
@@ -2272,6 +2401,9 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
       return delay(140).then(() =>
         doAdvanceSupplierOrder(supAdv[1], (body as { to?: 'accepted' | 'shipped' | 'done' })?.to ?? 'done'),
       )
+    // 采购单状态推进（阶段6，任务 6.2/6.3）：演示态校验状态机（§6）。
+    const poStatus = url.match(/^\/purchase-orders\/([^/]+)\/status$/)
+    if (poStatus) return delay(140).then(() => doUpdatePurchaseStatus(poStatus[1], (body as { status: string }).status))
     return delay().then(() => reject('演示模式不支持该请求：' + method + ' ' + url))
   }
 

@@ -589,3 +589,45 @@ model WebhookEvent {
   processed Boolean  @default(false)
   createdAt DateTime @default(now())
 }
+
+// ---- 货代中转仓作业流（§21 衍生 / 阶段6）-------------------------------------
+// 采购单：货代侧采购/供应商发货登记（快递单号/物流公司/平台订单号/采购链接/产品图/数量/SKU），
+// 经 6.4 与店铺订单匹配、6.6 扫码到货入库、6.7 打包、6.8 出跨境面单、6.9 出库，闭环到正式跨境物流。
+model PurchaseOrder {
+  id             String   @id @default(cuid())
+  tenantId       String
+  shopId         String? // 来源店铺（绑定渠道，§3）；中转仓作业可空
+  orderId        String? // 关联店铺订单（6.4 匹配/关联后回填，§13）
+  trackingNo     String // 采购/供应商快递单号（6.6 扫码入库主键）
+  carrier        String // 物流公司（采购侧承运方，非末端跨境承运商）
+  platformOrderNo String? // 平台订单号（6.4 精确匹配 Order.platformOrderNo）
+  purchaseUrl    String? // 采购链接（货源，便于溯源）
+  productImages  Json // 产品图 URL 数组 String[]（演示态压缩后入库，§23 规范）
+  remark         String? // 备注
+  status         String   @default("pending") // pending→arrived→matched→packed→outbound（§6 状态机）
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  items          PurchaseOrderItem[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([trackingNo])
+  @@index([orderId])
+}
+
+// 采购单行项（与店铺 OrderItem 对照核对，6.7 差异高亮，§1/§21）
+model PurchaseOrderItem {
+  id            String   @id @default(cuid())
+  purchaseOrderId String
+  skuId         String? // 内部 SKU（关联 §1 商品/SKU 中心，可为空）
+  productName   String // 产品名称（无 SKU 时必填）
+  quantity      Int // 采购数量
+  imageUrl      String? // 单品图片 URL
+  unitPrice     Decimal? @db.Decimal(12, 2) // 单价（采购成本）
+  createdAt     DateTime @default(now())
+
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+
+  @@index([purchaseOrderId])
+}

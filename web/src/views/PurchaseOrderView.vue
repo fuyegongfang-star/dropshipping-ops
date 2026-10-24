@@ -1,0 +1,345 @@
+<template>
+  <div class="po">
+    <PageHeader
+      title="采购单管理"
+      subtitle="货代中转仓作业流 · 采购 / 供应商发货登记 → 到货入库 → 打包 → 出库"
+      icon="purchase"
+      accent="violet"
+    >
+      <template #actions>
+        <el-button @click="load">
+          <AppIcon name="refresh" :size="15" class="btn-ico" />刷新
+        </el-button>
+        <el-button type="primary" @click="openCreate">
+          <AppIcon name="plus" :size="15" class="btn-ico" />录入采购单
+        </el-button>
+      </template>
+    </PageHeader>
+
+    <div class="tip">
+      <AppIcon name="info" :size="16" class="tip-ico" />
+      <div class="tip-body">
+        <strong>阶段6 · 中转仓作业流</strong>
+        <p>
+          采购单登记供应商发货信息（快递单号 / 物流公司 / 平台订单号 / 产品图），后续经「扫码到货入库 → 打包 → 出跨境面单 → 出库」
+          闭环到正式跨境物流（任务 6.4–6.9 逐步落地）。此处状态机：待处理 → 已到货 → 已匹配 → 已打包 → 已出库。
+        </p>
+      </div>
+    </div>
+
+    <el-card>
+      <template #header>
+        <div class="card-head">
+          <span class="section-title">采购单列表</span>
+          <div class="filters">
+            <el-select v-model="statusFilter" placeholder="全部状态" clearable style="width: 150px" @change="load">
+              <el-option label="待处理" value="pending" />
+              <el-option label="已到货" value="arrived" />
+              <el-option label="已匹配" value="matched" />
+              <el-option label="已打包" value="packed" />
+              <el-option label="已出库" value="outbound" />
+            </el-select>
+            <span class="count-pill">共 {{ orders.length }} 单</span>
+          </div>
+        </div>
+      </template>
+
+      <el-table v-loading="loading" :data="orders" row-key="id">
+        <el-table-column type="expand">
+          <template #default="{ row }">
+            <div class="items">
+              <div v-for="it in row.items" :key="it.id" class="item-row">
+                <span v-if="it.imageUrl" class="item-img"><img :src="it.imageUrl" alt="产品图" /></span>
+                <span class="item-name">{{ it.productName }}</span>
+                <span class="item-meta">SKU：{{ it.skuId || '—' }}</span>
+                <span class="item-meta">数量：{{ it.quantity }}</span>
+                <span v-if="it.unitPrice != null" class="item-meta">单价：{{ money(it.unitPrice) }}</span>
+              </div>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="快递单号" min-width="170">
+          <template #default="{ row }"><span class="mono">{{ row.trackingNo }}</span></template>
+        </el-table-column>
+        <el-table-column label="物流公司" width="120" prop="carrier" />
+        <el-table-column label="平台订单号" min-width="150">
+          <template #default="{ row }"><span class="muted">{{ row.platformOrderNo || '—' }}</span></template>
+        </el-table-column>
+        <el-table-column label="产品图" width="90">
+          <template #default="{ row }">
+            <span v-if="row.productImages && row.productImages.length" class="img-count">
+              <AppIcon name="image" :size="14" /> {{ row.productImages.length }}
+            </span>
+            <span v-else class="muted">—</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="状态" width="115">
+          <template #default="{ row }"><span class="tag-soft" :class="statusClass(row.status)">{{ statusLabel(row.status) }}</span></template>
+        </el-table-column>
+        <el-table-column label="创建时间" min-width="165">
+          <template #default="{ row }"><span class="muted">{{ fmt(row.createdAt) }}</span></template>
+        </el-table-column>
+        <el-table-column label="操作" width="120">
+          <template #default="{ row }">
+            <el-button size="small" type="primary" plain :disabled="!nextStatus(row.status)" @click="advance(row)">
+              推进：{{ nextStatus(row.status) ? statusLabel(nextStatus(row.status)!) : '已终态' }}
+            </el-button>
+          </template>
+        </el-table-column>
+
+        <template #empty>
+          <div class="app-empty">
+            <span class="app-empty-ico"><AppIcon name="purchase" :size="26" /></span>
+            <span class="app-empty-text">暂无采购单</span>
+          </div>
+        </template>
+      </el-table>
+    </el-card>
+
+    <!-- 录入采购单对话框 -->
+    <el-dialog v-model="createVisible" title="录入采购单" width="640px" @closed="resetCreate">
+      <el-form :model="form" label-width="92px">
+        <el-row :gutter="12">
+          <el-col :span="12">
+            <el-form-item label="快递单号" required>
+              <el-input v-model="form.trackingNo" placeholder="供应商快递单号" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="物流公司" required>
+              <el-input v-model="form.carrier" placeholder="如：顺丰速运" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="平台订单号">
+              <el-input v-model="form.platformOrderNo" placeholder="用于 6.4 匹配店铺订单" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="采购链接">
+              <el-input v-model="form.purchaseUrl" placeholder="货源链接（可选）" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <el-form-item label="产品图">
+          <div class="imgs">
+            <div v-for="(img, i) in form.productImages" :key="i" class="img-row">
+              <el-input v-model="form.productImages[i]" placeholder="图片 URL" />
+              <el-button size="small" text type="danger" @click="form.productImages.splice(i, 1)">
+                <AppIcon name="close" :size="14" />
+              </el-button>
+            </div>
+            <el-button size="small" @click="form.productImages.push('')">
+              <AppIcon name="plus" :size="14" class="btn-ico" />添加图片 URL
+            </el-button>
+          </div>
+        </el-form-item>
+
+        <el-form-item label="备注">
+          <el-input v-model="form.remark" type="textarea" :rows="2" maxlength="300" show-word-limit />
+        </el-form-item>
+
+        <el-divider content-position="left">采购行项</el-divider>
+        <div v-for="(it, i) in form.items" :key="i" class="line-item">
+          <el-select v-model="it.skuId" placeholder="SKU（可选）" clearable filterable style="width: 200px">
+            <el-option v-for="s in skuOptions" :key="s.id" :label="s.code" :value="s.id" />
+          </el-select>
+          <el-input v-model="it.productName" placeholder="产品名称" style="width: 180px" />
+          <el-input-number v-model="it.quantity" :min="1" :max="9999" />
+          <el-input v-model.number="it.unitPrice" placeholder="单价" style="width: 110px" />
+          <el-button size="small" text type="danger" @click="form.items.splice(i, 1)">
+            <AppIcon name="close" :size="14" />
+          </el-button>
+        </div>
+        <el-button size="small" @click="addItem">
+          <AppIcon name="plus" :size="14" class="btn-ico" />添加行项
+        </el-button>
+      </el-form>
+      <template #footer>
+        <el-button @click="createVisible = false">取消</el-button>
+        <el-button type="primary" :loading="creating" @click="submitCreate">提交采购单</el-button>
+      </template>
+    </el-dialog>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, reactive, onMounted } from 'vue'
+import { ElMessage } from 'element-plus'
+import { purchaseOrderApi, type PurchaseOrder, type PurchaseOrderStatus } from '@/api/purchase-order'
+import { catalogApi, type Sku } from '@/api/catalog'
+import { money } from '@/locales'
+import PageHeader from '@/components/PageHeader.vue'
+import AppIcon from '@/components/AppIcon.vue'
+
+const STATUS_LABELS: Record<PurchaseOrderStatus, string> = {
+  pending: '待处理',
+  arrived: '已到货',
+  matched: '已匹配',
+  packed: '已打包',
+  outbound: '已出库',
+}
+// 状态机（§6）：合法推进目标（与后端 STATUS_TRANSITIONS 一致）。
+const STATUS_NEXT: Record<PurchaseOrderStatus, PurchaseOrderStatus | null> = {
+  pending: 'arrived',
+  arrived: 'matched',
+  matched: 'packed',
+  packed: 'outbound',
+  outbound: null,
+}
+const STATUS_CLASS: Record<PurchaseOrderStatus, string> = {
+  pending: 'tag-gray',
+  arrived: 'tag-blue',
+  matched: 'tag-green',
+  packed: 'tag-orange',
+  outbound: 'tag-violet',
+}
+
+const orders = ref<PurchaseOrder[]>([])
+const loading = ref(false)
+const statusFilter = ref<string>('')
+
+const createVisible = ref(false)
+const creating = ref(false)
+const skuOptions = ref<Sku[]>([])
+const form = reactive<{
+  trackingNo: string
+  carrier: string
+  platformOrderNo: string
+  purchaseUrl: string
+  productImages: string[]
+  remark: string
+  items: { skuId: string; productName: string; quantity: number; unitPrice?: number }[]
+}>({
+  trackingNo: '', carrier: '', platformOrderNo: '', purchaseUrl: '', productImages: [], remark: '',
+  items: [{ skuId: '', productName: '', quantity: 1, unitPrice: undefined }],
+})
+
+function statusLabel(s: string): string {
+  return STATUS_LABELS[s as PurchaseOrderStatus] ?? s
+}
+function statusClass(s: string): string {
+  return STATUS_CLASS[s as PurchaseOrderStatus] ?? 'tag-gray'
+}
+function nextStatus(s: string): PurchaseOrderStatus | null {
+  return STATUS_NEXT[s as PurchaseOrderStatus] ?? null
+}
+function fmt(ts: string): string {
+  return ts ? new Date(ts).toLocaleString('zh-CN', { hour12: false }) : '-'
+}
+
+async function load(): Promise<void> {
+  loading.value = true
+  try {
+    orders.value = await purchaseOrderApi.list({ status: statusFilter.value || undefined })
+  } catch (e) {
+    ElMessage.error('加载采购单失败：' + (e as Error).message)
+  } finally {
+    loading.value = false
+  }
+}
+
+async function openCreate(): Promise<void> {
+  try {
+    skuOptions.value = await catalogApi.skus()
+  } catch {
+    skuOptions.value = []
+  }
+  createVisible.value = true
+}
+
+function addItem(): void {
+  form.items.push({ skuId: '', productName: '', quantity: 1, unitPrice: undefined })
+}
+function resetCreate(): void {
+  form.trackingNo = ''
+  form.carrier = ''
+  form.platformOrderNo = ''
+  form.purchaseUrl = ''
+  form.productImages = []
+  form.remark = ''
+  form.items = [{ skuId: '', productName: '', quantity: 1, unitPrice: undefined }]
+}
+
+async function submitCreate(): Promise<void> {
+  if (!form.trackingNo.trim() || !form.carrier.trim()) {
+    ElMessage.warning('请填写快递单号与物流公司')
+    return
+  }
+  const validItems = form.items.filter((it) => it.productName.trim())
+  if (validItems.length === 0) {
+    ElMessage.warning('请至少填写一个产品名称')
+    return
+  }
+  creating.value = true
+  try {
+    const po = await purchaseOrderApi.create({
+      trackingNo: form.trackingNo.trim(),
+      carrier: form.carrier.trim(),
+      platformOrderNo: form.platformOrderNo.trim() || undefined,
+      purchaseUrl: form.purchaseUrl.trim() || undefined,
+      productImages: form.productImages.map((x) => x.trim()).filter(Boolean) as string[],
+      remark: form.remark.trim() || undefined,
+      items: validItems.map((it) => ({
+        skuId: it.skuId || undefined,
+        productName: it.productName.trim(),
+        quantity: it.quantity,
+        unitPrice: it.unitPrice,
+      })),
+    })
+    orders.value = [po, ...orders.value]
+    createVisible.value = false
+    ElMessage.success('采购单已创建')
+  } catch (e) {
+    ElMessage.error('创建失败：' + (e as Error).message)
+  } finally {
+    creating.value = false
+  }
+}
+
+async function advance(row: PurchaseOrder): Promise<void> {
+  const target = nextStatus(row.status)
+  if (!target) return
+  try {
+    const updated = await purchaseOrderApi.updateStatus(row.id, target)
+    Object.assign(row, updated)
+    ElMessage.success(`已推进至「${statusLabel(target)}」`)
+  } catch (e) {
+    ElMessage.error('推进失败：' + (e as Error).message)
+  }
+}
+
+onMounted(load)
+</script>
+
+<style scoped>
+.btn-ico { margin-right: 5px; }
+.card-head { display: flex; align-items: center; justify-content: space-between; width: 100%; }
+.card-head .section-title { margin: 0; }
+.filters { display: flex; align-items: center; gap: 12px; }
+.count-pill { font-size: 12px; font-weight: 600; color: #4f46e5; background: rgba(79, 70, 229, 0.12); padding: 4px 10px; border-radius: 999px; }
+.tip { display: flex; align-items: flex-start; gap: 11px; padding: 14px 16px; margin-bottom: 16px; border-radius: var(--r-md); background: linear-gradient(90deg, rgba(79, 70, 229, 0.08), #f7fbff); border: 1px solid #eceafe; }
+.tip-ico { color: #4f46e5; margin-top: 2px; }
+.tip-body { font-size: 13px; color: var(--ink-700); line-height: 1.7; }
+.tip-body strong { display: block; color: var(--ink-900); margin-bottom: 3px; }
+.tip-body p { margin: 0; }
+.mono { font-family: 'SFMono-Regular', Consolas, monospace; font-size: 13px; }
+.muted { color: var(--ink-500); }
+.img-count { display: inline-flex; align-items: center; gap: 4px; color: var(--ink-600); }
+.tag-soft { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; border: 1px solid transparent; }
+.tag-gray { color: #64748b; background: rgba(100, 116, 139, 0.12); }
+.tag-blue { color: #2563eb; background: rgba(37, 99, 235, 0.12); }
+.tag-green { color: #16a34a; background: rgba(22, 163, 74, 0.12); }
+.tag-orange { color: #ea580c; background: rgba(234, 88, 12, 0.12); }
+.tag-violet { color: #7c3aed; background: rgba(124, 58, 237, 0.12); }
+.items { padding: 6px 12px; }
+.item-row { display: flex; align-items: center; gap: 14px; padding: 6px 0; border-bottom: 1px dashed var(--line); }
+.item-row:last-child { border-bottom: none; }
+.item-img img { width: 36px; height: 36px; border-radius: 6px; object-fit: cover; }
+.item-name { font-weight: 500; color: var(--ink-800); }
+.item-meta { font-size: 12px; color: var(--ink-500); }
+.imgs { display: flex; flex-direction: column; gap: 8px; }
+.img-row { display: flex; align-items: center; gap: 8px; }
+.line-item { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+</style>

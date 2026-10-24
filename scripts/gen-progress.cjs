@@ -57,6 +57,9 @@ const EXPLICIT_ROUTES = {
   '5.2': '/open-platform',
   '5.3': '/amazon',
   '5.4': '/system/capacity',
+  '6.1': '/channels',
+  '6.2': '/purchase-orders',
+  '6.3': '/purchase-orders',
 };
 
 /** 关键词 → 路由（兜底推断，命中即用）。 */

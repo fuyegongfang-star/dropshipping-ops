@@ -2,8 +2,8 @@
  * 开发进度数据 —— **本文件由 scripts/gen-progress.cjs 自动生成，请勿手工修改。**
  *
  * 生成命令：`npm run progress:gen`（读取 dev-schedule.md 的任务表）
- * 生成时间：2026-10-23T16:02:58.418Z
- * 源码提交：46bea49
+ * 生成时间：2026-10-24T15:34:24.410Z
+ * 源码提交：7ba67f5
  *
  * 作用：让「演示模式」与「正式模式」都能在网页上直接看到开发进度与最近交付的能力，
  * 夜间自动开发每完成一批任务后重新生成并提交，次日刷新页面即可看到新内容。
@@ -42,10 +42,10 @@ export interface DevStats {
 }
 
 /** 数据生成时间（ISO 字符串） */
-export const DEV_PROGRESS_GENERATED_AT = "2026-10-23T16:02:58.500Z"
+export const DEV_PROGRESS_GENERATED_AT = "2026-10-24T15:34:25.490Z"
 
 /** 数据对应的源码提交号（短 SHA） */
-export const DEV_PROGRESS_COMMIT = "46bea49"
+export const DEV_PROGRESS_COMMIT = "7ba67f5"
 
 /** 全部任务（按 dev-schedule.md 顺序） */
 export const DEV_TASKS: DevTask[] = [
@@ -498,22 +498,112 @@ export const DEV_TASKS: DevTask[] = [
     "estimate": "2d",
     "status": "done",
     "route": "/system/capacity"
+  },
+  {
+    "id": "6.1",
+    "phase": "阶段6",
+    "name": "店铺增删绑定 API",
+    "deliverable": "后端 POST /shops、DELETE /shops/:id + 前端渠道中心增删 UI（演示/正式双路）",
+    "deps": "1.2",
+    "estimate": "0.5d",
+    "status": "done",
+    "route": "/channels"
+  },
+  {
+    "id": "6.2",
+    "phase": "阶段6",
+    "name": "采购单实体与 CRUD（后端）",
+    "deliverable": "PurchaseOrder + PurchaseOrderItem（快递单号/物流公司/平台订单号/采购链接/产品图URL/数量/SKU/状态）+ service/controller/单测",
+    "deps": "1.3",
+    "estimate": "1d",
+    "status": "done",
+    "route": "/purchase-orders"
+  },
+  {
+    "id": "6.3",
+    "phase": "阶段6",
+    "name": "采购单录入前端页",
+    "deliverable": "录入界面（快递单号/物流公司/订单号/采购链接/产品图上传/数量/SKU）+ 关联订单展示 + 菜单/路由 + 演示/正式双路",
+    "deps": "6.2/1.7",
+    "estimate": "1d",
+    "status": "done",
+    "route": "/purchase-orders"
+  },
+  {
+    "id": "6.4",
+    "phase": "阶段6",
+    "name": "采购单↔店铺订单 匹配/关联",
+    "deliverable": "自动匹配（按平台订单号/收件人/SKU）+ 手动关联；订单详情可见采购单",
+    "deps": "6.2/1.3",
+    "estimate": "1d",
+    "status": "todo",
+    "route": "/catalog"
+  },
+  {
+    "id": "6.5",
+    "phase": "阶段6",
+    "name": "中转仓模型 + 看板",
+    "deliverable": "Warehouse.type 加 transfer；中转仓看板（货代侧待作业采购单可见）",
+    "deps": "2.2",
+    "estimate": "1d",
+    "status": "todo",
+    "route": "/reports"
+  },
+  {
+    "id": "6.6",
+    "phase": "阶段6",
+    "name": "扫码到货入库端点",
+    "deliverable": "POST /transfer/scan：快递单号/条码→解析采购单→匹配订单→到货登记；Asn 扩展 purchaseOrderId/scanSource/receivedItems",
+    "deps": "6.4/6.5",
+    "estimate": "1.5d",
+    "status": "todo",
+    "route": "/orders"
+  },
+  {
+    "id": "6.7",
+    "phase": "阶段6",
+    "name": "中转仓作业：打包任务 + 核对",
+    "deliverable": "按匹配订单聚合采购单生成打包任务；核对采购单 vs 店铺订单差异；PickTask 扩展 channelCode/labelId/shipmentId",
+    "deps": "6.6",
+    "estimate": "1.5d",
+    "status": "todo",
+    "route": "/channels"
+  },
+  {
+    "id": "6.8",
+    "phase": "阶段6",
+    "name": "跨境面单生成（中转仓出单）",
+    "deliverable": "选渠道→承运商建单 + LabelService 出 PDF/ZPL；面单关联店铺订单与平台；Shipment 加 purchaseOrderId",
+    "deps": "3.9/1.5/6.7",
+    "estimate": "1d",
+    "status": "todo",
+    "route": "/carriers"
+  },
+  {
+    "id": "6.9",
+    "phase": "阶段6",
+    "name": "出库闭环 + 物流同步",
+    "deliverable": "出库扫码→Shipment 建单/fulfill→承运商回传→TrackingEvent→正式跨境物流；状态机贯通采购单/订单",
+    "deps": "6.8/1.6",
+    "estimate": "1d",
+    "status": "todo",
+    "route": "/carriers"
   }
 ]
 
 /** 统计汇总 */
 export const DEV_STATS: DevStats = {
-  "total": 45,
-  "done": 44,
+  "total": 54,
+  "done": 47,
   "doing": 0,
-  "todo": 0,
+  "todo": 6,
   "blocked": 0,
   "skipped": 1,
-  "percent": 97.8
+  "percent": 87
 }
 
 /** 阶段列表（去重，按出现顺序） */
-export const DEV_PHASES = ["阶段0","阶段1","阶段2","阶段3","阶段4","阶段5"]
+export const DEV_PHASES = ["阶段0","阶段1","阶段2","阶段3","阶段4","阶段5","阶段6"]
 
 /** 最近交付的任务号（已完成中序号最大的若干个），用于「最近更新」高亮 */
-export const DEV_RECENT_IDS = ["5.1","5.2","5.3","5.4"]
+export const DEV_RECENT_IDS = ["5.4","6.1","6.2","6.3"]

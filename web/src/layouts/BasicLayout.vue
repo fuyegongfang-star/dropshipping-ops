@@ -217,6 +217,7 @@ const menuNodes: MenuNode[] = [
       { path: '/amazon', title: 'menu.amazon', icon: 'amazon' },
       { path: '/suppliers-dropship', title: 'menu.suppliersDropship', icon: 'supplier' },
       { path: '/warehouse', title: 'menu.warehouse', icon: 'warehouse' },
+      { path: '/purchase-orders', title: 'menu.purchaseOrders', icon: 'purchase' },
       { path: '/reports', title: 'menu.reports', icon: 'chart' },
       { path: '/risk', title: 'menu.risk', icon: 'risk' },
     ],
