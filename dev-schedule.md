@@ -78,7 +78,7 @@
 | 6.2 | 阶段6 | 采购单实体与 CRUD（后端） | PurchaseOrder + PurchaseOrderItem（快递单号/物流公司/平台订单号/采购链接/产品图URL/数量/SKU/状态）+ service/controller/单测 | 1.3 | 1d | ✅ |
 | 6.3 | 阶段6 | 采购单录入前端页 | 录入界面（快递单号/物流公司/订单号/采购链接/产品图上传/数量/SKU）+ 关联订单展示 + 菜单/路由 + 演示/正式双路 | 6.2/1.7 | 1d | ✅ |
 | 6.4 | 阶段6 | 采购单↔店铺订单 匹配/关联 | 自动匹配（按平台订单号/收件人/SKU）+ 手动关联；订单详情可见采购单 | 6.2/1.3 | 1d | ✅ |
-| 6.5 | 阶段6 | 中转仓模型 + 看板 | Warehouse.type 加 transfer；中转仓看板（货代侧待作业采购单可见） | 2.2 | 1d | ⬜ |
+| 6.5 | 阶段6 | 中转仓模型 + 看板 | Warehouse.type 加 transfer；中转仓看板（货代侧待作业采购单可见） | 2.2 | 1d | ✅ |
 | 6.6 | 阶段6 | 扫码到货入库端点 | POST /transfer/scan：快递单号/条码→解析采购单→匹配订单→到货登记；Asn 扩展 purchaseOrderId/scanSource/receivedItems | 6.4/6.5 | 1.5d | ⬜ |
 | 6.7 | 阶段6 | 中转仓作业：打包任务 + 核对 | 按匹配订单聚合采购单生成打包任务；核对采购单 vs 店铺订单差异；PickTask 扩展 channelCode/labelId/shipmentId | 6.6 | 1.5d | ⬜ |
 | 6.8 | 阶段6 | 跨境面单生成（中转仓出单） | 选渠道→承运商建单 + LabelService 出 PDF/ZPL；面单关联店铺订单与平台；Shipment 加 purchaseOrderId | 3.9/1.5/6.7 | 1d | ⬜ |
@@ -581,3 +581,14 @@
 - **测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**306 passed / 46 suites**）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
 - **提交**：随本批统一提交（6.4 后端/前端/进度生成器/进度表/检查点）。
 - **下一步（次日接力）**：6.5 中转仓模型 + 看板（Warehouse.type 扩 transfer + 中转仓看板页）。
+
+### 进度更新 · 2026-10-25（续跑 · 6.5 中转仓模型 + 看板）
+- **完成（✅）**：
+  - **6.5 中转仓模型 + 看板（阶段6 详细设计）** —— `Warehouse.type` 扩 `transfer`（schema 注释 + `WarehouseType` 联合类型 + `CreateWarehouseDto` 校验放行），既有的 `WmsService` 仓库列表/新建天然兼容新类型。
+  - 新增 `TransferModule`（6.5–6.9 统一承载）：`TransferService.getBoard(tenantId)` 聚合「本租户中转仓」+「待作业采购单（status ∈ arrived/matched/packed，未出库）」+「关联店铺订单概览」+ 状态统计；`TransferController` `GET /transfer/board`（租户隔离）；`transfer.service.spec.ts` 4 例（中转仓隔离/待作业过滤/关联订单概览/状态聚合）全绿。
+  - **前端可视化（业务运营 → 中转仓作业）**：`TransferView`（/transfer）态势三卡（中转仓数/待作业采购单数/已关联订单数）+ 中转仓卡片列表 + 待作业采购单表（状态/关联订单概览/产品）；`transfer.ts` 接口、`mock-data.ts` 同口径内存实现（`doGetTransferBoard` 含 transfer 仓种子 + mockRouter 分发），演示与正式双路通；`router` 注册 /transfer、`BasicLayout.menuNodes` 业务运营分组注册（`menu.transfer` 中英文）、`AppIcon` 复用 `warehouse`。
+- **进行中（🔵）**：无（本批 6.5 完成）。
+- **受阻**：无。
+- **测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（310 passed / 47 suites）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
+- **提交**：随本批统一提交（6.5 后端/前端/进度生成器/进度表/检查点）。
+- **下一步（次日接力）**：6.6 扫码到货入库端点（POST /transfer/scan：解析采购单→匹配订单→到货登记，Asn 扩展 purchaseOrderId/scanSource/receivedItems）。

@@ -1897,7 +1897,7 @@ export interface MockWarehouse {
   id: string
   tenantId: string
   name: string
-  type: 'domestic' | 'overseas'
+  type: 'domestic' | 'overseas' | 'transfer'
   region: string | null
   createdAt: string
 }
@@ -1933,6 +1933,8 @@ let pickSeq = 0
 const warehouses: MockWarehouse[] = [
   { id: 'wh_dom_1', tenantId: TENANT_ID, name: '深圳前海国内仓', type: 'domestic', region: null, createdAt: '2026-08-01T08:00:00.000Z' },
   { id: 'wh_ovs_1', tenantId: TENANT_ID, name: 'US-West 洛杉矶海外仓', type: 'overseas', region: 'US', createdAt: '2026-08-10T08:00:00.000Z' },
+  // 阶段6 中转仓（货代侧作业枢纽）：采购单到货后在此打包、出跨境面单、出库（6.5–6.9）
+  { id: 'wh_transfer_1', tenantId: TENANT_ID, name: '深圳福永中转仓', type: 'transfer', region: 'CN', createdAt: '2026-09-12T08:00:00.000Z' },
 ]
 const asns: MockAsn[] = [
   { id: 'asn_1', tenantId: TENANT_ID, warehouseId: 'wh_dom_1', status: 'received', createdAt: '2026-10-18T08:00:00.000Z' },
@@ -2231,6 +2233,77 @@ export function doUnlink(id: string): MockPurchaseOrder {
   return { ...po, items: po.items.map((i) => ({ ...i })) }
 }
 
+// ===== 阶段6 中转仓看板（任务 6.5）=====
+export interface MockTransferBoardPo {
+  id: string
+  tenantId: string
+  shopId: string | null
+  orderId: string | null
+  trackingNo: string
+  carrier: string
+  platformOrderNo: string | null
+  recipientName: string | null
+  status: string
+  items: { id: string; productName: string; quantity: number; skuId: string | null }[]
+  order: { id: string; platformOrderNo: string | null; status: string; recipientName: string | null } | null
+}
+export interface MockTransferBoard {
+  warehouses: MockWarehouse[]
+  purchaseOrders: MockTransferBoardPo[]
+  stats: { transferWarehouseCount: number; pendingPoCount: number; byStatus: Record<string, number> }
+}
+
+/** 中转仓看板（演示态）：本租户中转仓 + 待作业采购单（已到仓/已匹配/已打包，未出库）+ 关联订单概览。 */
+export function doGetTransferBoard(): MockTransferBoard {
+  const whs = warehouses.filter((w) => w.tenantId === TENANT_ID && w.type === 'transfer').map((w) => ({ ...w }))
+  const pos = purchaseOrders.filter(
+    (p) => p.tenantId === TENANT_ID && ['arrived', 'matched', 'packed'].includes(p.status),
+  )
+  const orderIds = Array.from(new Set(pos.map((p) => p.orderId).filter(Boolean) as string[]))
+  const orderMap = new Map(
+    orders.filter((o) => orderIds.includes(o.id)).map((o) => [o.id, o]),
+  )
+  const purchaseOrdersOut: MockTransferBoardPo[] = pos.map((po) => {
+    const linked = po.orderId ? orderMap.get(po.orderId) : undefined
+    return {
+      id: po.id,
+      tenantId: po.tenantId,
+      shopId: po.shopId,
+      orderId: po.orderId,
+      trackingNo: po.trackingNo,
+      carrier: po.carrier,
+      platformOrderNo: po.platformOrderNo,
+      recipientName: po.recipientName,
+      status: po.status,
+      items: po.items.map((it) => ({
+        id: it.id,
+        productName: it.productName,
+        quantity: it.quantity,
+        skuId: it.skuId,
+      })),
+      order: linked
+        ? {
+            id: linked.id,
+            platformOrderNo: linked.platformOrderNo,
+            status: linked.status,
+            recipientName: (linked.recipient as { name?: string } | null)?.name ?? null,
+          }
+        : null,
+    }
+  })
+  const byStatus: Record<string, number> = {}
+  purchaseOrdersOut.forEach((p) => (byStatus[p.status] = (byStatus[p.status] ?? 0) + 1))
+  return {
+    warehouses: whs,
+    purchaseOrders: purchaseOrdersOut,
+    stats: {
+      transferWarehouseCount: whs.length,
+      pendingPoCount: purchaseOrdersOut.length,
+      byStatus,
+    },
+  }
+}
+
 // ===== 模拟路由分发（演示模式核心）：按 method+url 匹配 doXxx 实现，返回数据体 =====
 // 与真实后端 /api 路由同口径；无匹配时 reject 提示演示模式不支持该请求。
 export function mockRouter(method: string, url: string, body?: unknown): Promise<unknown> {
@@ -2244,6 +2317,8 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     // 采购单匹配候选（阶段6，任务 6.4）：按平台单号 / 收件人 / SKU 推断可关联店铺订单
     const poCand = url.match(/^\/purchase-orders\/([^/]+)\/candidates$/)
     if (poCand) return delay(140).then(() => doCandidates(poCand[1]))
+    // 中转仓看板（阶段6，任务 6.5）：中转仓列表 + 待作业采购单 + 关联订单概览
+    if (url === '/transfer/board') return delay(160).then(() => doGetTransferBoard())
     // 供应商代发（§21）：档案列表 + 代发单列表（演示态内存）
     if (url === '/suppliers') return delay().then(() => doListSuppliers())
     if (url === '/suppliers/orders') return delay().then(() => doListSupplierOrders())

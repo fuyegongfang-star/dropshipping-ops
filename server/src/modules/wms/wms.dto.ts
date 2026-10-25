@@ -7,8 +7,8 @@
 
 import { IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Min } from 'class-validator'
 
-/** 仓库类型：国内仓 / 海外仓 */
-export type WarehouseType = 'domestic' | 'overseas'
+/** 仓库类型：国内仓 / 海外仓 / 中转仓（阶段6 货代中转仓作业流 6.5） */
+export type WarehouseType = 'domestic' | 'overseas' | 'transfer'
 
 /** 入库单(ASN)状态：待收货 / 已收货 / 已关闭 */
 export type AsnStatus = 'pending' | 'received' | 'closed'
@@ -22,8 +22,8 @@ export class CreateWarehouseDto {
   @IsNotEmpty()
   name: string // 仓库名称（如「深圳前海仓」「US-West 海外仓」）
 
-  @IsIn(['domestic', 'overseas'])
-  type: WarehouseType // 仓库类型：国内 / 海外（§15）
+  @IsIn(['domestic', 'overseas', 'transfer'])
+  type: WarehouseType // 仓库类型：国内 / 海外（§15）/ 中转仓（阶段6 6.5）
 
   @IsOptional()
   @IsString()

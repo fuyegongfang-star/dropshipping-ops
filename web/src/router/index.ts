@@ -31,6 +31,7 @@ import TenantsView from '@/views/TenantsView.vue'
 import SuppliersView from '@/views/SuppliersView.vue'
 import WarehouseView from '@/views/WarehouseView.vue'
 import PurchaseOrderView from '@/views/PurchaseOrderView.vue'
+import TransferView from '@/views/TransferView.vue'
 
 // 前端路由（方案 §11）：基础布局 + 业务模块页面（订单/商品SKU/渠道/承运商/定价/开发进度/租户）。
 // 菜单按「业务运营 / 物流履约 / 财务中心 / 系统设置」分组（见 BasicLayout.vue 的 menuNodes），
@@ -51,6 +52,7 @@ const router = createRouter({
         { path: 'reports', name: 'reports', component: ReportsView, meta: { title: '运营报表' } },
         { path: 'warehouse', name: 'warehouse', component: WarehouseView, meta: { title: '仓储管理' } },
         { path: 'purchase-orders', name: 'purchaseOrders', component: PurchaseOrderView, meta: { title: '采购单' } },
+        { path: 'transfer', name: 'transfer', component: TransferView, meta: { title: '中转仓作业' } },
         { path: 'carriers', name: 'carriers', component: CarriersView, meta: { title: '承运商管理' } },
         { path: 'quotes', name: 'quotes', component: QuotesView, meta: { title: '运费试算' } },
         { path: 'fulfillment', name: 'fulfillment', component: FulfillmentView, meta: { title: '履约路由' } },

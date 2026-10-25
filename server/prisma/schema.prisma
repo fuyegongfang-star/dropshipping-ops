@@ -398,7 +398,7 @@ model Warehouse {
   id        String   @id @default(cuid())
   tenantId  String
   name      String
-  type      String   @default("overseas") // domestic（国内仓）| overseas（海外仓）
+  type      String   @default("overseas") // domestic（国内仓）| overseas（海外仓）| transfer（阶段6 货代中转仓）
   region    String? // 区域/国家
   createdAt DateTime @default(now())
 }
