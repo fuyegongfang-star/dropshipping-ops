@@ -414,11 +414,17 @@ model Bin {
 }
 
 model Asn {
-  id          String   @id @default(cuid())
-  tenantId    String
-  warehouseId String
-  status      String // 收货单状态：pending | received | closed
-  createdAt   DateTime @default(now())
+  id               String   @id @default(cuid())
+  tenantId         String
+  warehouseId      String
+  status           String // 收货单状态：pending | received | closed
+  purchaseOrderId  String? // 关联采购单（6.6 扫码到货登记）
+  scanSource       String? // 扫码来源：trackingNo | barcode | purchaseNo
+  receivedItems    Json? // 到货登记行项快照（6.6：采购单行项数量/名称/图片）
+  createdAt        DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([purchaseOrderId])
 }
 
 model Inventory {

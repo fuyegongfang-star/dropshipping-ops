@@ -44,7 +44,36 @@ export interface TransferBoard {
   }
 }
 
+/** 扫码来源类型（6.6 扫码到货入库） */
+export type ScanType = 'trackingNo' | 'barcode' | 'purchaseNo'
+
+/** 扫码到货入库请求体（6.6） */
+export interface ScanTransferDto {
+  warehouseId: string
+  scanValue: string
+  scanType: ScanType
+}
+
+/** 扫码到货入库返回（6.6）：收货单 + 采购单快照 + 匹配/推进标记 */
+export interface ScanTransferResult {
+  asn: {
+    id: string
+    warehouseId: string
+    purchaseOrderId: string | null
+    scanSource: string
+    status: string
+    receivedItemCount: number
+    createdAt: string
+  }
+  purchaseOrder: { id: string; trackingNo: string; carrier: string; status: string; orderId: string | null }
+  matched: boolean
+  advanced: boolean
+  message: string
+}
+
 export const transferApi = {
   /** 中转仓看板（6.5）：中转仓 + 待作业采购单 + 关联订单概览 */
   board: () => http.get<TransferBoard>('/transfer/board'),
+  /** 扫码到货入库（6.6）：快递单号/SKU 条码/采购单号 → 解析采购单 → 到货登记 → 状态推进 → 匹配订单 */
+  scan: (dto: ScanTransferDto) => http.post<ScanTransferResult>('/transfer/scan', dto),
 }

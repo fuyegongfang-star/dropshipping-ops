@@ -1906,6 +1906,9 @@ export interface MockAsn {
   tenantId: string
   warehouseId: string
   status: 'pending' | 'received' | 'closed'
+  purchaseOrderId?: string | null // 6.6 中转仓扫码到货关联采购单
+  scanSource?: 'trackingNo' | 'barcode' | 'purchaseNo' | null
+  receivedItems?: { id: string; productName: string; quantity: number; skuId: string | null; imageUrl: string | null }[] | null
   createdAt: string
 }
 export interface MockInventory {
@@ -2304,6 +2307,101 @@ export function doGetTransferBoard(): MockTransferBoard {
   }
 }
 
+/** 扫码到货入库（任务 6.6，演示态与后端 TransferService.scan 同口径）。
+ * 流程：校验中转仓归属 → 按扫码类型解析采购单 → 生成收货单 ASN（received + 行项快照）
+ * → 推进采购单 pending→arrived → 复用 6.4 自动匹配关联店铺订单。 */
+export function doScanTransfer(body: {
+  warehouseId: string
+  scanValue: string
+  scanType: 'trackingNo' | 'barcode' | 'purchaseNo'
+}): {
+  asn: { id: string; warehouseId: string; purchaseOrderId: string | null; scanSource: string; status: string; receivedItemCount: number; createdAt: string }
+  purchaseOrder: { id: string; trackingNo: string; carrier: string; status: string; orderId: string | null }
+  matched: boolean
+  advanced: boolean
+  message: string
+} {
+  const wh = warehouses.find((w) => w.id === body.warehouseId && w.tenantId === TENANT_ID)
+  if (!wh) throw new Error('中转仓不存在或无权限')
+
+  // 按扫码类型解析采购单（demo 租户隔离）
+  let po: MockPurchaseOrder | undefined
+  if (body.scanType === 'trackingNo') {
+    po = purchaseOrders.find((p) => p.tenantId === TENANT_ID && p.trackingNo === body.scanValue)
+  } else if (body.scanType === 'purchaseNo') {
+    po = purchaseOrders.find((p) => p.tenantId === TENANT_ID && p.id === body.scanValue)
+  } else {
+    // SKU 条码：经采购单明细反查父采购单（同租户）
+    const sku = skus.find((s) => s.barcode === body.scanValue)
+    if (sku) {
+      po = purchaseOrders.find(
+        (p) => p.tenantId === TENANT_ID && p.items.some((it) => it.skuId === sku.id),
+      )
+    }
+  }
+  if (!po) throw new Error('未找到匹配的采购单，请核对快递单号 / 条码 / 采购单号')
+
+  const receivedItems = po.items.map((it) => ({
+    id: it.id,
+    productName: it.productName,
+    quantity: it.quantity,
+    skuId: it.skuId,
+    imageUrl: it.imageUrl,
+  }))
+  const asnId = `asn_demo_${++asnSeq}`
+  const asn: MockAsn = {
+    id: asnId,
+    tenantId: TENANT_ID,
+    warehouseId: wh.id,
+    status: 'received',
+    purchaseOrderId: po.id,
+    scanSource: body.scanType,
+    receivedItems,
+    createdAt: NOW(),
+  }
+  asns.push(asn)
+
+  // 推进采购单状态：pending → arrived（状态机首跳）
+  let advanced = false
+  if (po.status === 'pending') {
+    po.status = 'arrived'
+    po.updatedAt = NOW()
+    advanced = true
+  }
+
+  // 复用 6.4 自动匹配关联店铺订单
+  let matched = false
+  if (!po.orderId) {
+    matched = doAutoMatch(po.id).linked
+  } else {
+    matched = true
+  }
+
+  return {
+    asn: {
+      id: asn.id,
+      warehouseId: asn.warehouseId,
+      purchaseOrderId: asn.purchaseOrderId ?? null,
+      scanSource: asn.scanSource ?? body.scanType,
+      status: asn.status,
+      receivedItemCount: receivedItems.length,
+      createdAt: asn.createdAt,
+    },
+    purchaseOrder: {
+      id: po.id,
+      trackingNo: po.trackingNo,
+      carrier: po.carrier,
+      status: po.status,
+      orderId: po.orderId,
+    },
+    matched,
+    advanced,
+    message: advanced
+      ? `到货登记成功，采购单 ${po.trackingNo} 已转为 arrived`
+      : `到货登记成功（采购单当前状态 ${po.status}）`,
+  }
+}
+
 // ===== 模拟路由分发（演示模式核心）：按 method+url 匹配 doXxx 实现，返回数据体 =====
 // 与真实后端 /api 路由同口径；无匹配时 reject 提示演示模式不支持该请求。
 export function mockRouter(method: string, url: string, body?: unknown): Promise<unknown> {
@@ -2452,6 +2550,11 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     if (poLink) return delay(160).then(() => doLink(poLink[1], (body as { orderId: string }).orderId))
     const poUnlink = url.match(/^\/purchase-orders\/([^/]+)\/unlink$/)
     if (poUnlink) return delay(160).then(() => doUnlink(poUnlink[1]))
+    // 中转仓扫码到货入库（任务 6.6）：快递单号 / SKU 条码 / 采购单号 → 到货登记 + 状态推进 + 自动匹配
+    if (url === '/transfer/scan')
+      return delay(180).then(() =>
+        doScanTransfer((body ?? {}) as { warehouseId: string; scanValue: string; scanType: 'trackingNo' | 'barcode' | 'purchaseNo' }),
+      )
     if (url === '/pricing/compare') return delay(260).then(() => doCompare(body))
     // 履约路由（模式A 自动选渠道，§4/§5）：给定发货上下文 + 策略，自动挑最优渠道
     if (url === '/pricing/route') return delay(280).then(() => doRoute(body))

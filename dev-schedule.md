@@ -79,7 +79,7 @@
 | 6.3 | 阶段6 | 采购单录入前端页 | 录入界面（快递单号/物流公司/订单号/采购链接/产品图上传/数量/SKU）+ 关联订单展示 + 菜单/路由 + 演示/正式双路 | 6.2/1.7 | 1d | ✅ |
 | 6.4 | 阶段6 | 采购单↔店铺订单 匹配/关联 | 自动匹配（按平台订单号/收件人/SKU）+ 手动关联；订单详情可见采购单 | 6.2/1.3 | 1d | ✅ |
 | 6.5 | 阶段6 | 中转仓模型 + 看板 | Warehouse.type 加 transfer；中转仓看板（货代侧待作业采购单可见） | 2.2 | 1d | ✅ |
-| 6.6 | 阶段6 | 扫码到货入库端点 | POST /transfer/scan：快递单号/条码→解析采购单→匹配订单→到货登记；Asn 扩展 purchaseOrderId/scanSource/receivedItems | 6.4/6.5 | 1.5d | ⬜ |
+| 6.6 | 阶段6 | 扫码到货入库端点 | POST /transfer/scan：快递单号/条码→解析采购单→匹配订单→到货登记；Asn 扩展 purchaseOrderId/scanSource/receivedItems | 6.4/6.5 | 1.5d | ✅ |
 | 6.7 | 阶段6 | 中转仓作业：打包任务 + 核对 | 按匹配订单聚合采购单生成打包任务；核对采购单 vs 店铺订单差异；PickTask 扩展 channelCode/labelId/shipmentId | 6.6 | 1.5d | ⬜ |
 | 6.8 | 阶段6 | 跨境面单生成（中转仓出单） | 选渠道→承运商建单 + LabelService 出 PDF/ZPL；面单关联店铺订单与平台；Shipment 加 purchaseOrderId | 3.9/1.5/6.7 | 1d | ⬜ |
 | 6.9 | 阶段6 | 出库闭环 + 物流同步 | 出库扫码→Shipment 建单/fulfill→承运商回传→TrackingEvent→正式跨境物流；状态机贯通采购单/订单 | 6.8/1.6 | 1d | ⬜ |
@@ -592,3 +592,14 @@
 - **测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（310 passed / 47 suites）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
 - **提交**：随本批统一提交（6.5 后端/前端/进度生成器/进度表/检查点）。
 - **下一步（次日接力）**：6.6 扫码到货入库端点（POST /transfer/scan：解析采购单→匹配订单→到货登记，Asn 扩展 purchaseOrderId/scanSource/receivedItems）。
+
+### 进度更新 · 2026-10-25（续跑 · 6.6 扫码到货入库端点）
+- **完成（✅）**：
+  - **6.6 扫码到货入库端点（阶段6 详细设计）** —— `TransferService.scan(tenantId, dto)`：① 校验中转仓归属（租户隔离，防越权）；② 按扫码类型解析采购单（`trackingNo` 直查 / `purchaseNo` 按 id / `barcode` 经 `PurchaseOrderItem.skuId` 反查父采购单，均限定租户）；③ 生成收货单 `Asn`（status=received + 行项快照 `receivedItems` + `purchaseOrderId` + `scanSource`）；④ 推进采购单状态机首跳 `pending→arrived`；⑤ 复用 6.4 `PurchaseOrderService.autoMatch` 关联店铺订单；返回 ASN/采购单快照 + matched/advanced 标记。修复 `TransferService` 注入 `PrismaClient`（基类）的隐性运行时 DI 缺陷，改为注入全局 `PrismaService`（与全仓一致，已 `prisma generate` 刷新 `Asn` 新字段）。
+  - `TransferController` 新增 `POST /transfer/scan`（租户隔离 + 全局 `ValidationPipe` 校验 `ScanTransferDto`）；`TransferModule` 接入 `PurchaseOrderModule` 复用自动匹配；`transfer.dto.ts` 新增 `ScanType` / `ScanTransferDto`（class-validator）。`transfer.service.spec.ts` 新增 6 例（快递单号解析+推进+自动匹配 / 自动匹配回填 orderId / 重复扫码不重复推进 / SKU 条码反查 / 中转仓越权 / 无法解析采购单）。
+  - **前端可视化（中转仓作业 扫码到货）**：`TransferView`（/transfer）新增「扫码到货」对话框（中转仓选择 + 扫码类型 radio + 扫码值输入 + 演示数据一键填充）+ 到货结果卡（ASN 编号 / 采购单 / 状态 / 行项数 / 推进·匹配徽章），提交后刷新看板使状态推进即时可见；`transfer.ts` 增 `scan` 接口与 `ScanTransferDto`/`ScanTransferResult` 类型，`mock-data.ts` 同口径内存实现 `doScanTransfer`（含 ASN 行项快照 + 状态机推进 + 6.4 自动匹配）+ mockRouter `POST /transfer/scan`，演示与正式双路通。
+- **进行中（🔵）**：无（本批 6.6 完成）。
+- **受阻**：无。
+- **测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（316 passed / 47 suites）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
+- **提交**：随本批统一提交（6.6 后端/前端/进度生成器/进度表/检查点）。
+- **下一步（次日接力）**：6.7 中转仓作业：打包任务 + 核对（按匹配订单聚合采购单生成打包任务；核对采购单 vs 店铺订单差异；PickTask 扩展 channelCode/labelId/shipmentId）。

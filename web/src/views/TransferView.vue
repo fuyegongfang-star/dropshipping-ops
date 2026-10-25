@@ -7,6 +7,9 @@
       accent="violet"
     >
       <template #actions>
+        <el-button type="primary" @click="openScan">
+          <AppIcon name="package" :size="15" class="btn-ico" />扫码到货
+        </el-button>
         <el-button @click="load">
           <AppIcon name="refresh" :size="15" class="btn-ico" />刷新看板
         </el-button>
@@ -95,13 +98,79 @@
         </el-card>
       </el-col>
     </el-row>
+
+    <!-- 扫码到货入库（6.6） -->
+    <el-dialog v-model="scanVisible" title="扫码到货入库" width="560px" :close-on-click-modal="false">
+      <el-form label-width="92px" class="scan-form">
+        <el-form-item label="目标中转仓">
+          <el-select v-model="scanForm.warehouseId" placeholder="选择中转仓" style="width: 100%">
+            <el-option v-for="w in whs" :key="w.id" :label="`${w.name}（${w.region || '—'}）`" :value="w.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="扫码类型">
+          <el-radio-group v-model="scanForm.scanType">
+            <el-radio value="trackingNo">快递单号</el-radio>
+            <el-radio value="barcode">SKU 条码</el-radio>
+            <el-radio value="purchaseNo">采购单号</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="扫码值">
+          <el-input v-model="scanForm.scanValue" :placeholder="scanPlaceholder" clearable />
+        </el-form-item>
+        <el-form-item>
+          <div class="tips">
+            <span class="muted">演示数据：</span>
+            <el-tag size="small" class="tip-tag" @click="fillDemo('trackingNo')">快递单号 SF1234567890</el-tag>
+            <el-tag size="small" class="tip-tag" @click="fillDemo('barcode')">条码 690000000001</el-tag>
+            <el-tag size="small" class="tip-tag" @click="fillDemo('purchaseNo')">采购单号 po_demo_1</el-tag>
+          </div>
+        </el-form-item>
+      </el-form>
+
+      <div v-if="scanResult" class="scan-result">
+        <div class="sr-head">
+          <AppIcon name="check" :size="16" class="sr-ico" />
+          <span>到货登记成功</span>
+          <span class="sr-id mono">ASN {{ scanResult.asn.id }}</span>
+        </div>
+        <div class="sr-grid">
+          <div class="sr-cell">
+            <span class="sr-k">采购单号</span><span class="sr-v mono">{{ scanResult.purchaseOrder.trackingNo }}</span>
+          </div>
+          <div class="sr-cell">
+            <span class="sr-k">物流公司</span><span class="sr-v">{{ scanResult.purchaseOrder.carrier }}</span>
+          </div>
+          <div class="sr-cell">
+            <span class="sr-k">当前状态</span>
+            <span class="sr-v"><span class="tag-soft" :class="statusClass(scanResult.purchaseOrder.status)">{{ statusLabel(scanResult.purchaseOrder.status) }}</span></span>
+          </div>
+          <div class="sr-cell">
+            <span class="sr-k">到货行项</span><span class="sr-v">{{ scanResult.asn.receivedItemCount }} 项</span>
+          </div>
+        </div>
+        <div class="sr-badges">
+          <span class="tag-soft" :class="scanResult.advanced ? 'tag-blue' : 'tag-gray'">
+            状态推进 {{ scanResult.advanced ? '已执行' : '无变化' }}
+          </span>
+          <span class="tag-soft" :class="scanResult.matched ? 'tag-green' : 'tag-gray'">
+            订单匹配 {{ scanResult.matched ? '已关联' : '未匹配' }}
+          </span>
+          <span v-if="scanResult.purchaseOrder.orderId" class="mono muted">关联订单 {{ scanResult.purchaseOrder.orderId }}</span>
+        </div>
+      </div>
+
+      <template #footer>
+        <el-button @click="scanVisible = false">关闭</el-button>
+        <el-button type="primary" :loading="scanning" @click="submitScan">确认到货</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { transferApi, type TransferBoard, type TransferWarehouse, type TransferBoardPo } from '@/api/transfer'
+import { transferApi, type TransferBoard, type TransferWarehouse, type TransferBoardPo, type ScanTransferDto, type ScanTransferResult } from '@/api/transfer'
 import PageHeader from '@/components/PageHeader.vue'
 import AppIcon from '@/components/AppIcon.vue'
 
@@ -151,6 +220,62 @@ function orderStatusLabel(s: string): string {
 function itemSummary(row: TransferBoardPo): string {
   if (!row.items || !row.items.length) return '—'
   return row.items.map((i) => `${i.productName}×${i.quantity}`).join('，')
+}
+
+// ===== 6.6 扫码到货入库 =====
+const scanVisible = ref(false)
+const scanning = ref(false)
+const scanForm = ref<ScanTransferDto>({ warehouseId: '', scanValue: '', scanType: 'trackingNo' })
+const scanResult = ref<ScanTransferResult | null>(null)
+
+const scanPlaceholder = computed(() => {
+  switch (scanForm.value.scanType) {
+    case 'trackingNo':
+      return '输入采购快递单号，如 SF1234567890'
+    case 'barcode':
+      return '输入 SKU 条码，如 690000000001'
+    case 'purchaseNo':
+      return '输入采购单号，如 po_demo_1'
+    default:
+      return ''
+  }
+})
+
+function openScan(): void {
+  scanForm.value = {
+    warehouseId: whs.value[0]?.id ?? '',
+    scanValue: '',
+    scanType: 'trackingNo',
+  }
+  scanResult.value = null
+  scanVisible.value = true
+}
+
+function fillDemo(type: ScanTransferDto['scanType']): void {
+  scanForm.value.scanType = type
+  scanForm.value.scanValue = type === 'trackingNo' ? 'SF1234567890' : type === 'barcode' ? '690000000001' : 'po_demo_1'
+}
+
+async function submitScan(): Promise<void> {
+  if (!scanForm.value.warehouseId) {
+    ElMessage.warning('请选择目标中转仓')
+    return
+  }
+  if (!scanForm.value.scanValue.trim()) {
+    ElMessage.warning('请输入扫码值')
+    return
+  }
+  scanning.value = true
+  try {
+    const res = await transferApi.scan({ ...scanForm.value })
+    scanResult.value = res
+    ElMessage.success(res.message)
+    await load() // 刷新看板：采购单状态推进即时可见
+  } catch (e) {
+    ElMessage.error('扫码到货失败：' + (e as Error).message)
+  } finally {
+    scanning.value = false
+  }
 }
 
 async function load(): Promise<void> {
@@ -284,5 +409,70 @@ onMounted(load)
   flex-wrap: wrap;
   gap: 4px;
   font-size: 13px;
+}
+.scan-form {
+  margin-top: 4px;
+}
+.tips {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tip-tag {
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+.tip-tag:hover {
+  transform: translateY(-1px);
+}
+.scan-result {
+  margin-top: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-soft);
+  padding: 14px 16px;
+}
+.sr-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--ink-900);
+  margin-bottom: 12px;
+}
+.sr-ico {
+  color: #16a34a;
+}
+.sr-id {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--ink-500);
+}
+.sr-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 16px;
+  margin-bottom: 12px;
+}
+.sr-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sr-k {
+  font-size: 12px;
+  color: var(--ink-500);
+}
+.sr-v {
+  font-size: 14px;
+  color: var(--ink-800);
+  font-weight: 500;
+}
+.sr-badges {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 </style>
