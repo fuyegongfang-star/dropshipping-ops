@@ -30,11 +30,12 @@ const STATUS_TRANSITIONS: Record<PurchaseOrderStatus, PurchaseOrderStatus[]> = {
 export class PurchaseOrderService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** 采购单列表（租户隔离），支持按 status / shopId 过滤。 */
-  list(tenantId: string, filters: { status?: string; shopId?: string } = {}) {
+  /** 采购单列表（租户隔离），支持按 status / shopId / orderId 过滤。 */
+  list(tenantId: string, filters: { status?: string; shopId?: string; orderId?: string } = {}) {
     const where: Prisma.PurchaseOrderWhereInput = { tenantId }
     if (filters.status) where.status = filters.status
     if (filters.shopId) where.shopId = filters.shopId
+    if (filters.orderId) where.orderId = filters.orderId
     return this.prisma.purchaseOrder.findMany({
       where,
       include: { items: true },
@@ -67,6 +68,7 @@ export class PurchaseOrderService {
         trackingNo: dto.trackingNo,
         carrier: dto.carrier,
         platformOrderNo: dto.platformOrderNo ?? null,
+        recipientName: dto.recipientName ?? null,
         purchaseUrl: dto.purchaseUrl ?? null,
         productImages: (dto.productImages ?? []) as unknown as Prisma.InputJsonValue,
         remark: dto.remark ?? null,
@@ -104,6 +106,119 @@ export class PurchaseOrderService {
     return this.prisma.purchaseOrder.update({
       where: { id },
       data: { status: target },
+      include: { items: true },
+    })
+  }
+
+  // ===== 6.4 采购单↔店铺订单 匹配 / 关联 =====
+  // 关联（orderId）与状态机解耦：关联只是建立归属，物理进度（arrived→matched→...）仍由 updateStatus 推进。
+
+  /** 按 orderId 拉取已关联该店铺订单的采购单（订单详情展示用）。 */
+  listByOrder(tenantId: string, orderId: string) {
+    return this.prisma.purchaseOrder.findMany({
+      where: { tenantId, orderId },
+      include: { items: true },
+      orderBy: { createdAt: 'desc' },
+    })
+  }
+
+  /** 候选店铺订单 + 命中理由（平台订单号 / 收件人 / SKU 重叠），按匹配强度降序。 */
+  async findCandidates(tenantId: string, poId: string) {
+    const po = await this.getById(tenantId, poId)
+    const poSkuIds = po.items.map((i) => i.skuId).filter(Boolean) as string[]
+
+    // Order 与 OrderItem 在 schema 中无显式 relation（订单模块按 orderId 直接查），分批取行项。
+    const orders = await this.prisma.order.findMany({ where: { tenantId } })
+    const orderIds = orders.map((o) => o.id)
+    const allItems = orderIds.length
+      ? await this.prisma.orderItem.findMany({ where: { orderId: { in: orderIds } } })
+      : []
+    const itemsByOrder = new Map<string, { skuId: string | null }[]>()
+    for (const it of allItems) {
+      if (!itemsByOrder.has(it.orderId)) itemsByOrder.set(it.orderId, [])
+      itemsByOrder.get(it.orderId)!.push(it)
+    }
+
+    const weight = (reasons: string[]): number =>
+      (reasons.includes('平台订单号一致') ? 100 : 0) +
+      (reasons.includes('收件人一致') ? 50 : 0) +
+      reasons.filter((r) => r.startsWith('SKU')).length
+
+    const candidates = orders
+      .map((order) => {
+        const reasons: string[] = []
+        if (po.platformOrderNo && order.platformOrderNo === po.platformOrderNo) {
+          reasons.push('平台订单号一致')
+        }
+        const recvName = (order.recipient as { name?: string } | null)?.name
+        if (po.recipientName && recvName && recvName === po.recipientName) {
+          reasons.push('收件人一致')
+        }
+        const orderSkuIds = (itemsByOrder.get(order.id) ?? [])
+          .map((i) => i.skuId)
+          .filter(Boolean) as string[]
+        const shared = poSkuIds.filter((s) => orderSkuIds.includes(s))
+        if (shared.length) reasons.push(`SKU 重叠 ${shared.length} 个`)
+        return {
+          orderId: order.id,
+          platformOrderNo: order.platformOrderNo,
+          status: order.status,
+          reasons,
+        }
+      })
+      .filter((c) => c.reasons.length > 0)
+      .sort((a, b) => weight(b.reasons) - weight(a.reasons))
+      .slice(0, 10)
+
+    return candidates
+  }
+
+  /** 自动匹配：在同租户候选订单中取最强命中并关联；已关联则幂等返回。 */
+  async autoMatch(tenantId: string, poId: string) {
+    const po = await this.getById(tenantId, poId)
+    if (po.orderId) {
+      return { linked: true, orderId: po.orderId, reasons: [] as string[], message: '采购单已关联店铺订单' }
+    }
+    const candidates = await this.findCandidates(tenantId, poId)
+    if (!candidates.length) {
+      return { linked: false, orderId: null, reasons: [] as string[], message: '未找到可匹配的店铺订单（平台单号/收件人/SKU 均不匹配）' }
+    }
+    const best = candidates[0]
+    const updated = await this.prisma.purchaseOrder.update({
+      where: { id: poId },
+      data: { orderId: best.orderId },
+      include: { items: true },
+    })
+    return {
+      linked: true,
+      orderId: best.orderId,
+      reasons: best.reasons,
+      message: `已自动关联店铺订单 ${best.platformOrderNo}`,
+      purchaseOrder: updated,
+    }
+  }
+
+  /** 手动关联：校验目标订单存在且同租户（防 IDOR），关联后返回。 */
+  async link(tenantId: string, poId: string, orderId: string) {
+    await this.getById(tenantId, poId) // 租户隔离校验（跨租户/缺失抛 404）
+    const order = await this.prisma.order.findFirst({ where: { id: orderId, tenantId } })
+    if (!order) {
+      throw new BusinessException('ORDER_NOT_FOUND', '目标店铺订单不存在或无权限', HttpStatus.NOT_FOUND)
+    }
+    return this.prisma.purchaseOrder.update({
+      where: { id: poId },
+      data: { orderId },
+      include: { items: true },
+    })
+  }
+
+  /** 解除关联（清空 orderId）。 */
+  async unlink(tenantId: string, poId: string) {
+    const po = await this.getById(tenantId, poId)
+    if (!po.orderId) return po
+    return this.prisma.purchaseOrder.update({
+      where: { id: poId },
+      data: { orderId: null },
       include: { items: true },
     })
   }

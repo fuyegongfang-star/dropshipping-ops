@@ -2,8 +2,8 @@
  * 开发进度数据 —— **本文件由 scripts/gen-progress.cjs 自动生成，请勿手工修改。**
  *
  * 生成命令：`npm run progress:gen`（读取 dev-schedule.md 的任务表）
- * 生成时间：2026-10-24T15:34:24.410Z
- * 源码提交：7ba67f5
+ * 生成时间：2026-10-25T15:19:14.079Z
+ * 源码提交：15774e8
  *
  * 作用：让「演示模式」与「正式模式」都能在网页上直接看到开发进度与最近交付的能力，
  * 夜间自动开发每完成一批任务后重新生成并提交，次日刷新页面即可看到新内容。
@@ -42,10 +42,10 @@ export interface DevStats {
 }
 
 /** 数据生成时间（ISO 字符串） */
-export const DEV_PROGRESS_GENERATED_AT = "2026-10-24T15:34:25.490Z"
+export const DEV_PROGRESS_GENERATED_AT = "2026-10-25T15:19:14.672Z"
 
 /** 数据对应的源码提交号（短 SHA） */
-export const DEV_PROGRESS_COMMIT = "7ba67f5"
+export const DEV_PROGRESS_COMMIT = "15774e8"
 
 /** 全部任务（按 dev-schedule.md 顺序） */
 export const DEV_TASKS: DevTask[] = [
@@ -536,7 +536,7 @@ export const DEV_TASKS: DevTask[] = [
     "deliverable": "自动匹配（按平台订单号/收件人/SKU）+ 手动关联；订单详情可见采购单",
     "deps": "6.2/1.3",
     "estimate": "1d",
-    "status": "todo",
+    "status": "done",
     "route": "/catalog"
   },
   {
@@ -594,16 +594,16 @@ export const DEV_TASKS: DevTask[] = [
 /** 统计汇总 */
 export const DEV_STATS: DevStats = {
   "total": 54,
-  "done": 47,
+  "done": 48,
   "doing": 0,
-  "todo": 6,
+  "todo": 5,
   "blocked": 0,
   "skipped": 1,
-  "percent": 87
+  "percent": 88.9
 }
 
 /** 阶段列表（去重，按出现顺序） */
 export const DEV_PHASES = ["阶段0","阶段1","阶段2","阶段3","阶段4","阶段5","阶段6"]
 
 /** 最近交付的任务号（已完成中序号最大的若干个），用于「最近更新」高亮 */
-export const DEV_RECENT_IDS = ["5.4","6.1","6.2","6.3"]
+export const DEV_RECENT_IDS = ["6.1","6.2","6.3","6.4"]

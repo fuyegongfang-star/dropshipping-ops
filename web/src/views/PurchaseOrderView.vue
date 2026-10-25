@@ -79,6 +79,15 @@
         <el-table-column label="创建时间" min-width="165">
           <template #default="{ row }"><span class="muted">{{ fmt(row.createdAt) }}</span></template>
         </el-table-column>
+        <el-table-column label="关联订单" min-width="140">
+          <template #default="{ row }">
+            <span v-if="row.orderId" class="linked">
+              <AppIcon name="link" :size="13" /> 已关联
+            </span>
+            <span v-else class="muted">未关联</span>
+            <el-button size="small" text type="primary" @click="openMatch(row)">匹配/关联</el-button>
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="120">
           <template #default="{ row }">
             <el-button size="small" type="primary" plain :disabled="!nextStatus(row.status)" @click="advance(row)">
@@ -113,6 +122,11 @@
           <el-col :span="12">
             <el-form-item label="平台订单号">
               <el-input v-model="form.platformOrderNo" placeholder="用于 6.4 匹配店铺订单" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="收件人姓名">
+              <el-input v-model="form.recipientName" placeholder="用于 6.4 按收件人匹配" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -161,13 +175,56 @@
         <el-button type="primary" :loading="creating" @click="submitCreate">提交采购单</el-button>
       </template>
     </el-dialog>
+
+    <!-- 匹配 / 关联店铺订单对话框（任务 6.4） -->
+    <el-dialog v-model="matchVisible" title="匹配 / 关联店铺订单" width="620px">
+      <template v-if="matchTarget">
+        <el-descriptions :column="2" border size="small" class="mb">
+          <el-descriptions-item label="快递单号"><span class="mono">{{ matchTarget.trackingNo }}</span></el-descriptions-item>
+          <el-descriptions-item label="当前状态">{{ statusLabel(matchTarget.status) }}</el-descriptions-item>
+          <el-descriptions-item label="平台订单号">{{ matchTarget.platformOrderNo || '—' }}</el-descriptions-item>
+          <el-descriptions-item label="收件人">{{ matchTarget.recipientName || '—' }}</el-descriptions-item>
+          <el-descriptions-item label="已关联" :span="2">
+            <span v-if="matchTarget.orderId" class="linked"><AppIcon name="link" :size="13" /> {{ matchTarget.orderId }}</span>
+            <span v-else class="muted">未关联</span>
+          </el-descriptions-item>
+        </el-descriptions>
+
+        <div class="match-head">
+          <span class="section-title">候选店铺订单（按匹配强度）</span>
+          <el-button size="small" type="primary" :loading="matching" @click="autoMatch">
+            <AppIcon name="magic" :size="14" class="btn-ico" />一键自动匹配
+          </el-button>
+        </div>
+
+        <div v-loading="matching" class="cands">
+          <div v-if="!candidates.length" class="app-empty small">
+            <span class="app-empty-text">暂无候选（平台单号 / 收件人 / SKU 均不匹配）</span>
+          </div>
+          <div v-for="c in candidates" :key="c.orderId" class="cand" :class="{ active: linkOrderId === c.orderId }" @click="linkOrderId = c.orderId">
+            <div class="cand-top">
+              <span class="mono">{{ c.platformOrderNo }}</span>
+              <span class="tag-soft" :class="statusClass(c.status)">{{ statusLabel(c.status) }}</span>
+            </div>
+            <div class="cand-reasons">
+              <span v-for="r in c.reasons" :key="r" class="reason">{{ r }}</span>
+            </div>
+          </div>
+        </div>
+      </template>
+      <template #footer>
+        <el-button v-if="matchTarget?.orderId" text type="danger" @click="unlink">解除关联</el-button>
+        <el-button @click="matchVisible = false">关闭</el-button>
+        <el-button type="success" :disabled="!linkOrderId" @click="manualLink">关联所选订单</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { purchaseOrderApi, type PurchaseOrder, type PurchaseOrderStatus } from '@/api/purchase-order'
+import { purchaseOrderApi, type PurchaseOrder, type PurchaseOrderStatus, type PurchaseOrderCandidate } from '@/api/purchase-order'
 import { catalogApi, type Sku } from '@/api/catalog'
 import { money } from '@/locales'
 import PageHeader from '@/components/PageHeader.vue'
@@ -203,16 +260,24 @@ const statusFilter = ref<string>('')
 const createVisible = ref(false)
 const creating = ref(false)
 const skuOptions = ref<Sku[]>([])
+// 6.4 匹配 / 关联
+const matchVisible = ref(false)
+const matching = ref(false)
+const matchTarget = ref<PurchaseOrder | null>(null)
+const candidates = ref<PurchaseOrderCandidate[]>([])
+const linkOrderId = ref<string>('')
+
 const form = reactive<{
   trackingNo: string
   carrier: string
   platformOrderNo: string
+  recipientName: string
   purchaseUrl: string
   productImages: string[]
   remark: string
   items: { skuId: string; productName: string; quantity: number; unitPrice?: number }[]
 }>({
-  trackingNo: '', carrier: '', platformOrderNo: '', purchaseUrl: '', productImages: [], remark: '',
+  trackingNo: '', carrier: '', platformOrderNo: '', recipientName: '', purchaseUrl: '', productImages: [], remark: '',
   items: [{ skuId: '', productName: '', quantity: 1, unitPrice: undefined }],
 })
 
@@ -307,6 +372,62 @@ async function advance(row: PurchaseOrder): Promise<void> {
     ElMessage.success(`已推进至「${statusLabel(target)}」`)
   } catch (e) {
     ElMessage.error('推进失败：' + (e as Error).message)
+  }
+}
+
+// ===== 6.4 匹配 / 关联店铺订单 =====
+// matchTarget 直接持有 orders 中的行对象引用，改动其 orderId 会同步刷新列表「关联订单」列。
+async function openMatch(row: PurchaseOrder): Promise<void> {
+  matchTarget.value = row
+  linkOrderId.value = row.orderId || ''
+  matchVisible.value = true
+  matching.value = true
+  try {
+    candidates.value = await purchaseOrderApi.candidates(row.id)
+  } catch (e) {
+    candidates.value = []
+    ElMessage.error('获取候选失败：' + (e as Error).message)
+  } finally {
+    matching.value = false
+  }
+}
+
+async function autoMatch(): Promise<void> {
+  if (!matchTarget.value) return
+  matching.value = true
+  try {
+    const r = await purchaseOrderApi.autoMatch(matchTarget.value.id)
+    ElMessage.success(r.message)
+    matchTarget.value.orderId = r.orderId // 同步列表列
+    linkOrderId.value = r.orderId || ''
+    candidates.value = await purchaseOrderApi.candidates(matchTarget.value.id)
+  } catch (e) {
+    ElMessage.error('自动匹配失败：' + (e as Error).message)
+  } finally {
+    matching.value = false
+  }
+}
+
+async function manualLink(): Promise<void> {
+  if (!matchTarget.value || !linkOrderId.value) return
+  try {
+    const po = await purchaseOrderApi.link(matchTarget.value.id, linkOrderId.value)
+    matchTarget.value.orderId = po.orderId // 同步列表列
+    ElMessage.success('已关联店铺订单')
+  } catch (e) {
+    ElMessage.error('关联失败：' + (e as Error).message)
+  }
+}
+
+async function unlink(): Promise<void> {
+  if (!matchTarget.value) return
+  try {
+    await purchaseOrderApi.unlink(matchTarget.value.id)
+    matchTarget.value.orderId = null // 同步列表列
+    linkOrderId.value = ''
+    ElMessage.success('已解除关联')
+  } catch (e) {
+    ElMessage.error('解除失败：' + (e as Error).message)
   }
 }
 

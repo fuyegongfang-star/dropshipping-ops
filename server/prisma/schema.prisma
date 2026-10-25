@@ -601,6 +601,7 @@ model PurchaseOrder {
   trackingNo     String // 采购/供应商快递单号（6.6 扫码入库主键）
   carrier        String // 物流公司（采购侧承运方，非末端跨境承运商）
   platformOrderNo String? // 平台订单号（6.4 精确匹配 Order.platformOrderNo）
+  recipientName  String? // 收件人姓名（6.4 与 Order.recipient.name 比对匹配）
   purchaseUrl    String? // 采购链接（货源，便于溯源）
   productImages  Json // 产品图 URL 数组 String[]（演示态压缩后入库，§23 规范）
   remark         String? // 备注

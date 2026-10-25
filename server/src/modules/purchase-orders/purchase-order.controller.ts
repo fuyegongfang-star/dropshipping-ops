@@ -13,6 +13,7 @@ import { TenantId } from '../../common/tenant/tenant.decorator'
 import { PurchaseOrderService } from './purchase-order.service'
 import {
   CreatePurchaseOrderDto,
+  LinkPurchaseOrderDto,
   UpdatePurchaseOrderStatusDto,
 } from './dto/purchase-order.dto'
 
@@ -20,17 +21,30 @@ import {
 export class PurchaseOrderController {
   constructor(private readonly svc: PurchaseOrderService) {}
 
-  /** 采购单列表（租户隔离），可按 status / shopId 过滤 */
+  /** 采购单列表（租户隔离），可按 status / shopId / orderId 过滤 */
   @Get()
   async list(
     @TenantId() tenantId: string,
     @Query('status') status?: string,
     @Query('shopId') shopId?: string,
+    @Query('orderId') orderId?: string,
   ): Promise<ApiResponse<unknown>> {
     if (!tenantId) {
       throw new BusinessException('TENANT_REQUIRED', '缺少租户上下文', HttpStatus.BAD_REQUEST)
     }
-    return ok(await this.svc.list(tenantId, { status, shopId }))
+    return ok(await this.svc.list(tenantId, { status, shopId, orderId }))
+  }
+
+  /** 候选店铺订单 + 命中理由（6.4 匹配预览） */
+  @Get(':id/candidates')
+  async candidates(
+    @TenantId() tenantId: string,
+    @Param('id') id: string,
+  ): Promise<ApiResponse<unknown>> {
+    if (!tenantId) {
+      throw new BusinessException('TENANT_REQUIRED', '缺少租户上下文', HttpStatus.BAD_REQUEST)
+    }
+    return ok(await this.svc.findCandidates(tenantId, id))
   }
 
   /** 采购单详情（租户隔离） */
@@ -55,6 +69,43 @@ export class PurchaseOrderController {
       throw new BusinessException('TENANT_REQUIRED', '缺少租户上下文', HttpStatus.BAD_REQUEST)
     }
     return ok(await this.svc.create(tenantId, dto), '采购单已创建')
+  }
+
+  /** 6.4 自动匹配：取最强命中候选并关联店铺订单 */
+  @Post(':id/auto-match')
+  async autoMatch(
+    @TenantId() tenantId: string,
+    @Param('id') id: string,
+  ): Promise<ApiResponse<unknown>> {
+    if (!tenantId) {
+      throw new BusinessException('TENANT_REQUIRED', '缺少租户上下文', HttpStatus.BAD_REQUEST)
+    }
+    return ok(await this.svc.autoMatch(tenantId, id))
+  }
+
+  /** 6.4 手动关联店铺订单 */
+  @Post(':id/link')
+  async link(
+    @TenantId() tenantId: string,
+    @Param('id') id: string,
+    @Body() dto: LinkPurchaseOrderDto,
+  ): Promise<ApiResponse<unknown>> {
+    if (!tenantId) {
+      throw new BusinessException('TENANT_REQUIRED', '缺少租户上下文', HttpStatus.BAD_REQUEST)
+    }
+    return ok(await this.svc.link(tenantId, id, dto.orderId), '已关联店铺订单')
+  }
+
+  /** 6.4 解除关联 */
+  @Post(':id/unlink')
+  async unlink(
+    @TenantId() tenantId: string,
+    @Param('id') id: string,
+  ): Promise<ApiResponse<unknown>> {
+    if (!tenantId) {
+      throw new BusinessException('TENANT_REQUIRED', '缺少租户上下文', HttpStatus.BAD_REQUEST)
+    }
+    return ok(await this.svc.unlink(tenantId, id), '已解除关联')
   }
 
   /** 推进采购单状态（校验状态机，§6） */

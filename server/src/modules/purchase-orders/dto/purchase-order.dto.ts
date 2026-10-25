@@ -76,6 +76,11 @@ export class CreatePurchaseOrderDto {
   platformOrderNo?: string // 平台订单号（6.4 精确匹配 Order.platformOrderNo）
 
   @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  recipientName?: string // 收件人姓名（6.4 与 Order.recipient.name 比对匹配）
+
+  @IsOptional()
   @IsUrl({ require_tld: false })
   purchaseUrl?: string // 采购链接（货源溯源）
 
@@ -100,4 +105,11 @@ export class UpdatePurchaseOrderStatusDto {
   @IsString()
   @MaxLength(20)
   status: string // 目标状态（需在 §6 状态机合法转移内，由服务层校验）
+}
+
+/** 手动关联店铺订单请求体（6.4） */
+export class LinkPurchaseOrderDto {
+  @IsString()
+  @MaxLength(40)
+  orderId: string // 目标店铺订单 id（同租户校验，防 IDOR）
 }

@@ -22,6 +22,7 @@ export interface PurchaseOrder {
   trackingNo: string
   carrier: string
   platformOrderNo?: string | null
+  recipientName?: string | null
   purchaseUrl?: string | null
   productImages: string[]
   remark?: string | null
@@ -29,6 +30,14 @@ export interface PurchaseOrder {
   createdAt: string
   updatedAt: string
   items: PurchaseOrderItem[]
+}
+
+/** 候选店铺订单 + 命中理由（6.4 匹配预览） */
+export interface PurchaseOrderCandidate {
+  orderId: string
+  platformOrderNo: string
+  status: string
+  reasons: string[]
 }
 
 /** 新增采购单行项（前端草稿） */
@@ -44,6 +53,7 @@ export interface CreatePurchaseOrderPayload {
   trackingNo: string
   carrier: string
   platformOrderNo?: string
+  recipientName?: string
   purchaseUrl?: string
   productImages?: string[]
   remark?: string
@@ -53,14 +63,26 @@ export interface CreatePurchaseOrderPayload {
 }
 
 export const purchaseOrderApi = {
-  list: (params?: { status?: string; shopId?: string }) => {
+  list: (params?: { status?: string; shopId?: string; orderId?: string }) => {
     const q = new URLSearchParams()
     if (params?.status) q.set('status', params.status)
     if (params?.shopId) q.set('shopId', params.shopId)
+    if (params?.orderId) q.set('orderId', params.orderId)
     const qs = q.toString()
     return http.get<PurchaseOrder[]>(`/purchase-orders${qs ? '?' + qs : ''}`)
   },
   create: (payload: CreatePurchaseOrderPayload) => http.post<PurchaseOrder>('/purchase-orders', payload),
   updateStatus: (id: string, status: PurchaseOrderStatus) =>
     http.patch<PurchaseOrder>(`/purchase-orders/${id}/status`, { status }),
+  // 6.4 匹配 / 关联
+  candidates: (id: string) =>
+    http.get<PurchaseOrderCandidate[]>(`/purchase-orders/${id}/candidates`),
+  autoMatch: (id: string) =>
+    http.post<{ linked: boolean; orderId: string | null; reasons: string[]; message: string }>(
+      `/purchase-orders/${id}/auto-match`,
+      {},
+    ),
+  link: (id: string, orderId: string) =>
+    http.post<PurchaseOrder>(`/purchase-orders/${id}/link`, { orderId }),
+  unlink: (id: string) => http.post<PurchaseOrder>(`/purchase-orders/${id}/unlink`, {}),
 }

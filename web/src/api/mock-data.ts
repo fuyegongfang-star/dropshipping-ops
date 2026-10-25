@@ -61,6 +61,7 @@ export interface MockPurchaseOrder {
   trackingNo: string
   carrier: string
   platformOrderNo: string | null
+  recipientName: string | null
   purchaseUrl: string | null
   productImages: string[]
   remark: string | null
@@ -161,8 +162,8 @@ const shops: MockShop[] = [
 const purchaseOrders: MockPurchaseOrder[] = [
   {
     id: 'po_demo_1', tenantId: TENANT_ID, shopId: 's_shopify', orderId: null, trackingNo: 'SF1234567890',
-    carrier: '顺丰速运', platformOrderNo: null, purchaseUrl: 'https://item.demo.com/p/earbud',
-    productImages: ['https://img.demo.com/earbud.jpg'], remark: '首批蓝牙耳机采购', status: 'pending',
+    carrier: '顺丰速运', platformOrderNo: 'SO-10001', recipientName: 'John Doe', purchaseUrl: 'https://item.demo.com/p/earbud',
+    productImages: ['https://img.demo.com/earbud.jpg'], remark: '首批蓝牙耳机采购（与 SO-10001 自动命中）', status: 'pending',
     createdAt: '2026-10-23T09:00:00.000Z', updatedAt: '2026-10-23T09:00:00.000Z',
     items: [
       { id: 'poi_1', purchaseOrderId: 'po_demo_1', skuId: 'sk1', productName: '无线蓝牙耳机 Pro', quantity: 30, imageUrl: 'https://img.demo.com/earbud.jpg', unitPrice: 68, createdAt: '2026-10-23T09:00:00.000Z' },
@@ -170,7 +171,7 @@ const purchaseOrders: MockPurchaseOrder[] = [
   },
   {
     id: 'po_demo_2', tenantId: TENANT_ID, shopId: 's_amazon', orderId: null, trackingNo: 'YT9876543210',
-    carrier: '圆通速递', platformOrderNo: null, purchaseUrl: 'https://item.demo.com/p/case',
+    carrier: '圆通速递', platformOrderNo: null, recipientName: null, purchaseUrl: 'https://item.demo.com/p/case',
     productImages: ['https://img.demo.com/case.jpg'], remark: null, status: 'arrived',
     createdAt: '2026-10-23T10:30:00.000Z', updatedAt: '2026-10-24T08:00:00.000Z',
     items: [
@@ -2099,6 +2100,7 @@ export function doCreatePurchaseOrder(body: {
   trackingNo: string
   carrier: string
   platformOrderNo?: string
+  recipientName?: string
   purchaseUrl?: string
   productImages?: string[]
   remark?: string
@@ -2116,6 +2118,7 @@ export function doCreatePurchaseOrder(body: {
     trackingNo: body.trackingNo,
     carrier: body.carrier,
     platformOrderNo: body.platformOrderNo ?? null,
+    recipientName: body.recipientName ?? null,
     purchaseUrl: body.purchaseUrl ?? null,
     productImages: body.productImages ?? [],
     remark: body.remark ?? null,
@@ -2156,6 +2159,78 @@ export function doUpdatePurchaseStatus(id: string, status: string): MockPurchase
   return { ...po, items: po.items.map((i) => ({ ...i })) }
 }
 
+/** 取采购单（演示态：demo 租户，不存在返回 null）。 */
+function getPo(id: string): MockPurchaseOrder | undefined {
+  return purchaseOrders.find((p) => p.id === id && p.tenantId === TENANT_ID)
+}
+
+/** 候选店铺订单 + 命中理由（阶段6，任务 6.4）：平台订单号 / 收件人 / SKU 重叠，按强度降序。 */
+export function doCandidates(id: string): { orderId: string; platformOrderNo: string; status: string; reasons: string[] }[] {
+  const po = getPo(id)
+  if (!po) throw new Error('采购单不存在')
+  const poSkuIds = po.items.map((i) => i.skuId).filter(Boolean) as string[]
+  const cands = orders
+    .map((order) => {
+      const reasons: string[] = []
+      if (po.platformOrderNo && order.platformOrderNo === po.platformOrderNo) reasons.push('平台订单号一致')
+      if (po.recipientName && order.recipient?.name && order.recipient.name === po.recipientName)
+        reasons.push('收件人一致')
+      const orderSkuIds = (order.items || [])
+        .map((i) => (i.sku as { id?: string } | null)?.id)
+        .filter(Boolean) as string[]
+      const shared = poSkuIds.filter((s) => orderSkuIds.includes(s))
+      if (shared.length) reasons.push(`SKU 重叠 ${shared.length} 个`)
+      const weight =
+        (reasons.includes('平台订单号一致') ? 100 : 0) +
+        (reasons.includes('收件人一致') ? 50 : 0) +
+        reasons.filter((r) => r.startsWith('SKU')).length
+      return { orderId: order.id, platformOrderNo: order.platformOrderNo, status: order.status, reasons, weight }
+    })
+    .filter((c) => c.reasons.length > 0)
+    .sort((a, b) => b.weight - a.weight)
+    .slice(0, 10)
+    .map(({ orderId, platformOrderNo, status, reasons }) => ({ orderId, platformOrderNo, status, reasons }))
+  return cands
+}
+
+/** 自动匹配：取最强候选并关联（演示态同口径改写内存 orderId）。 */
+export function doAutoMatch(id: string): { linked: boolean; orderId: string | null; reasons: string[]; message: string } {
+  const po = getPo(id)
+  if (!po) throw new Error('采购单不存在')
+  if (po.orderId) return { linked: true, orderId: po.orderId, reasons: [], message: '采购单已关联店铺订单' }
+  const cands = doCandidates(id)
+  if (!cands.length) return { linked: false, orderId: null, reasons: [], message: '未找到可匹配的店铺订单' }
+  const best = cands[0]
+  po.orderId = best.orderId
+  po.updatedAt = NOW()
+  return {
+    linked: true,
+    orderId: best.orderId,
+    reasons: best.reasons,
+    message: `已自动关联店铺订单 ${best.platformOrderNo}`,
+  }
+}
+
+/** 手动关联店铺订单（演示态：校验订单存在）。 */
+export function doLink(id: string, orderId: string): MockPurchaseOrder {
+  const po = getPo(id)
+  if (!po) throw new Error('采购单不存在')
+  const order = orders.find((o) => o.id === orderId)
+  if (!order) throw new Error('目标店铺订单不存在')
+  po.orderId = orderId
+  po.updatedAt = NOW()
+  return { ...po, items: po.items.map((i) => ({ ...i })) }
+}
+
+/** 解除关联（演示态：清空 orderId）。 */
+export function doUnlink(id: string): MockPurchaseOrder {
+  const po = getPo(id)
+  if (!po) throw new Error('采购单不存在')
+  po.orderId = null
+  po.updatedAt = NOW()
+  return { ...po, items: po.items.map((i) => ({ ...i })) }
+}
+
 // ===== 模拟路由分发（演示模式核心）：按 method+url 匹配 doXxx 实现，返回数据体 =====
 // 与真实后端 /api 路由同口径；无匹配时 reject 提示演示模式不支持该请求。
 export function mockRouter(method: string, url: string, body?: unknown): Promise<unknown> {
@@ -2166,6 +2241,9 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     // 采购单列表（阶段6，任务 6.2/6.3）：demo 租户隔离 + status/shopId 过滤。
     if (url === '/purchase-orders' || url.startsWith('/purchase-orders?'))
       return delay().then(() => doListPurchaseOrders(parseQ(url)))
+    // 采购单匹配候选（阶段6，任务 6.4）：按平台单号 / 收件人 / SKU 推断可关联店铺订单
+    const poCand = url.match(/^\/purchase-orders\/([^/]+)\/candidates$/)
+    if (poCand) return delay(140).then(() => doCandidates(poCand[1]))
     // 供应商代发（§21）：档案列表 + 代发单列表（演示态内存）
     if (url === '/suppliers') return delay().then(() => doListSuppliers())
     if (url === '/suppliers/orders') return delay().then(() => doListSupplierOrders())
@@ -2292,6 +2370,13 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     if (url === '/shops') return delay(120).then(() => doCreateShop((body ?? {}) as { platform: string; name: string; authConfig?: Record<string, unknown> | null }))
     // 采购单新增（阶段6，任务 6.2/6.3）：演示态归入 demo 租户（§21 衍生）。
     if (url === '/purchase-orders') return delay(160).then(() => doCreatePurchaseOrder((body ?? {}) as any))
+    // 采购单匹配 / 关联（阶段6，任务 6.4）：自动匹配 / 手动关联 / 解除
+    const poAuto = url.match(/^\/purchase-orders\/([^/]+)\/auto-match$/)
+    if (poAuto) return delay(160).then(() => doAutoMatch(poAuto[1]))
+    const poLink = url.match(/^\/purchase-orders\/([^/]+)\/link$/)
+    if (poLink) return delay(160).then(() => doLink(poLink[1], (body as { orderId: string }).orderId))
+    const poUnlink = url.match(/^\/purchase-orders\/([^/]+)\/unlink$/)
+    if (poUnlink) return delay(160).then(() => doUnlink(poUnlink[1]))
     if (url === '/pricing/compare') return delay(260).then(() => doCompare(body))
     // 履约路由（模式A 自动选渠道，§4/§5）：给定发货上下文 + 策略，自动挑最优渠道
     if (url === '/pricing/route') return delay(280).then(() => doRoute(body))

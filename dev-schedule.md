@@ -77,7 +77,7 @@
 | 6.1 | 阶段6 | 店铺增删绑定 API | 后端 POST /shops、DELETE /shops/:id + 前端渠道中心增删 UI（演示/正式双路） | 1.2 | 0.5d | ✅ |
 | 6.2 | 阶段6 | 采购单实体与 CRUD（后端） | PurchaseOrder + PurchaseOrderItem（快递单号/物流公司/平台订单号/采购链接/产品图URL/数量/SKU/状态）+ service/controller/单测 | 1.3 | 1d | ✅ |
 | 6.3 | 阶段6 | 采购单录入前端页 | 录入界面（快递单号/物流公司/订单号/采购链接/产品图上传/数量/SKU）+ 关联订单展示 + 菜单/路由 + 演示/正式双路 | 6.2/1.7 | 1d | ✅ |
-| 6.4 | 阶段6 | 采购单↔店铺订单 匹配/关联 | 自动匹配（按平台订单号/收件人/SKU）+ 手动关联；订单详情可见采购单 | 6.2/1.3 | 1d | ⬜ |
+| 6.4 | 阶段6 | 采购单↔店铺订单 匹配/关联 | 自动匹配（按平台订单号/收件人/SKU）+ 手动关联；订单详情可见采购单 | 6.2/1.3 | 1d | ✅ |
 | 6.5 | 阶段6 | 中转仓模型 + 看板 | Warehouse.type 加 transfer；中转仓看板（货代侧待作业采购单可见） | 2.2 | 1d | ⬜ |
 | 6.6 | 阶段6 | 扫码到货入库端点 | POST /transfer/scan：快递单号/条码→解析采购单→匹配订单→到货登记；Asn 扩展 purchaseOrderId/scanSource/receivedItems | 6.4/6.5 | 1.5d | ⬜ |
 | 6.7 | 阶段6 | 中转仓作业：打包任务 + 核对 | 按匹配订单聚合采购单生成打包任务；核对采购单 vs 店铺订单差异；PickTask 扩展 channelCode/labelId/shipmentId | 6.6 | 1.5d | ⬜ |
@@ -567,3 +567,17 @@
 - 出库扫码：`POST /transfer/outbound`（shipmentId/purchaseOrderId）→ `Shipment.fulfill` 回写平台 + `TrackingEvent` 追加出库节点 → 流转正式跨境物流轨迹。
 - 状态机贯通：`PurchaseOrder` → `shipped/outbound`；关联 `Order` → `pushed/shipped`；物流轨迹在 `ShipmentTrackingView` 可查。
 - 验收：出库后跨境物流单号与轨迹在演示与正式模式均可见、可追踪。
+
+---
+
+### 进度更新 · 2026-10-25（夜间自动化 23:10 启动 · 6.4 采购单↔店铺订单 匹配/关联）
+- **完成（✅）**：
+  - **6.4 采购单↔店铺订单 匹配/关联** —— 在既有 `PurchaseOrderService` 之上补全匹配闭环（后端半截工程由本批续完并落盘）：
+    - 后端 `PurchaseOrderService`：`findCandidates(tenantId, poId)`（按 平台订单号 / 收件人 / SKU 重叠 三维打分按强度降序）、`autoMatch`（取最强候选并关联，已关联幂等）、`link`（同租户校验防 IDOR）、`unlink`、`listByOrder`（订单详情展示用）；`PurchaseOrderController` 补 `GET :id/candidates`、`POST :id/auto-match`、`POST :id/link`、`POST :id/unlink`，`list` 增 `orderId` 过滤；`PurchaseOrder` schema 扩 `recipientName`（6.4 比对字段），`CreatePurchaseOrderDto` 增 `recipientName`/`LinkPurchaseOrderDto`。
+    - 单测 `purchase-order.service.spec.ts` 新增 9 例（候选排序/空/自动匹配/幂等/无候选/手动关联/跨租户 404/解关联/listByOrder），全仓 **306 passed / 46 suites**。
+  - **前端可视化（业务运营 → 采购单管理 / 订单中心）**：`PurchaseOrderView` 列表增「关联订单」列 + 「匹配/关联」对话框（候选卡片 + 命中理由徽章 + 一键自动匹配 + 手动选单关联/解除）；`OrdersView` 订单详情抽屉新增「关联采购单」区块（展示已关联采购单 + 一键跳采购单管理）；`purchase-order.ts` 增 `candidates/autoMatch/link/unlink` + `PurchaseOrderCandidate` 类型，`mock-data.ts` 同口径内存实现（`doCandidates/doAutoMatch/doLink/doUnlink` + mockRouter 分发），演示与正式双路通。
+- **进行中（🔵）**：无（本批 6.4 完成）。
+- **受阻**：无。
+- **测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**306 passed / 46 suites**）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
+- **提交**：随本批统一提交（6.4 后端/前端/进度生成器/进度表/检查点）。
+- **下一步（次日接力）**：6.5 中转仓模型 + 看板（Warehouse.type 扩 transfer + 中转仓看板页）。

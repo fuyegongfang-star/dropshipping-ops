@@ -155,6 +155,27 @@
           </div>
         </el-card>
 
+        <!-- 6.4 关联采购单：订单详情展示已关联采购单 -->
+        <el-card class="sec">
+          <div class="sec-head">
+            <span class="section-title">关联采购单</span>
+            <el-button size="small" text type="primary" @click="goPurchase">
+              <AppIcon name="purchase" :size="14" class="btn-ico" />去采购单管理
+            </el-button>
+          </div>
+          <div v-if="linkedPos.length" class="po-list">
+            <div v-for="po in linkedPos" :key="po.id" class="po-row">
+              <span class="mono">{{ po.trackingNo }}</span>
+              <span class="muted">{{ po.carrier }}</span>
+              <span class="tag-soft" :class="poStatusClass(po.status)">{{ poStatusLabel(po.status) }}</span>
+              <span class="muted">平台单号 {{ po.platformOrderNo || '—' }}</span>
+            </div>
+          </div>
+          <div v-else class="app-empty small">
+            <span class="app-empty-text">该订单尚无关联采购单 · 可在「采购单管理」按平台单号 / 收件人 / SKU 自动匹配</span>
+          </div>
+        </el-card>
+
         <el-card class="sec">
           <div class="sec-head"><span class="section-title">操作</span></div>
           <div class="actions">
@@ -217,6 +238,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
   ordersApi,
@@ -225,6 +247,7 @@ import {
   REVERSE_TYPES,
   type Order,
 } from '@/api/orders'
+import { purchaseOrderApi, type PurchaseOrder, type PurchaseOrderStatus } from '@/api/purchase-order'
 import PageHeader from '@/components/PageHeader.vue'
 import AppIcon from '@/components/AppIcon.vue'
 
@@ -242,6 +265,9 @@ const transitionTo = ref('')
 const reverseVisible = ref(false)
 const reverseType = ref('')
 const reverseCause = ref('')
+const linkedPos = ref<PurchaseOrder[]>([]) // 6.4 订单详情展示已关联采购单
+
+const router = useRouter()
 
 const allowedNext = computed(() =>
   current.value ? ORDER_ALLOWED_TRANSITIONS[current.value.status] || [] : [],
@@ -286,10 +312,38 @@ async function openDetail(id: string): Promise<void> {
     transitionTo.value = ''
     reverseType.value = ''
     reverseCause.value = ''
+    // 6.4 加载已关联采购单（演示/正式双路：purchaseOrderApi.list 走 mock 或真实后端）
+    linkedPos.value = await purchaseOrderApi.list({ orderId: id }).catch(() => [])
     drawer.value = true
   } catch (e) {
     ElMessage.error('加载详情失败：' + (e as Error).message)
   }
+}
+
+// 采购单状态 → 配色（与 PurchaseOrderView 一致）
+const PO_STATUS_LABELS: Record<PurchaseOrderStatus, string> = {
+  pending: '待处理',
+  arrived: '已到货',
+  matched: '已匹配',
+  packed: '已打包',
+  outbound: '已出库',
+}
+function poStatusLabel(s: string): string {
+  return PO_STATUS_LABELS[s as PurchaseOrderStatus] ?? s
+}
+function poStatusClass(s: string): string {
+  return (
+    {
+      pending: 'tag-gray',
+      arrived: 'tag-blue',
+      matched: 'tag-green',
+      packed: 'tag-orange',
+      outbound: 'tag-violet',
+    } as Record<string, string>
+  )[s] ?? 'tag-gray'
+}
+function goPurchase(): void {
+  router.push('/purchase-orders')
 }
 
 async function doReview(): Promise<void> {
@@ -368,6 +422,21 @@ onMounted(load)
 }
 .muted {
   color: var(--ink-500);
+}
+.po-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.po-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-soft);
+  font-size: 13px;
 }
 .cell-shop {
   display: inline-flex;
