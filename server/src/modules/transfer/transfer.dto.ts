@@ -16,3 +16,13 @@ export class ScanTransferDto {
   @IsIn(['trackingNo', 'barcode', 'purchaseNo'])
   scanType: ScanType // 解析维度
 }
+
+/** 可选跨境渠道（6.8 中转仓出单，演示态编码白名单） */
+export const TRANSFER_CHANNEL_CODES = ['yunexpress', 'dhl', '4px', 'yanwen'] as const
+export type TransferChannelCode = (typeof TRANSFER_CHANNEL_CODES)[number]
+
+/** 生成跨境面单请求体（6.8） */
+export class GenerateLabelDto {
+  @IsIn(TRANSFER_CHANNEL_CODES)
+  channelCode: TransferChannelCode // 跨境渠道（云途 / DHL / 4PX / 燕文）
+}

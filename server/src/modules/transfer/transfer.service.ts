@@ -16,12 +16,15 @@ import { AppLogger } from '../../common/logger/app.logger'
 import { BusinessException } from '../../common/response/business.exception'
 import { HttpStatus } from '@nestjs/common'
 import { PurchaseOrderService } from '../purchase-orders/purchase-order.service'
-import { ScanTransferDto } from './transfer.dto'
+import { ScanTransferDto, GenerateLabelDto } from './transfer.dto'
 import type {
   PackQueueItem,
   PackTaskDto,
   PackCheckRow,
   PackTaskCheck,
+  ChannelOption,
+  ShippingLabelDto,
+  PackLabelResult,
 } from './transfer.types'
 
 // 待作业采购单状态：已到仓 → 已匹配 → 已打包，尚未出库（outbound 即离开中转仓）。
@@ -586,6 +589,300 @@ export class TransferService {
           ? { id: p.id, trackingNo: p.trackingNo, carrier: p.carrier, status: p.status }
           : { id, trackingNo: '-', carrier: '-', status: '-' }
       }),
+    }
+  }
+
+  // ===== 6.8 跨境面单生成（中转仓出单）=====
+
+  /** 可选跨境渠道（演示态）。生产应经比价/履约路由 1.5 + 承运商适配器真实建单。 */
+  private static readonly CHANNELS: ChannelOption[] = [
+    { code: 'yunexpress', name: '云途物流', currency: 'CNY', baseFee: 18, perKgRate: 42 },
+    { code: 'dhl', name: 'DHL', currency: 'CNY', baseFee: 35, perKgRate: 68 },
+    { code: '4px', name: '递四方 4PX', currency: 'CNY', baseFee: 16, perKgRate: 38 },
+    { code: 'yanwen', name: '燕文物流', currency: 'CNY', baseFee: 14, perKgRate: 35 },
+  ]
+
+  /** 列出可选跨境渠道（6.8）。 */
+  listChannels(): ChannelOption[] {
+    return TransferService.CHANNELS
+  }
+
+  /**
+   * 生成跨境面单（6.8）：仅已打包的打包任务可执行。流程——
+   * 选渠道 → 估算运费（演示价，TODO 接 MarkupEngineService §10）→ 本地建单落库 Shipment + 首条轨迹
+   * → 生成 ZPL 源文与 SVG 预览面单 → 回填 PackTask.channelCode/labelId/shipmentId。
+   * 幂等：已生成面单直接返回既有面单。
+   */
+  async generateLabel(
+    tenantId: string,
+    packTaskId: string,
+    dto: GenerateLabelDto,
+  ): Promise<PackLabelResult> {
+    const task = await this.prisma.packTask.findFirst({ where: { id: packTaskId, tenantId } })
+    if (!task) {
+      throw new BusinessException('PACK_TASK_NOT_FOUND', '打包任务不存在或无权限', HttpStatus.NOT_FOUND)
+    }
+    // 幂等：已生成面单则直接返回
+    if (task.labelId) {
+      const existing = await this.prisma.shippingLabel.findFirst({
+        where: { id: task.labelId, tenantId },
+      })
+      if (existing) {
+        const { order, poMap } = await this.loadTaskContext(tenantId, task)
+        return { packTask: this.toPackTaskDto(task, order, poMap), label: this.toLabelDto(existing) }
+      }
+    }
+    if (task.status !== 'packed') {
+      throw new BusinessException(
+        'PACK_TASK_NOT_PACKED',
+        '仅已打包的打包任务可生成跨境面单，请先标记打包',
+        HttpStatus.BAD_REQUEST,
+      )
+    }
+    if (!task.orderId) {
+      throw new BusinessException('PACK_TASK_INVALID', '该打包任务缺少关联订单，无法出单', HttpStatus.BAD_REQUEST)
+    }
+    const channel = TransferService.CHANNELS.find((c) => c.code === dto.channelCode)
+    if (!channel) {
+      throw new BusinessException('CHANNEL_NOT_SUPPORTED', '不支持的跨境渠道', HttpStatus.BAD_REQUEST)
+    }
+
+    const order = await this.prisma.order.findFirst({
+      where: { id: task.orderId, tenantId },
+      select: { id: true, platformOrderNo: true, status: true, recipient: true },
+    })
+    const poIds = (task.purchaseOrderIds as unknown as string[]) ?? []
+    const pos = poIds.length
+      ? await this.prisma.purchaseOrder.findMany({
+          where: { tenantId, id: { in: poIds } },
+          include: { items: true },
+        })
+      : []
+
+    // 实重（克）：聚合采购行项 SKU 计费重
+    let weightG = 0
+    for (const p of pos) {
+      for (const it of p.items) {
+        if (it.skuId) {
+          const sku = await this.prisma.sku.findUnique({ where: { id: it.skuId } })
+          if (sku) weightG += (sku.weightG ?? 0) * it.quantity
+        }
+      }
+    }
+    const { carrierCost, sellPrice } = this.estimateCost(channel, weightG)
+    const trackingNo = `${channel.code.toUpperCase()}-${Date.now().toString(36).toUpperCase()}${Math.floor(
+      Math.random() * 1000,
+    )
+      .toString()
+      .padStart(3, '0')}`
+
+    // 本地建单（演示态）：真实承运商建单需凭证，TODO 6.8 联调后经承运商适配器出单
+    const shipment = await this.prisma.shipment.create({
+      data: {
+        tenantId,
+        orderId: task.orderId as string,
+        purchaseOrderId: poIds[0] ?? null,
+        carrierId: null,
+        trackingNo,
+        status: 'booked',
+        carrierCost: new Prisma.Decimal(carrierCost),
+        sellPrice: new Prisma.Decimal(sellPrice),
+      },
+    })
+    await this.prisma.shipmentLeg.create({
+      data: {
+        tenantId,
+        shipmentId: shipment.id,
+        legType: 'direct',
+        carrierId: null,
+        trackingNo,
+        status: 'booked',
+      },
+    })
+    await this.prisma.trackingEvent.create({
+      data: {
+        tenantId,
+        shipmentId: shipment.id,
+        status: 'booked',
+        location: '中转仓',
+        description: `已向 ${channel.name} 下单（中转仓出单）`,
+        occurredAt: new Date(),
+      },
+    })
+
+    const recipient = (order?.recipient as Record<string, unknown>) ?? {}
+    const zpl = this.buildZpl(channel, trackingNo, order, pos, weightG)
+    const pdfUrl = this.buildLabelSvg(channel, trackingNo, order, pos, weightG)
+    const label = await this.prisma.shippingLabel.create({
+      data: {
+        tenantId,
+        packTaskId: task.id,
+        shipmentId: shipment.id,
+        channelCode: channel.code,
+        trackingNo,
+        recipient: (recipient as unknown as Prisma.InputJsonValue) ?? Prisma.JsonNull,
+        zpl,
+        pdfUrl,
+        status: 'created',
+      },
+    })
+    await this.prisma.packTask.update({
+      where: { id: task.id },
+      data: { channelCode: channel.code, labelId: label.id, shipmentId: shipment.id },
+    })
+    this.logger.log(
+      `[TRANSFER] 生成跨境面单 tenant=${tenantId} task=${packTaskId} channel=${channel.code} tracking=${trackingNo}`,
+      'Transfer',
+    )
+    const refreshed = (await this.prisma.packTask.findFirst({ where: { id: task.id, tenantId } }))!
+    const { order: refreshedOrder, poMap } = await this.loadTaskContext(tenantId, refreshed)
+    return {
+      packTask: this.toPackTaskDto(refreshed, refreshedOrder, poMap),
+      label: this.toLabelDto(label),
+    }
+  }
+
+  /** 查看跨境面单（6.8）：返回已生成的面单（ZPL + 预览）。 */
+  async getLabel(tenantId: string, packTaskId: string): Promise<ShippingLabelDto> {
+    const task = await this.prisma.packTask.findFirst({ where: { id: packTaskId, tenantId } })
+    if (!task) {
+      throw new BusinessException('PACK_TASK_NOT_FOUND', '打包任务不存在或无权限', HttpStatus.NOT_FOUND)
+    }
+    if (!task.labelId) {
+      throw new BusinessException('LABEL_NOT_FOUND', '该打包任务尚未生成跨境面单', HttpStatus.NOT_FOUND)
+    }
+    const label = await this.prisma.shippingLabel.findFirst({ where: { id: task.labelId, tenantId } })
+    if (!label) {
+      throw new BusinessException('LABEL_NOT_FOUND', '面单记录不存在', HttpStatus.NOT_FOUND)
+    }
+    return this.toLabelDto(label)
+  }
+
+  /** 加载打包任务关联订单与采购单映射（供 DTO 归一）。 */
+  private async loadTaskContext(
+    tenantId: string,
+    task: { id: string; tenantId: string; orderId: string | null; purchaseOrderIds: unknown },
+  ): Promise<{
+    order: { id: string; platformOrderNo: string | null; status: string; recipient: unknown } | null
+    poMap: Map<string, { id: string; trackingNo: string; carrier: string; status: string }>
+  }> {
+    const order = task.orderId
+      ? await this.prisma.order.findFirst({
+          where: { id: task.orderId, tenantId },
+          select: { id: true, platformOrderNo: true, status: true, recipient: true },
+        })
+      : null
+    const poIds = (task.purchaseOrderIds as unknown as string[]) ?? []
+    const pos = poIds.length
+      ? await this.prisma.purchaseOrder.findMany({ where: { tenantId, id: { in: poIds } } })
+      : []
+    const poMap = new Map(pos.map((p) => [p.id, p]))
+    return { order, poMap }
+  }
+
+  /** 演示运费估算（CNY）：基础费 + 每公斤费率 × 实重（最低 0.5kg）。生产应经 MarkupEngineService §10。 */
+  private estimateCost(channel: ChannelOption, weightG: number): { carrierCost: number; sellPrice: number } {
+    const weightKg = Math.max(weightG / 1000, 0.5)
+    const carrierCost = Number((channel.baseFee + channel.perKgRate * weightKg).toFixed(2))
+    const sellPrice = Number((carrierCost * 1.15 + 5).toFixed(2)) // 演示加价 15% + 最低毛利 ¥5
+    return { carrierCost, sellPrice }
+  }
+
+  /** 生成 ZPL 标签源文（供 ZPL 打印机 / 打印）。 */
+  private buildZpl(
+    channel: ChannelOption,
+    trackingNo: string,
+    order: { recipient: unknown } | null,
+    pos: { items: { productName: string; quantity: number }[] }[],
+    weightG: number,
+  ): string {
+    const rec = (order?.recipient as Record<string, unknown>) ?? {}
+    const name = (rec.name as string) ?? ''
+    const country = (rec.country as string) ?? ''
+    const city = (rec.city as string) ?? ''
+    const items = pos.flatMap((p) => p.items.map((i) => `${i.productName} x${i.quantity}`)).join(' / ')
+    return [
+      '^XA',
+      '^FO20,20^ADN,18,10^FD跨境物流面单^FS',
+      `^FO20,55^ADN,12,8^FD渠道: ${channel.name} (${channel.code})^FS`,
+      `^FO20,80^ADN,12,8^FD运单号: ${trackingNo}^FS`,
+      `^FO20,105^ADN,12,8^FD收件人: ${name} / ${country} ${city}^FS`,
+      `^FO20,130^ADN,10,7^FD商品: ${items}^FS`,
+      `^FO20,155^ADN,10,7^FD实重: ${(weightG / 1000).toFixed(2)} kg^FS`,
+      '^BY3,2,60',
+      `^FO20,185^BCN,60,Y,N,N^FD${trackingNo}^FS`,
+      `^FO20,260^ADN,10,7^FD${channel.name} CROSS-BORDER LABEL^FS`,
+      '^XZ',
+    ].join('\n')
+  }
+
+  /** 生成 SVG 预览面单，返回 data URI（演示预览；生产替换为 PDF）。 */
+  private buildLabelSvg(
+    channel: ChannelOption,
+    trackingNo: string,
+    order: { recipient: unknown } | null,
+    pos: { items: { productName: string; quantity: number }[] }[],
+    weightG: number,
+  ): string {
+    const rec = (order?.recipient as Record<string, unknown>) ?? {}
+    const name = this.escapeHtml((rec.name as string) ?? '')
+    const country = this.escapeHtml((rec.country as string) ?? '')
+    const city = this.escapeHtml((rec.city as string) ?? '')
+    const addr = this.escapeHtml((rec.address1 as string) ?? '')
+    const zip = this.escapeHtml((rec.zip as string) ?? '')
+    const itemsStr = this.escapeHtml(
+      pos.flatMap((p) => p.items.map((i) => `${i.productName} x${i.quantity}`)).join(' / ') || '—',
+    )
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600" viewBox="0 0 400 600">
+  <rect width="400" height="600" fill="#fff" stroke="#111" stroke-width="2"/>
+  <rect x="0" y="0" width="400" height="54" fill="#1e293b"/>
+  <text x="16" y="34" fill="#fff" font-size="20" font-family="sans-serif">跨境物流面单 · ${this.escapeHtml(channel.name)}</text>
+  <text x="16" y="86" fill="#0f172a" font-size="15" font-family="sans-serif">运单号: ${this.escapeHtml(trackingNo)}</text>
+  <text x="16" y="116" fill="#0f172a" font-size="14" font-family="sans-serif">渠道: ${this.escapeHtml(channel.code)}</text>
+  <line x1="16" y1="132" x2="384" y2="132" stroke="#cbd5e1"/>
+  <text x="16" y="160" fill="#0f172a" font-size="15" font-family="sans-serif">收件人: ${name}</text>
+  <text x="16" y="186" fill="#334155" font-size="12" font-family="sans-serif">${country} ${city} ${addr} ${zip}</text>
+  <text x="16" y="218" fill="#0f172a" font-size="14" font-family="sans-serif">商品明细:</text>
+  <text x="16" y="242" fill="#334155" font-size="12" font-family="sans-serif">${itemsStr}</text>
+  <line x1="16" y1="520" x2="384" y2="520" stroke="#cbd5e1"/>
+  <text x="16" y="546" fill="#0f172a" font-size="14" font-family="sans-serif">实重: ${(weightG / 1000).toFixed(2)} kg</text>
+  <rect x="16" y="556" width="368" height="32" fill="#f1f5f9"/>
+  <text x="24" y="578" fill="#475569" font-size="12" font-family="monospace">${this.escapeHtml(trackingNo)}</text>
+</svg>`
+    return `data:image/svg+xml;base64,${Buffer.from(svg, 'utf8').toString('base64')}`
+  }
+
+  /** HTML 转义（标签预览内容安全）。 */
+  private escapeHtml(s: string): string {
+    return s.replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' })[c] as string)
+  }
+
+  /** 面单归一化为前端 DTO。 */
+  private toLabelDto(label: {
+    id: string
+    tenantId: string
+    packTaskId: string | null
+    shipmentId: string | null
+    channelCode: string
+    trackingNo: string | null
+    recipient: unknown
+    zpl: string
+    pdfUrl: string | null
+    status: string
+    createdAt: Date
+  }): ShippingLabelDto {
+    return {
+      id: label.id,
+      tenantId: label.tenantId,
+      packTaskId: label.packTaskId,
+      shipmentId: label.shipmentId,
+      channelCode: label.channelCode,
+      trackingNo: label.trackingNo,
+      recipient: (label.recipient as Record<string, unknown>) ?? null,
+      zpl: label.zpl,
+      pdfUrl: label.pdfUrl,
+      status: label.status,
+      createdAt: label.createdAt.toISOString(),
     }
   }
 

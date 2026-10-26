@@ -178,13 +178,25 @@
               <span v-for="p in row.purchaseOrders" :key="p.id" class="po-chip mono">{{ p.trackingNo }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="状态" width="110">
-            <template #default="{ row }"><span class="tag-soft" :class="taskStatusClass(row.status)">{{ taskStatusLabel(row.status) }}</span></template>
-          </el-table-column>
-          <el-table-column label="打包时间" width="170">
-            <template #default="{ row }"><span class="muted">{{ row.packedAt ? fmt(row.packedAt) : '—' }}</span></template>
-          </el-table-column>
-        </el-table>
+            <el-table-column label="渠道" width="120">
+              <template #default="{ row }">
+                <span v-if="row.channelCode" class="tag-soft tag-indigo">{{ channelName(row.channelCode) }}</span>
+                <span v-else class="muted">未出单</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="110">
+              <template #default="{ row }"><span class="tag-soft" :class="taskStatusClass(row.status)">{{ taskStatusLabel(row.status) }}</span></template>
+            </el-table-column>
+            <el-table-column label="打包时间" width="170">
+              <template #default="{ row }"><span class="muted">{{ row.packedAt ? fmt(row.packedAt) : '—' }}</span></template>
+            </el-table-column>
+            <el-table-column label="操作" width="140" fixed="right">
+              <template #default="{ row }">
+                <el-button v-if="!row.channelCode" size="small" type="primary" :loading="labelGen && labelTaskId === row.id" @click="openLabel(row)">生成面单</el-button>
+                <el-button v-else size="small" @click="openLabel(row)">查看面单</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
       </div>
     </el-card>
 
@@ -305,13 +317,42 @@
         >标记打包</el-button>
       </template>
     </el-dialog>
+
+    <!-- 跨境面单生成 / 预览（6.8）：选渠道 → 建单 + ZPL/预览面单 → 打印 -->
+    <el-dialog v-model="labelVisible" title="跨境面单" width="580px" :close-on-click-modal="false">
+      <div v-if="labelData || labelStep === 'choose'">
+        <div v-if="labelStep === 'choose'" class="label-choose">
+          <p class="muted">选择跨境渠道生成面单（建单落库 + 生成 ZPL / 预览，回填打包任务）：</p>
+          <el-radio-group v-model="labelForm.channelCode" class="channel-group">
+            <el-radio v-for="c in channels" :key="c.code" :value="c.code" border>{{ c.name }}</el-radio>
+          </el-radio-group>
+        </div>
+        <div v-else-if="labelData" class="label-preview">
+          <div class="lp-head">
+            <span class="tag-soft tag-indigo">{{ channelName(labelData.channelCode) }}</span>
+            <span class="mono">{{ labelData.trackingNo }}</span>
+          </div>
+          <img v-if="labelData.pdfUrl" :src="labelData.pdfUrl" class="lp-img" alt="面单预览" />
+          <el-collapse class="lp-zpl">
+            <el-collapse-item title="ZPL 标签源文（供 ZPL 打印机）">
+              <pre class="zpl">{{ labelData.zpl }}</pre>
+            </el-collapse-item>
+          </el-collapse>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="labelVisible = false">关闭</el-button>
+        <el-button v-if="labelStep === 'choose'" type="primary" :loading="labelGen" @click="generateLabel">生成面单</el-button>
+        <el-button v-else-if="labelData" type="primary" @click="printLabel">打印</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { transferApi, type TransferBoard, type TransferWarehouse, type TransferBoardPo, type ScanTransferDto, type ScanTransferResult, type PackQueue, type PackQueueItem, type PackTaskDto } from '@/api/transfer'
+import { transferApi, type TransferBoard, type TransferWarehouse, type TransferBoardPo, type ScanTransferDto, type ScanTransferResult, type PackQueue, type PackQueueItem, type PackTaskDto, type ShippingLabelDto } from '@/api/transfer'
 import PageHeader from '@/components/PageHeader.vue'
 import AppIcon from '@/components/AppIcon.vue'
 
@@ -538,9 +579,72 @@ async function packFromCheck(): Promise<void> {
   }
 }
 
+// ===== 6.8 跨境面单生成 =====
+const channels = ref<{ code: string; name: string; currency: string; baseFee: number; perKgRate: number }[]>([])
+const labelVisible = ref(false)
+const labelStep = ref<'choose' | 'preview'>('choose')
+const labelGen = ref(false)
+const labelTaskId = ref<string | null>(null)
+const labelForm = ref<{ channelCode: string }>({ channelCode: '' })
+const labelData = ref<ShippingLabelDto | null>(null)
+
+function channelName(code: string): string {
+  return channels.value.find((c) => c.code === code)?.name ?? code
+}
+
+/** 打开面单对话框：已出单则直接预览，否则进入选渠道生成。 */
+function openLabel(row: PackTaskDto): void {
+  labelTaskId.value = row.id
+  labelForm.value.channelCode = channels.value[0]?.code ?? ''
+  if (row.channelCode) {
+    labelStep.value = 'preview'
+    labelData.value = null
+    labelGen.value = true
+    transferApi
+      .getLabel(row.id)
+      .then((d) => (labelData.value = d))
+      .catch((e) => ElMessage.error('获取面单失败：' + (e as Error).message))
+      .finally(() => (labelGen.value = false))
+  } else {
+    labelStep.value = 'choose'
+    labelData.value = null
+  }
+  labelVisible.value = true
+}
+
+/** 生成跨境面单：选渠道 → 建单 + 出 ZPL/预览，回填打包任务。 */
+async function generateLabel(): Promise<void> {
+  if (!labelTaskId.value) return
+  if (!labelForm.value.channelCode) {
+    ElMessage.warning('请选择跨境渠道')
+    return
+  }
+  labelGen.value = true
+  try {
+    const res = await transferApi.generateLabel(labelTaskId.value, { channelCode: labelForm.value.channelCode })
+    labelData.value = res.label
+    labelStep.value = 'preview'
+    ElMessage.success('面单已生成（运单号 ' + (res.label.trackingNo ?? '') + '）')
+    await loadPack()
+  } catch (e) {
+    ElMessage.error('生成面单失败：' + (e as Error).message)
+  } finally {
+    labelGen.value = false
+  }
+}
+
+/** 打印面单（在新标签打开预览，由浏览器打印对话框处理）。 */
+function printLabel(): void {
+  if (labelData.value?.pdfUrl) window.open(labelData.value.pdfUrl, '_blank')
+}
+
 onMounted(() => {
   load()
   loadPack()
+  transferApi
+    .channels()
+    .then((c) => (channels.value = c))
+    .catch(() => undefined)
 })
 </script>
 
@@ -818,5 +922,43 @@ onMounted(() => {
 }
 .check-table {
   margin-top: 4px;
+}
+.channel-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+.label-choose {
+  padding: 4px 0;
+}
+.lp-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.lp-img {
+  display: block;
+  width: 200px;
+  height: 300px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: #fff;
+}
+.lp-zpl {
+  margin-top: 12px;
+}
+.zpl {
+  margin: 0;
+  padding: 10px 12px;
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: var(--r-sm);
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 </style>

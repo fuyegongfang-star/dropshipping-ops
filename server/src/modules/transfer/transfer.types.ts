@@ -120,3 +120,35 @@ export interface PackQueueItem {
   diffs: PackCheckRow[]
   summary: PackTaskCheck['summary']
 }
+
+// ===== 6.8 跨境面单生成（中转仓出单）=====
+
+/** 可选跨境渠道（演示态，生产应经比价/履约路由 1.5 + 承运商适配器建单） */
+export interface ChannelOption {
+  code: string // yunexpress | dhl | 4px | yanwen
+  name: string // 中文名
+  currency: string
+  baseFee: number // 基础费（CNY）
+  perKgRate: number // 每公斤费率（CNY）
+}
+
+/** 跨境面单 DTO（绑定打包任务与运单，含 ZPL 源文 + SVG 预览） */
+export interface ShippingLabelDto {
+  id: string
+  tenantId: string
+  packTaskId: string | null
+  shipmentId: string | null
+  channelCode: string
+  trackingNo: string | null
+  recipient: Record<string, unknown> | null
+  zpl: string // ZPL 标签源文
+  pdfUrl: string | null // SVG data URI 预览（演示）
+  status: string
+  createdAt: string
+}
+
+/** 生成面单结果（6.8）：返回最新打包任务 + 面单 */
+export interface PackLabelResult {
+  packTask: PackTaskDto
+  label: ShippingLabelDto
+}

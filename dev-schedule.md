@@ -81,7 +81,7 @@
 | 6.5 | 阶段6 | 中转仓模型 + 看板 | Warehouse.type 加 transfer；中转仓看板（货代侧待作业采购单可见） | 2.2 | 1d | ✅ |
 | 6.6 | 阶段6 | 扫码到货入库端点 | POST /transfer/scan：快递单号/条码→解析采购单→匹配订单→到货登记；Asn 扩展 purchaseOrderId/scanSource/receivedItems | 6.4/6.5 | 1.5d | ✅ |
 | 6.7 | 阶段6 | 中转仓作业：打包任务 + 核对 | 按匹配订单聚合采购单生成打包任务；核对采购单 vs 店铺订单差异；PickTask 扩展 channelCode/labelId/shipmentId | 6.6 | 1.5d | ✅ |
-| 6.8 | 阶段6 | 跨境面单生成（中转仓出单） | 选渠道→承运商建单 + LabelService 出 PDF/ZPL；面单关联店铺订单与平台；Shipment 加 purchaseOrderId | 3.9/1.5/6.7 | 1d | ⬜ |
+| 6.8 | 阶段6 | 跨境面单生成（中转仓出单） | 选渠道→承运商建单 + LabelService 出 PDF/ZPL；面单关联店铺订单与平台；Shipment 加 purchaseOrderId | 3.9/1.5/6.7 | 1d | ✅ |
 | 6.9 | 阶段6 | 出库闭环 + 物流同步 | 出库扫码→Shipment 建单/fulfill→承运商回传→TrackingEvent→正式跨境物流；状态机贯通采购单/订单 | 6.8/1.6 | 1d | ⬜ |
 
 ---
@@ -614,3 +614,15 @@
 - **测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**323 passed / 48 suites**）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
 - **提交**：随本批统一提交（6.7 后端/前端/进度生成器/进度表/检查点）。
 - **下一步（次日接力）**：6.8 跨境面单生成（中转仓出单：选渠道→承运商建单 + LabelService 出 PDF/ZPL；面单关联店铺订单与平台；Shipment 加 purchaseOrderId；PackTask.channelCode/labelId 回填）。
+
+### 进度更新 · 2026-10-26（续跑 · 6.8 跨境面单生成）
+- **完成（✅）**：
+  - **6.8 跨境面单生成（阶段6 详细设计，中转仓出单）** ——
+    - 模型：`Shipment` 扩 `purchaseOrderId`（关联采购单/打包任务）；新增 `ShippingLabel` 模型（`packTaskId`/`shipmentId`/`channelCode`/`trackingNo`/`recipient`(Json)/`zpl`/`pdfUrl`(SVG data URI)/`status`）。
+    - 后端 `TransferService`：`listChannels`（4 个跨境渠道：云途/DHL/4PX/燕文，含 baseFee/perKgRate）、`generateLabel`（仅已打包任务可出单 → 估算运费**演示价**`baseFee+perKgRate×实重`、TODO 接 `MarkupEngineService` §10 → 本地建单落库 `Shipment`+首条 `booked` 轨迹 + `ShippingLabel`(ZPL 源文 + SVG 预览) → 回填 `PackTask.channelCode/labelId/shipmentId`，幂等）、`getLabel`；私有 `estimateCost/buildZpl/buildLabelSvg/escapeHtml/toLabelDto/loadTaskContext`；`TransferController` 新增 `GET /transfer/channels`、`POST /transfer/pack-tasks/:id/label`、`GET /transfer/pack-tasks/:id/label`（全租户隔离 + `ValidationPipe`）；`GenerateLabelDto` 校验 `channelCode` 白名单；`transfer.service.label.spec.ts` 新增 8 例（渠道列表/不存在/未打包拦截/建单+ZPL+SVG+回填/幂等/租户隔离/未生成 LABEL_NOT_FOUND/查看），全仓 **331 passed / 49 suites**。
+  - **前端可视化（中转仓作业 跨境面单）**：`TransferView`（/transfer）「已建打包任务」子表增「渠道」列与「生成面单 / 查看面单」操作；新增面单对话框（选渠道 → 生成 → SVG 预览 + ZPL 源文折叠 + 打印）；`transfer.ts` 增 `channels/generateLabel/getLabel` 与 3 类类型，`mock-data.ts` 同口径内存实现（`doListChannels/doGenerateLabel/doGetLabel` + `buildMockZpl/buildMockLabelSvg/estimateMockCost` + mockRouter 分发，演示/正式双路通）。
+- **进行中（🔵）**：无（本批 6.8 完成）。
+- **受阻**：无。
+- **测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**331 passed / 49 suites**）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
+- **提交**：随本批统一提交（6.8 后端/前端/进度生成器/进度表/检查点）。
+- **下一步（次日接力）**：6.9 出库闭环 + 物流同步（出库扫码 → Shipment.fulfill 回写平台 + TrackingEvent 追加出库节点 → 流转正式跨境物流轨迹；状态机贯通采购单/订单）。

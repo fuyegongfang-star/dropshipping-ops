@@ -138,6 +138,43 @@ export interface PackTaskCheck {
   summary: PackCheckSummary
 }
 
+// ===== 6.8 跨境面单生成（中转仓出单）=====
+
+/** 可选跨境渠道（演示态） */
+export interface ChannelOption {
+  code: string
+  name: string
+  currency: string
+  baseFee: number
+  perKgRate: number
+}
+
+/** 跨境面单（6.8） */
+export interface ShippingLabelDto {
+  id: string
+  tenantId: string
+  packTaskId: string | null
+  shipmentId: string | null
+  channelCode: string
+  trackingNo: string | null
+  recipient: Record<string, unknown> | null
+  zpl: string
+  pdfUrl: string | null
+  status: string
+  createdAt: string
+}
+
+/** 生成面单结果（6.8） */
+export interface PackLabelResult {
+  packTask: PackTaskDto
+  label: ShippingLabelDto
+}
+
+/** 生成面单请求体（6.8） */
+export interface GenerateLabelDto {
+  channelCode: string
+}
+
 export const transferApi = {
   /** 中转仓看板（6.5）：中转仓 + 待作业采购单 + 关联订单概览 */
   board: () => http.get<TransferBoard>('/transfer/board'),
@@ -153,4 +190,10 @@ export const transferApi = {
   packCheck: (id: string) => http.get<PackTaskCheck>(`/transfer/pack-tasks/${id}/check`),
   /** 标记打包（6.7）：推进采购单状态 + 置任务为 packed */
   pack: (id: string) => http.post<PackTaskDto>(`/transfer/pack-tasks/${id}/pack`),
+  /** 可选跨境渠道（6.8） */
+  channels: () => http.get<ChannelOption[]>('/transfer/channels'),
+  /** 生成跨境面单（6.8）：选渠道 → 建单 + 出 ZPL/预览面单，回填打包任务 */
+  generateLabel: (id: string, dto: GenerateLabelDto) => http.post<PackLabelResult>(`/transfer/pack-tasks/${id}/label`, dto),
+  /** 查看跨境面单（6.8） */
+  getLabel: (id: string) => http.get<ShippingLabelDto>(`/transfer/pack-tasks/${id}/label`),
 }

@@ -266,6 +266,7 @@ model Shipment {
   id               String   @id @default(cuid())
   tenantId         String
   orderId          String
+  purchaseOrderId  String? // 关联采购单（中转仓出单 6.8，跨境物流单对应采购/打包任务）
   carrierId        String?
   productId        String?
   selectedQuoteId  String?
@@ -277,6 +278,25 @@ model Shipment {
   createdAt        DateTime @default(now())
 
   @@index([tenantId])
+  @@index([tenantId, purchaseOrderId])
+}
+
+// 跨境面单（6.8 中转仓出单）：绑定打包任务与运单，产出 ZPL 标签源文 + SVG 预览
+model ShippingLabel {
+  id          String   @id @default(cuid())
+  tenantId    String
+  packTaskId  String? // 关联打包任务
+  shipmentId  String? // 关联运单（6.9 出库复用）
+  channelCode String // 跨境渠道（yunexpress/dhl/4px/yanwen）
+  trackingNo  String? // 运单号（面单主号）
+  recipient   Json // 收件人快照（取自店铺订单）
+  zpl         String // ZPL 标签源文（供打印/ZPL 打印机）
+  pdfUrl      String? // 标签预览（演示为 SVG data URI，生产替换为 PDF）
+  status      String   @default("created") // created
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([packTaskId])
 }
 
 // 头程/尾程两段式物流（§14）

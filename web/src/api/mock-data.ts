@@ -17,7 +17,7 @@ import type { WalletSummary, LedgerType, LedgerItem } from './finance'
 import type { BillItem, ReconciliationItem, ProfitSummary, GenerateResult, ProfitBreakdown, TenantProfit, CarrierCost } from './billing'
 import type { ReportDashboard } from './reports'
 import type { ClaimOut, ClaimType, ClaimStatus, ClaimResponsibleParty, CreateClaimDto, UpdateClaimStatusDto } from './claims'
-import type { PackCheckRow, PackCheckSummary, PackQueueItem, PackQueue, PackTaskDto, PackTaskCheck } from './transfer'
+import type { PackCheckRow, PackCheckSummary, PackQueueItem, PackQueue, PackTaskDto, PackTaskCheck, ChannelOption, ShippingLabelDto, PackLabelResult } from './transfer'
 import type { RiskRule, RiskOrderEvaluation, BlacklistEntry, RiskSummary, CreateRiskRuleDto, UpdateRiskRuleDto, CreateBlacklistDto, ReviewDecisionDto } from './risk'
 import type {
   AmazonHealth,
@@ -2705,6 +2705,141 @@ export function doPack(packTaskId: string): PackTaskDto {
   return doListPackTasks().find((t) => t.id === packTaskId)!
 }
 
+// ===== 6.8 跨境面单生成（演示态，与后端 TransferService 同口径）=====
+
+/** 可选跨境渠道（演示态）。 */
+const CHANNELS: ChannelOption[] = [
+  { code: 'yunexpress', name: '云途物流', currency: 'CNY', baseFee: 18, perKgRate: 42 },
+  { code: 'dhl', name: 'DHL', currency: 'CNY', baseFee: 35, perKgRate: 68 },
+  { code: '4px', name: '递四方 4PX', currency: 'CNY', baseFee: 16, perKgRate: 38 },
+  { code: 'yanwen', name: '燕文物流', currency: 'CNY', baseFee: 14, perKgRate: 35 },
+]
+/** 已生成的跨境面单（演示态内存）。 */
+let packLabels: ShippingLabelDto[] = []
+let packLabelSeq = 0
+
+function escapeHtml(s: string): string {
+  return s.replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c] as string))
+}
+/** 演示运费估算（CNY），与后端 estimateCost 同口径。 */
+function estimateMockCost(channel: ChannelOption, weightG: number): { carrierCost: number; sellPrice: number } {
+  const weightKg = Math.max(weightG / 1000, 0.5)
+  const carrierCost = Number((channel.baseFee + channel.perKgRate * weightKg).toFixed(2))
+  const sellPrice = Number((carrierCost * 1.15 + 5).toFixed(2))
+  return { carrierCost, sellPrice }
+}
+/** 生成 ZPL 标签源文。 */
+function buildMockZpl(channel: ChannelOption, trackingNo: string, order: MockOrder | undefined, pos: MockPurchaseOrder[], weightG: number): string {
+  const rec = (order?.recipient as unknown as Record<string, unknown>) ?? {}
+  const name = (rec.name as string) ?? ''
+  const country = (rec.country as string) ?? ''
+  const city = (rec.city as string) ?? ''
+  const items = pos.flatMap((p) => p.items.map((i) => `${i.productName} x${i.quantity}`)).join(' / ')
+  return [
+    '^XA',
+    '^FO20,20^ADN,18,10^FD跨境物流面单^FS',
+    `^FO20,55^ADN,12,8^FD渠道: ${channel.name} (${channel.code})^FS`,
+    `^FO20,80^ADN,12,8^FD运单号: ${trackingNo}^FS`,
+    `^FO20,105^ADN,12,8^FD收件人: ${name} / ${country} ${city}^FS`,
+    `^FO20,130^ADN,10,7^FD商品: ${items}^FS`,
+    `^FO20,155^ADN,10,7^FD实重: ${(weightG / 1000).toFixed(2)} kg^FS`,
+    '^BY3,2,60',
+    `^FO20,185^BCN,60,Y,N,N^FD${trackingNo}^FS`,
+    `^FO20,260^ADN,10,7^FD${channel.name} CROSS-BORDER LABEL^FS`,
+    '^XZ',
+  ].join('\n')
+}
+/** 生成 SVG 预览面单，返回 data URI（演示预览）。 */
+function buildMockLabelSvg(channel: ChannelOption, trackingNo: string, order: MockOrder | undefined, pos: MockPurchaseOrder[], weightG: number): string {
+  const rec = (order?.recipient as unknown as Record<string, unknown>) ?? {}
+  const name = escapeHtml((rec.name as string) ?? '')
+  const country = escapeHtml((rec.country as string) ?? '')
+  const city = escapeHtml((rec.city as string) ?? '')
+  const addr = escapeHtml((rec.address1 as string) ?? '')
+  const zip = escapeHtml((rec.zip as string) ?? '')
+  const itemsStr = escapeHtml(pos.flatMap((p) => p.items.map((i) => `${i.productName} x${i.quantity}`)).join(' / ') || '—')
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600" viewBox="0 0 400 600">
+  <rect width="400" height="600" fill="#fff" stroke="#111" stroke-width="2"/>
+  <rect x="0" y="0" width="400" height="54" fill="#1e293b"/>
+  <text x="16" y="34" fill="#fff" font-size="20" font-family="sans-serif">跨境物流面单 · ${escapeHtml(channel.name)}</text>
+  <text x="16" y="86" fill="#0f172a" font-size="15" font-family="sans-serif">运单号: ${escapeHtml(trackingNo)}</text>
+  <text x="16" y="116" fill="#0f172a" font-size="14" font-family="sans-serif">渠道: ${escapeHtml(channel.code)}</text>
+  <line x1="16" y1="132" x2="384" y2="132" stroke="#cbd5e1"/>
+  <text x="16" y="160" fill="#0f172a" font-size="15" font-family="sans-serif">收件人: ${name}</text>
+  <text x="16" y="186" fill="#334155" font-size="12" font-family="sans-serif">${country} ${city} ${addr} ${zip}</text>
+  <text x="16" y="218" fill="#0f172a" font-size="14" font-family="sans-serif">商品明细:</text>
+  <text x="16" y="242" fill="#334155" font-size="12" font-family="sans-serif">${itemsStr}</text>
+  <line x1="16" y1="520" x2="384" y2="520" stroke="#cbd5e1"/>
+  <text x="16" y="546" fill="#0f172a" font-size="14" font-family="sans-serif">实重: ${(weightG / 1000).toFixed(2)} kg</text>
+  <rect x="16" y="556" width="368" height="32" fill="#f1f5f9"/>
+  <text x="24" y="578" fill="#475569" font-size="12" font-family="monospace">${escapeHtml(trackingNo)}</text>
+</svg>`
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+}
+
+/** 可选跨境渠道（演示态）。 */
+export function doListChannels(): ChannelOption[] {
+  return CHANNELS
+}
+/** 生成跨境面单（演示态）：仅已打包任务可出单；建单 + 生成 ZPL/SVG，回填打包任务。 */
+export function doGenerateLabel(packTaskId: string, dto: { channelCode: string }): PackLabelResult {
+  const task = packTasks.find((t) => t.id === packTaskId)
+  if (!task) throw new Error('PACK_TASK_NOT_FOUND')
+  if (task.labelId) {
+    const existing = packLabels.find((l) => l.id === task.labelId)
+    if (existing) {
+      return { packTask: doListPackTasks().find((t) => t.id === packTaskId)!, label: existing }
+    }
+  }
+  if (task.status !== 'packed') throw new Error('PACK_TASK_NOT_PACKED')
+  const channel = CHANNELS.find((c) => c.code === dto.channelCode)
+  if (!channel) throw new Error('CHANNEL_NOT_SUPPORTED')
+  const order = task.orderId ? orders.find((o) => o.id === task.orderId) : undefined
+  const pos = task.purchaseOrderIds.map((id) => purchaseOrders.find((p) => p.id === id)).filter(Boolean) as MockPurchaseOrder[]
+  let weightG = 0
+  for (const p of pos) {
+    for (const it of p.items) {
+      if (it.skuId) {
+        const sku = skus.find((s) => s.id === it.skuId)
+        if (sku) weightG += (sku.weightG ?? 0) * it.quantity
+      }
+    }
+  }
+  estimateMockCost(channel, weightG)
+  const trackingNo = `${channel.code.toUpperCase()}-${Date.now().toString(36).toUpperCase()}${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`
+  const shipmentId = `sh_demo_${++packLabelSeq}`
+  const recipient = (order?.recipient as unknown as Record<string, unknown>) ?? {}
+  const zpl = buildMockZpl(channel, trackingNo, order, pos, weightG)
+  const pdfUrl = buildMockLabelSvg(channel, trackingNo, order, pos, weightG)
+  const label: ShippingLabelDto = {
+    id: `lb_demo_${++packLabelSeq}`,
+    tenantId: TENANT_ID,
+    packTaskId: task.id,
+    shipmentId,
+    channelCode: channel.code,
+    trackingNo,
+    recipient,
+    zpl,
+    pdfUrl,
+    status: 'created',
+    createdAt: NOW(),
+  }
+  packLabels.push(label)
+  task.channelCode = channel.code
+  task.labelId = label.id
+  task.shipmentId = shipmentId
+  return { packTask: doListPackTasks().find((t) => t.id === packTaskId)!, label }
+}
+/** 查看跨境面单（演示态）。 */
+export function doGetLabel(packTaskId: string): ShippingLabelDto {
+  const task = packTasks.find((t) => t.id === packTaskId)
+  if (!task) throw new Error('PACK_TASK_NOT_FOUND')
+  if (!task.labelId) throw new Error('LABEL_NOT_FOUND')
+  const label = packLabels.find((l) => l.id === task.labelId)
+  if (!label) throw new Error('LABEL_NOT_FOUND')
+  return label
+}
+
 // ===== 模拟路由分发（演示模式核心）：按 method+url 匹配 doXxx 实现，返回数据体 =====
 // 与真实后端 /api 路由同口径；无匹配时 reject 提示演示模式不支持该请求。
 export function mockRouter(method: string, url: string, body?: unknown): Promise<unknown> {
@@ -2727,6 +2862,11 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     // 打包任务核对（阶段6，任务 6.7）：采购行项 vs 订单行项差异
     const packCheck = url.match(/^\/transfer\/pack-tasks\/([^/]+)\/check$/)
     if (packCheck) return delay(160).then(() => doGetPackCheck(packCheck[1]))
+    // 可选跨境渠道（阶段6，任务 6.8）：中转仓出单渠道列表
+    if (url === '/transfer/channels') return delay(120).then(() => doListChannels())
+    // 查看跨境面单（阶段6，任务 6.8）：已生成面单（ZPL + 预览）
+    const packLabel = url.match(/^\/transfer\/pack-tasks\/([^/]+)\/label$/)
+    if (packLabel) return delay(160).then(() => doGetLabel(packLabel[1]))
     // 供应商代发（§21）：档案列表 + 代发单列表（演示态内存）
     if (url === '/suppliers') return delay().then(() => doListSuppliers())
     if (url === '/suppliers/orders') return delay().then(() => doListSupplierOrders())
@@ -2870,6 +3010,9 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     // 标记打包（任务 6.7）：推进采购单状态 + 置任务为 packed
     const packDo = url.match(/^\/transfer\/pack-tasks\/([^/]+)\/pack$/)
     if (packDo) return delay(180).then(() => doPack(packDo[1]))
+    // 生成跨境面单（任务 6.8）：选渠道 → 建单 + 出 ZPL/预览面单，回填打包任务
+    const packLabelDo = url.match(/^\/transfer\/pack-tasks\/([^/]+)\/label$/)
+    if (packLabelDo) return delay(200).then(() => doGenerateLabel(packLabelDo[1], (body ?? {}) as { channelCode: string }))
     if (url === '/pricing/compare') return delay(260).then(() => doCompare(body))
     // 履约路由（模式A 自动选渠道，§4/§5）：给定发货上下文 + 策略，自动挑最优渠道
     if (url === '/pricing/route') return delay(280).then(() => doRoute(body))

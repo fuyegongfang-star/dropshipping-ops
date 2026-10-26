@@ -8,7 +8,7 @@ import { TenantId } from '../../common/tenant/tenant.decorator'
 import { ok } from '../../common/response/api-response'
 import { BusinessException } from '../../common/response/business.exception'
 import { TransferService } from './transfer.service'
-import { ScanTransferDto } from './transfer.dto'
+import { ScanTransferDto, GenerateLabelDto } from './transfer.dto'
 
 @Controller('transfer')
 export class TransferController {
@@ -75,5 +75,36 @@ export class TransferController {
       throw new BusinessException('TENANT_REQUIRED', '缺少租户上下文', HttpStatus.BAD_REQUEST)
     }
     return ok(await this.svc.pack(tenantId, id))
+  }
+
+  /** 可选跨境渠道（6.8）：中转仓出单可选渠道列表（演示态）。 */
+  @Get('channels')
+  async channels(@TenantId() tenantId: string): Promise<unknown> {
+    if (!tenantId) {
+      throw new BusinessException('TENANT_REQUIRED', '缺少租户上下文', HttpStatus.BAD_REQUEST)
+    }
+    return ok(await this.svc.listChannels())
+  }
+
+  /** 生成跨境面单（6.8）：选渠道→建单（Shipment）+ 出 ZPL/预览面单，回填 PackTask。 */
+  @Post('pack-tasks/:id/label')
+  async generateLabel(
+    @TenantId() tenantId: string,
+    @Param('id') id: string,
+    @Body() dto: GenerateLabelDto,
+  ): Promise<unknown> {
+    if (!tenantId) {
+      throw new BusinessException('TENANT_REQUIRED', '缺少租户上下文', HttpStatus.BAD_REQUEST)
+    }
+    return ok(await this.svc.generateLabel(tenantId, id, dto))
+  }
+
+  /** 查看跨境面单（6.8）：返回已生成的面单（ZPL + 预览）。 */
+  @Get('pack-tasks/:id/label')
+  async getLabel(@TenantId() tenantId: string, @Param('id') id: string): Promise<unknown> {
+    if (!tenantId) {
+      throw new BusinessException('TENANT_REQUIRED', '缺少租户上下文', HttpStatus.BAD_REQUEST)
+    }
+    return ok(await this.svc.getLabel(tenantId, id))
   }
 }
