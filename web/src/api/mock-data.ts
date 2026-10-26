@@ -17,6 +17,7 @@ import type { WalletSummary, LedgerType, LedgerItem } from './finance'
 import type { BillItem, ReconciliationItem, ProfitSummary, GenerateResult, ProfitBreakdown, TenantProfit, CarrierCost } from './billing'
 import type { ReportDashboard } from './reports'
 import type { ClaimOut, ClaimType, ClaimStatus, ClaimResponsibleParty, CreateClaimDto, UpdateClaimStatusDto } from './claims'
+import type { PackCheckRow, PackCheckSummary, PackQueueItem, PackQueue, PackTaskDto, PackTaskCheck } from './transfer'
 import type { RiskRule, RiskOrderEvaluation, BlacklistEntry, RiskSummary, CreateRiskRuleDto, UpdateRiskRuleDto, CreateBlacklistDto, ReviewDecisionDto } from './risk'
 import type {
   AmazonHealth,
@@ -176,6 +177,25 @@ const purchaseOrders: MockPurchaseOrder[] = [
     createdAt: '2026-10-23T10:30:00.000Z', updatedAt: '2026-10-24T08:00:00.000Z',
     items: [
       { id: 'poi_2', purchaseOrderId: 'po_demo_2', skuId: null, productName: '手机壳', quantity: 100, imageUrl: 'https://img.demo.com/case.jpg', unitPrice: 5, createdAt: '2026-10-23T10:30:00.000Z' },
+    ],
+  },
+  // 阶段6 演示：已到仓并匹配订单的采购单（6.7 待打包队列演示数据）
+  {
+    id: 'po_pack_1', tenantId: TENANT_ID, shopId: 's_shopify', orderId: 'o1', trackingNo: 'PACK-SF001',
+    carrier: '顺丰速运', platformOrderNo: 'SO-10001', recipientName: 'John Doe', purchaseUrl: 'https://item.demo.com/p/earbud',
+    productImages: ['https://img.demo.com/earbud.jpg'], remark: '蓝牙耳机到仓，已匹配 SO-10001', status: 'matched',
+    createdAt: '2026-10-25T09:00:00.000Z', updatedAt: '2026-10-25T09:00:00.000Z',
+    items: [
+      { id: 'poi_p1', purchaseOrderId: 'po_pack_1', skuId: 'sk1', productName: '无线蓝牙耳机 Pro', quantity: 2, imageUrl: 'https://img.demo.com/earbud.jpg', unitPrice: 68, createdAt: '2026-10-25T09:00:00.000Z' },
+    ],
+  },
+  {
+    id: 'po_pack_2', tenantId: TENANT_ID, shopId: 's_shopify', orderId: 'o2', trackingNo: 'PACK-YT002',
+    carrier: '圆通速递', platformOrderNo: 'SO-10002', recipientName: 'Jane Smith', purchaseUrl: 'https://item.demo.com/p/power',
+    productImages: ['https://img.demo.com/power.jpg'], remark: '充电宝到仓，已匹配 SO-10002（数量不符演示）', status: 'matched',
+    createdAt: '2026-10-25T10:00:00.000Z', updatedAt: '2026-10-25T10:00:00.000Z',
+    items: [
+      { id: 'poi_p2', purchaseOrderId: 'po_pack_2', skuId: 'sk2', productName: '便携充电宝 20000mAh', quantity: 3, imageUrl: 'https://img.demo.com/power.jpg', unitPrice: 99, createdAt: '2026-10-25T10:00:00.000Z' },
     ],
   },
 ]
@@ -2402,6 +2422,289 @@ export function doScanTransfer(body: {
   }
 }
 
+// ===== 6.7 中转仓打包任务 + 核对（演示态，与后端 TransferService 同口径）=====
+
+/** 打包任务（演示态内存模型）：聚合一组已匹配采购单为一个出单/打包单元。 */
+interface MockPackTask {
+  id: string
+  tenantId: string
+  warehouseId: string | null
+  orderId: string | null
+  purchaseOrderIds: string[]
+  status: string
+  channelCode: string | null
+  labelId: string | null
+  shipmentId: string | null
+  packedAt: string | null
+  createdAt: string
+}
+let packTasks: MockPackTask[] = []
+let packTaskSeq = 0
+
+/** 按 (skuId 优先，否则 产品名) 归一聚合采购行项，与店铺订单行项逐一核对差异。 */
+function computePackCheck(
+  poItems: { skuId: string | null; productName: string; quantity: number }[],
+  orderItems: { skuId: string | null; quantity: number }[],
+): { diffs: PackCheckRow[]; summary: PackCheckSummary } {
+  const poAgg = new Map<string, { name: string; qty: number }>()
+  for (const it of poItems) {
+    const key = it.skuId ?? it.productName
+    if (!key) continue
+    const cur = poAgg.get(key) ?? { name: it.productName, qty: 0 }
+    cur.qty += it.quantity
+    poAgg.set(key, cur)
+  }
+  const diffs: PackCheckRow[] = []
+  let matched = 0
+  let qtyMismatch = 0
+  let missing = 0
+  let extra = 0
+  let unverified = 0
+  const consumedPoKeys = new Set<string>()
+  for (const oi of orderItems) {
+    if (!oi.skuId) {
+      unverified++
+      diffs.push({
+        skuId: null,
+        name: '（订单行项缺 SKU）',
+        orderQty: oi.quantity,
+        poQty: 0,
+        diff: -oi.quantity,
+        status: 'unverified',
+        message: '店铺订单行项缺少 SKU，无法与采购单核对，请人工确认',
+      })
+      continue
+    }
+    const po = poAgg.get(oi.skuId)
+    if (!po) {
+      missing++
+      diffs.push({
+        skuId: oi.skuId,
+        name: oi.skuId,
+        orderQty: oi.quantity,
+        poQty: 0,
+        diff: -oi.quantity,
+        status: 'missing_in_po',
+        message: '店铺订单需求该 SKU，但采购单未覆盖（需补采）',
+      })
+      continue
+    }
+    consumedPoKeys.add(oi.skuId)
+    const d = po.qty - oi.quantity
+    if (d === 0) matched++
+    else qtyMismatch++
+    diffs.push({
+      skuId: oi.skuId,
+      name: po.name,
+      orderQty: oi.quantity,
+      poQty: po.qty,
+      diff: d,
+      status: d === 0 ? 'matched' : 'qty_mismatch',
+      message: d === 0 ? '采购数量与订单一致' : `采购与订单数量不符（差 ${d > 0 ? '+' : ''}${d}）`,
+    })
+  }
+  for (const [key, po] of poAgg) {
+    if (consumedPoKeys.has(key)) continue
+    extra++
+    diffs.push({
+      skuId: key,
+      name: po.name,
+      orderQty: 0,
+      poQty: po.qty,
+      diff: po.qty,
+      status: 'extra_in_po',
+      message: '采购到货但店铺订单无对应需求（多采 / 需复核）',
+    })
+  }
+  const total = diffs.length
+  const hasDifference = qtyMismatch + missing + extra + unverified > 0
+  return { diffs, summary: { total, matched, qtyMismatch, missing, extra, unverified, hasDifference } }
+}
+
+/** 待打包队列（演示态）：已匹配且已关联订单的采购单按订单聚合 + 核对差异预览。 */
+export function doGetPackQueue(): PackQueue {
+  const pos = purchaseOrders.filter(
+    (p) => p.tenantId === TENANT_ID && p.status === 'matched' && p.orderId,
+  )
+  const groups = new Map<string, typeof pos>()
+  for (const p of pos) {
+    const oid = p.orderId as string
+    if (!groups.has(oid)) groups.set(oid, [])
+    groups.get(oid)!.push(p)
+  }
+  const orderIds = Array.from(groups.keys())
+  const orderMap = new Map(orders.filter((o) => orderIds.includes(o.id)).map((o) => [o.id, o]))
+  const taskByOrder = new Map(packTasks.map((t) => [t.orderId as string, t]))
+
+  const items: PackQueueItem[] = []
+  for (const [oid, groupPos] of groups) {
+    const order = orderMap.get(oid)
+    const orderItems = (order?.items ?? []).map((it) => ({
+      skuId: (it.sku as { id?: string } | null)?.id ?? null,
+      quantity: it.quantity,
+    }))
+    const poItems = groupPos.flatMap((p) =>
+      p.items.map((it) => ({ skuId: it.skuId, productName: it.productName, quantity: it.quantity })),
+    )
+    const { diffs, summary } = computePackCheck(poItems, orderItems)
+    const t = taskByOrder.get(oid)
+    items.push({
+      orderId: oid,
+      order: order
+        ? {
+            id: order.id,
+            platformOrderNo: order.platformOrderNo,
+            status: order.status,
+            recipientName: order.recipient?.name ?? null,
+          }
+        : null,
+      purchaseOrders: groupPos.map((p) => ({
+        id: p.id,
+        trackingNo: p.trackingNo,
+        carrier: p.carrier,
+        status: p.status,
+      })),
+      purchaseOrderIds: groupPos.map((p) => p.id),
+      task: t ? { id: t.id, status: t.status } : null,
+      diffs,
+      summary,
+    })
+  }
+
+  const taskCount = packTasks.length
+  return {
+    items,
+    stats: {
+      matchedPoCount: pos.length,
+      taskCount,
+      pendingTaskCount: packTasks.filter((t) => t.status === 'pending').length,
+      packedTaskCount: packTasks.filter((t) => t.status === 'packed').length,
+    },
+  }
+}
+
+/** 生成打包任务（演示态）：对每一个已匹配聚合组创建待打包任务，幂等（已存在则跳过）。 */
+export function doGeneratePackTasks(): { created: number; tasks: PackTaskDto[] } {
+  const pos = purchaseOrders.filter(
+    (p) => p.tenantId === TENANT_ID && p.status === 'matched' && p.orderId,
+  )
+  const groups = new Map<string, string[]>()
+  for (const p of pos) {
+    const oid = p.orderId as string
+    if (!groups.has(oid)) groups.set(oid, [])
+    groups.get(oid)!.push(p.id)
+  }
+  const wh = warehouses.find((w) => w.tenantId === TENANT_ID && w.type === 'transfer')
+  const existingOrders = new Set(packTasks.map((t) => t.orderId))
+  let created = 0
+  for (const [oid, poIds] of groups) {
+    if (existingOrders.has(oid)) continue
+    packTasks.push({
+      id: `pack_demo_${++packTaskSeq}`,
+      tenantId: TENANT_ID,
+      warehouseId: wh?.id ?? null,
+      orderId: oid,
+      purchaseOrderIds: poIds,
+      status: 'pending',
+      channelCode: null,
+      labelId: null,
+      shipmentId: null,
+      packedAt: null,
+      createdAt: NOW(),
+    })
+    created++
+  }
+  return { created, tasks: doListPackTasks() }
+}
+
+/** 打包任务列表（演示态，含关联订单与采购单摘要）。 */
+export function doListPackTasks(): PackTaskDto[] {
+  const orderIds = packTasks.map((t) => t.orderId).filter(Boolean) as string[]
+  const orderMap = new Map(orders.filter((o) => orderIds.includes(o.id)).map((o) => [o.id, o]))
+  const poIds = packTasks.flatMap((t) => t.purchaseOrderIds)
+  const poMap = new Map(purchaseOrders.filter((p) => poIds.includes(p.id)).map((p) => [p.id, p]))
+  return packTasks.map((t) => {
+    const order = t.orderId ? orderMap.get(t.orderId) : undefined
+    return {
+      id: t.id,
+      tenantId: t.tenantId,
+      warehouseId: t.warehouseId,
+      orderId: t.orderId,
+      purchaseOrderIds: t.purchaseOrderIds,
+      status: t.status,
+      channelCode: t.channelCode,
+      labelId: t.labelId,
+      shipmentId: t.shipmentId,
+      packedAt: t.packedAt,
+      createdAt: t.createdAt,
+      order: order
+        ? {
+            id: order.id,
+            platformOrderNo: order.platformOrderNo,
+            status: order.status,
+            recipientName: order.recipient?.name ?? null,
+          }
+        : null,
+      purchaseOrders: t.purchaseOrderIds
+        .map((id) => poMap.get(id))
+        .filter(Boolean)
+        .map((p) => ({ id: p!.id, trackingNo: p!.trackingNo, carrier: p!.carrier, status: p!.status })),
+    }
+  })
+}
+
+/** 打包任务核对（演示态）：采购行项 vs 店铺订单行项差异明细。 */
+export function doGetPackCheck(packTaskId: string): PackTaskCheck {
+  const task = packTasks.find((t) => t.id === packTaskId)
+  if (!task) throw new Error('PACK_TASK_NOT_FOUND')
+  const order = task.orderId
+    ? orders.find((o) => o.id === task.orderId)
+    : undefined
+  const orderItems = (order?.items ?? []).map((it) => ({
+    skuId: (it.sku as { id?: string } | null)?.id ?? null,
+    quantity: it.quantity,
+  }))
+  const poItems = task.purchaseOrderIds
+    .map((id) => purchaseOrders.find((p) => p.id === id))
+    .filter(Boolean)
+    .flatMap((p) => p!.items.map((it) => ({ skuId: it.skuId, productName: it.productName, quantity: it.quantity })))
+  const { diffs, summary } = computePackCheck(poItems, orderItems)
+  return {
+    packTaskId: task.id,
+    order: order
+      ? {
+          id: order.id,
+          platformOrderNo: order.platformOrderNo,
+          status: order.status,
+          recipientName: order.recipient?.name ?? null,
+        }
+      : null,
+    purchaseOrders: task.purchaseOrderIds
+      .map((id) => purchaseOrders.find((p) => p.id === id))
+      .filter(Boolean)
+      .map((p) => ({ id: p!.id, trackingNo: p!.trackingNo, carrier: p!.carrier, status: p!.status })),
+    diffs,
+    summary,
+  }
+}
+
+/** 标记打包（演示态）：幂等推进聚合采购单 matched/arrived → packed，并置任务为 packed。 */
+export function doPack(packTaskId: string): PackTaskDto {
+  const task = packTasks.find((t) => t.id === packTaskId)
+  if (!task) throw new Error('PACK_TASK_NOT_FOUND')
+  if (task.status === 'packed') return doListPackTasks().find((t) => t.id === packTaskId)!
+  task.status = 'packed'
+  task.packedAt = NOW()
+  for (const id of task.purchaseOrderIds) {
+    const po = purchaseOrders.find((p) => p.id === id && p.tenantId === TENANT_ID)
+    if (po && ['arrived', 'matched'].includes(po.status)) {
+      po.status = 'packed'
+      po.updatedAt = NOW()
+    }
+  }
+  return doListPackTasks().find((t) => t.id === packTaskId)!
+}
+
 // ===== 模拟路由分发（演示模式核心）：按 method+url 匹配 doXxx 实现，返回数据体 =====
 // 与真实后端 /api 路由同口径；无匹配时 reject 提示演示模式不支持该请求。
 export function mockRouter(method: string, url: string, body?: unknown): Promise<unknown> {
@@ -2417,6 +2720,13 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     if (poCand) return delay(140).then(() => doCandidates(poCand[1]))
     // 中转仓看板（阶段6，任务 6.5）：中转仓列表 + 待作业采购单 + 关联订单概览
     if (url === '/transfer/board') return delay(160).then(() => doGetTransferBoard())
+    // 待打包队列（阶段6，任务 6.7）：已匹配订单聚合 + 核对差异预览
+    if (url === '/transfer/pack-queue') return delay(160).then(() => doGetPackQueue())
+    // 打包任务列表（阶段6，任务 6.7）：含关联订单与采购单摘要
+    if (url === '/transfer/pack-tasks') return delay(160).then(() => doListPackTasks())
+    // 打包任务核对（阶段6，任务 6.7）：采购行项 vs 订单行项差异
+    const packCheck = url.match(/^\/transfer\/pack-tasks\/([^/]+)\/check$/)
+    if (packCheck) return delay(160).then(() => doGetPackCheck(packCheck[1]))
     // 供应商代发（§21）：档案列表 + 代发单列表（演示态内存）
     if (url === '/suppliers') return delay().then(() => doListSuppliers())
     if (url === '/suppliers/orders') return delay().then(() => doListSupplierOrders())
@@ -2555,6 +2865,11 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
       return delay(180).then(() =>
         doScanTransfer((body ?? {}) as { warehouseId: string; scanValue: string; scanType: 'trackingNo' | 'barcode' | 'purchaseNo' }),
       )
+    // 生成打包任务（任务 6.7）：幂等，按订单聚合创建
+    if (url === '/transfer/pack-tasks/generate') return delay(180).then(() => doGeneratePackTasks())
+    // 标记打包（任务 6.7）：推进采购单状态 + 置任务为 packed
+    const packDo = url.match(/^\/transfer\/pack-tasks\/([^/]+)\/pack$/)
+    if (packDo) return delay(180).then(() => doPack(packDo[1]))
     if (url === '/pricing/compare') return delay(260).then(() => doCompare(body))
     // 履约路由（模式A 自动选渠道，§4/§5）：给定发货上下文 + 策略，自动挑最优渠道
     if (url === '/pricing/route') return delay(280).then(() => doRoute(body))

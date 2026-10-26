@@ -80,7 +80,7 @@
 | 6.4 | 阶段6 | 采购单↔店铺订单 匹配/关联 | 自动匹配（按平台订单号/收件人/SKU）+ 手动关联；订单详情可见采购单 | 6.2/1.3 | 1d | ✅ |
 | 6.5 | 阶段6 | 中转仓模型 + 看板 | Warehouse.type 加 transfer；中转仓看板（货代侧待作业采购单可见） | 2.2 | 1d | ✅ |
 | 6.6 | 阶段6 | 扫码到货入库端点 | POST /transfer/scan：快递单号/条码→解析采购单→匹配订单→到货登记；Asn 扩展 purchaseOrderId/scanSource/receivedItems | 6.4/6.5 | 1.5d | ✅ |
-| 6.7 | 阶段6 | 中转仓作业：打包任务 + 核对 | 按匹配订单聚合采购单生成打包任务；核对采购单 vs 店铺订单差异；PickTask 扩展 channelCode/labelId/shipmentId | 6.6 | 1.5d | ⬜ |
+| 6.7 | 阶段6 | 中转仓作业：打包任务 + 核对 | 按匹配订单聚合采购单生成打包任务；核对采购单 vs 店铺订单差异；PickTask 扩展 channelCode/labelId/shipmentId | 6.6 | 1.5d | ✅ |
 | 6.8 | 阶段6 | 跨境面单生成（中转仓出单） | 选渠道→承运商建单 + LabelService 出 PDF/ZPL；面单关联店铺订单与平台；Shipment 加 purchaseOrderId | 3.9/1.5/6.7 | 1d | ⬜ |
 | 6.9 | 阶段6 | 出库闭环 + 物流同步 | 出库扫码→Shipment 建单/fulfill→承运商回传→TrackingEvent→正式跨境物流；状态机贯通采购单/订单 | 6.8/1.6 | 1d | ⬜ |
 
@@ -603,3 +603,14 @@
 - **测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（316 passed / 47 suites）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
 - **提交**：随本批统一提交（6.6 后端/前端/进度生成器/进度表/检查点）。
 - **下一步（次日接力）**：6.7 中转仓作业：打包任务 + 核对（按匹配订单聚合采购单生成打包任务；核对采购单 vs 店铺订单差异；PickTask 扩展 channelCode/labelId/shipmentId）。
+
+### 进度更新 · 2026-10-25（续跑 · 6.7 中转仓打包任务 + 核对）
+- **完成（✅）**：
+  - **6.7 中转仓打包任务 + 核对（阶段6 详细设计）** —— 设计决策：未扩展 WMS `PickTask`（拣货作业，语义不同），改为新增独立的 `PackTask` 模型（`warehouseId/orderId/purchaseOrderIds/json/status`（pending|packed）/`channelCode/labelId/shipmentId`（6.8/6.9 回填）/`packedAt`），与既有拣货任务解耦。
+    - 后端 `TransferService`：`getPackQueue`（聚合「已匹配且已关联订单」的采购单 → 按订单分组 → 预计算采购行项 vs 订单行项差异 + 已建任务标记）、`generatePackTasks`（幂等，按订单组创建 pending 任务，默认取本租户首个中转仓）、`listPackTasks`、`getPackCheck`、`pack`（幂等推进聚合采购单 `arrived/matched→packed` 并置任务 packed）；私有 `computeCheck`（按 `skuId` 优先、否则产品名 归一，5 类差异：`matched`/`qty_mismatch`/`missing_in_po`/`extra_in_po`/`unverified` + 汇总 `hasDifference`）。`TransferController` 新增 5 端点：`GET /transfer/pack-queue`、`POST /transfer/pack-tasks/generate`、`GET /transfer/pack-tasks`、`GET /transfer/pack-tasks/:id/check`、`POST /transfer/pack-tasks/:id/pack`（全租户隔离 + `TENANT_REQUIRED` 守卫）。`transfer.service.pack.spec.ts` 新增 7 例（队列聚合+差异/任务关联/幂等生成/缺货·多采检测/打包推进+幂等/任务不存在/租户隔离），全仓 **323 passed / 48 suites**。
+  - **前端可视化（中转仓作业 打包作业）**：`TransferView`（/transfer）新增「打包作业」区块——态势第 4 卡（待打包任务）+ 待打包队列表（店铺订单/聚合采购单/核对预览差异胶囊/任务状态/「核对」「打包」操作）+ 已建打包任务子表（全生命周期，含打包时间）；「核对」对话框展示采购行项 vs 订单行项差异明细表（差异着色 + 一致/数量不符/缺货/多采/待核 结论 + 存在即拦截告警）；`transfer.ts` 增 `packQueue/generatePackTasks/listPackTasks/packCheck/pack` 与 6 类类型，`mock-data.ts` 同口径内存实现（`doGetPackQueue/doGeneratePackTasks/doListPackTasks/doGetPackCheck/doPack` + `computePackCheck` 与后端一致 + mockRouter 分发），演示与正式双路通。演示种子新增 `po_pack_1`/`po_pack_2`（已 matched 并关联 `o1`/`o2`），其中 `o2` 期望 1 件、采购 3 件 → 默认呈现「数量不符」差异演示。
+- **进行中（🔵）**：无（本批 6.7 完成）。
+- **受阻**：无。
+- **测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**323 passed / 48 suites**）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
+- **提交**：随本批统一提交（6.7 后端/前端/进度生成器/进度表/检查点）。
+- **下一步（次日接力）**：6.8 跨境面单生成（中转仓出单：选渠道→承运商建单 + LabelService 出 PDF/ZPL；面单关联店铺订单与平台；Shipment 加 purchaseOrderId；PackTask.channelCode/labelId 回填）。

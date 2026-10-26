@@ -71,9 +71,86 @@ export interface ScanTransferResult {
   message: string
 }
 
+// ===== 6.7 中转仓打包任务 + 核对 类型 =====
+
+/** 核对差异行（采购行项 vs 店铺订单行项） */
+export interface PackCheckRow {
+  skuId: string | null
+  name: string
+  orderQty: number
+  poQty: number
+  diff: number
+  status: 'matched' | 'qty_mismatch' | 'missing_in_po' | 'extra_in_po' | 'unverified'
+  message: string
+}
+
+/** 核对差异汇总 */
+export interface PackCheckSummary {
+  total: number
+  matched: number
+  qtyMismatch: number
+  missing: number
+  extra: number
+  unverified: number
+  hasDifference: boolean
+}
+
+/** 打包任务（归一化，含关联订单与采购单摘要） */
+export interface PackTaskDto {
+  id: string
+  tenantId: string
+  warehouseId: string | null
+  orderId: string | null
+  purchaseOrderIds: string[]
+  status: string
+  channelCode: string | null
+  labelId: string | null
+  shipmentId: string | null
+  packedAt: string | null
+  createdAt: string
+  order: { id: string; platformOrderNo: string | null; status: string; recipientName: string | null } | null
+  purchaseOrders: { id: string; trackingNo: string; carrier: string; status: string }[]
+}
+
+/** 待打包队列条目（按关联订单聚合的已匹配采购单 + 核对预览） */
+export interface PackQueueItem {
+  orderId: string
+  order: { id: string; platformOrderNo: string | null; status: string; recipientName: string | null } | null
+  purchaseOrders: { id: string; trackingNo: string; carrier: string; status: string }[]
+  purchaseOrderIds: string[]
+  task: { id: string; status: string } | null
+  diffs: PackCheckRow[]
+  summary: PackCheckSummary
+}
+
+/** 待打包队列聚合响应 */
+export interface PackQueue {
+  items: PackQueueItem[]
+  stats: { matchedPoCount: number; taskCount: number; pendingTaskCount: number; packedTaskCount: number }
+}
+
+/** 打包任务核对结果（6.7） */
+export interface PackTaskCheck {
+  packTaskId: string
+  order: { id: string; platformOrderNo: string | null; status: string; recipientName: string | null } | null
+  purchaseOrders: { id: string; trackingNo: string; carrier: string; status: string }[]
+  diffs: PackCheckRow[]
+  summary: PackCheckSummary
+}
+
 export const transferApi = {
   /** 中转仓看板（6.5）：中转仓 + 待作业采购单 + 关联订单概览 */
   board: () => http.get<TransferBoard>('/transfer/board'),
   /** 扫码到货入库（6.6）：快递单号/SKU 条码/采购单号 → 解析采购单 → 到货登记 → 状态推进 → 匹配订单 */
   scan: (dto: ScanTransferDto) => http.post<ScanTransferResult>('/transfer/scan', dto),
+  /** 待打包队列（6.7）：已匹配订单聚合 + 核对差异预览 */
+  packQueue: () => http.get<PackQueue>('/transfer/pack-queue'),
+  /** 生成打包任务（6.7）：幂等，按订单聚合创建 */
+  generatePackTasks: () => http.post<{ created: number; tasks: PackTaskDto[] }>('/transfer/pack-tasks/generate'),
+  /** 打包任务列表（6.7） */
+  listPackTasks: () => http.get<PackTaskDto[]>('/transfer/pack-tasks'),
+  /** 打包任务核对（6.7）：采购行项 vs 订单行项 */
+  packCheck: (id: string) => http.get<PackTaskCheck>(`/transfer/pack-tasks/${id}/check`),
+  /** 标记打包（6.7）：推进采购单状态 + 置任务为 packed */
+  pack: (id: string) => http.post<PackTaskDto>(`/transfer/pack-tasks/${id}/pack`),
 }

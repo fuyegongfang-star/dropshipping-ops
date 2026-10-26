@@ -60,6 +60,11 @@ const EXPLICIT_ROUTES = {
   '6.1': '/channels',
   '6.2': '/purchase-orders',
   '6.3': '/purchase-orders',
+  '6.5': '/transfer',
+  '6.6': '/transfer',
+  '6.7': '/transfer',
+  '6.8': '/transfer',
+  '6.9': '/transfer',
 };
 
 /** 关键词 → 路由（兜底推断，命中即用）。 */

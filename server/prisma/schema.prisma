@@ -450,6 +450,27 @@ model PickTask {
   createdAt   DateTime @default(now())
 }
 
+// ---- 阶段6 中转仓打包任务（6.7，按匹配后的店铺订单聚合采购单）----------------
+// 与 WMS 拣货任务 PickTask 解耦（仓储拣货 vs 货代中转仓打包），独立模型避免字段耦合。
+// channelCode / labelId / shipmentId 在 6.8 出单 / 6.9 出库时回填。
+model PackTask {
+  id               String   @id @default(cuid())
+  tenantId         String
+  warehouseId      String? // 中转仓（出单/出库所在仓）
+  orderId          String? // 关联的店铺订单（多个采购单聚合到该订单）
+  purchaseOrderIds Json // 聚合的采购单 id 列表（String[]，§21 阶段6 对照核对）
+  status           String   @default("pending") // pending（待打包）| packed（已打包）
+  channelCode      String? // 跨境渠道（6.8 出单时回填，如 yunexpress / dhl）
+  labelId          String? // 面单 id（6.8 出单时回填）
+  shipmentId       String? // 运单 id（6.9 出库时回填）
+  packedAt         DateTime? // 打包完成时间
+  createdAt        DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([orderId])
+}
+
 model CycleCount {
   id          String   @id @default(cuid())
   tenantId    String
