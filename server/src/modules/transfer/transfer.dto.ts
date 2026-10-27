@@ -1,4 +1,4 @@
-import { IsIn, IsNotEmpty, IsString } from 'class-validator'
+import { IsIn, IsNotEmpty, IsOptional, IsString } from 'class-validator'
 
 /** 扫码来源类型（6.6 扫码到货入库） */
 export type ScanType = 'trackingNo' | 'barcode' | 'purchaseNo'
@@ -25,4 +25,21 @@ export type TransferChannelCode = (typeof TRANSFER_CHANNEL_CODES)[number]
 export class GenerateLabelDto {
   @IsIn(TRANSFER_CHANNEL_CODES)
   channelCode: TransferChannelCode // 跨境渠道（云途 / DHL / 4PX / 燕文）
+}
+
+/**
+ * 出库闭环请求体（6.9 出库闭环 + 物流同步）。
+ * 两种定位方式二选一：① packTaskId（中转仓出单任务，最常用）② shipmentId（直接指定跨境运单）。
+ * 校验：目标任务必须已生成跨境面单（labelId/shipmentId 就绪），否则不允许出库。
+ */
+export class OutboundTransferDto {
+  @IsOptional()
+  @IsString()
+  packTaskId?: string // 中转仓打包/出单任务 ID（6.8 已生成面单）
+
+  @IsOptional()
+  @IsString()
+  shipmentId?: string // 直接指定跨境运单 ID
+
+  // 至少提供其一（class-validator 仅做类型校验，业务校验在 service 内完成）
 }

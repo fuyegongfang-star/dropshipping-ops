@@ -8,7 +8,7 @@ import { TenantId } from '../../common/tenant/tenant.decorator'
 import { ok } from '../../common/response/api-response'
 import { BusinessException } from '../../common/response/business.exception'
 import { TransferService } from './transfer.service'
-import { ScanTransferDto, GenerateLabelDto } from './transfer.dto'
+import { ScanTransferDto, GenerateLabelDto, OutboundTransferDto } from './transfer.dto'
 
 @Controller('transfer')
 export class TransferController {
@@ -106,5 +106,14 @@ export class TransferController {
       throw new BusinessException('TENANT_REQUIRED', '缺少租户上下文', HttpStatus.BAD_REQUEST)
     }
     return ok(await this.svc.getLabel(tenantId, id))
+  }
+
+  /** 出库闭环（6.9）：已出单的打包任务 / 跨境运单离仓，回写平台 + 追加揽收轨迹，流转正式跨境物流。 */
+  @Post('outbound')
+  async outbound(@TenantId() tenantId: string, @Body() dto: OutboundTransferDto): Promise<unknown> {
+    if (!tenantId) {
+      throw new BusinessException('TENANT_REQUIRED', '缺少租户上下文', HttpStatus.BAD_REQUEST)
+    }
+    return ok(await this.svc.outbound(tenantId, dto))
   }
 }

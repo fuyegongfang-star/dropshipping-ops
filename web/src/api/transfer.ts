@@ -175,6 +175,41 @@ export interface GenerateLabelDto {
   channelCode: string
 }
 
+// ===== 6.9 出库闭环 + 物流同步 =====
+
+/** 出库请求体（6.9）：二选一——打包任务 id 或 直接跨境运单 id */
+export interface OutboundTransferDto {
+  packTaskId?: string
+  shipmentId?: string
+}
+
+/** 出库轨迹节点（6.9，镜像后端 OutboundTrackingVo） */
+export interface OutboundTrackingVo {
+  id: string
+  shipmentId: string
+  status: string
+  location?: string
+  description?: string
+  occurredAt: string
+  legType?: string
+}
+
+/** 出库结果（6.9）：回写平台 + 流转正式跨境物流 */
+export interface OutboundResult {
+  /** 最新打包任务快照（已出单/已出库）；按 shipmentId 出库时为 null */
+  packTask: PackTaskDto | null
+  /** 跨境运单快照 */
+  shipment: { id: string; trackingNo: string | null; status: string; channelCode: string | null }
+  /** 出库后的完整轨迹时间线 */
+  tracking: OutboundTrackingVo[]
+  /** 关联采购单状态（packed → outbound） */
+  purchaseOrder: { id: string; status: string }[]
+  /** 关联店铺订单状态（pushed → picked_up） */
+  order: { id: string; status: string } | null
+  /** 结果描述 */
+  message: string
+}
+
 export const transferApi = {
   /** 中转仓看板（6.5）：中转仓 + 待作业采购单 + 关联订单概览 */
   board: () => http.get<TransferBoard>('/transfer/board'),
@@ -196,4 +231,6 @@ export const transferApi = {
   generateLabel: (id: string, dto: GenerateLabelDto) => http.post<PackLabelResult>(`/transfer/pack-tasks/${id}/label`, dto),
   /** 查看跨境面单（6.8） */
   getLabel: (id: string) => http.get<ShippingLabelDto>(`/transfer/pack-tasks/${id}/label`),
+  /** 出库（6.9）：打包任务/跨境运单 → fulfill 回写平台 + 出库轨迹节点 → 流转正式跨境物流；状态机贯通采购单/订单 */
+  outbound: (dto: OutboundTransferDto) => http.post<OutboundResult>('/transfer/outbound', dto),
 }

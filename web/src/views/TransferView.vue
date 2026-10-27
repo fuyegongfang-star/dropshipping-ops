@@ -187,13 +187,21 @@
             <el-table-column label="状态" width="110">
               <template #default="{ row }"><span class="tag-soft" :class="taskStatusClass(row.status)">{{ taskStatusLabel(row.status) }}</span></template>
             </el-table-column>
+            <el-table-column label="出库状态" width="120">
+              <template #default="{ row }">
+                <span v-if="outboundedIds.includes(row.id)" class="tag-soft tag-violet">已出库</span>
+                <span v-else-if="row.channelCode" class="tag-soft tag-gray">待出库</span>
+                <span v-else class="muted">未出单</span>
+              </template>
+            </el-table-column>
             <el-table-column label="打包时间" width="170">
               <template #default="{ row }"><span class="muted">{{ row.packedAt ? fmt(row.packedAt) : '—' }}</span></template>
             </el-table-column>
-            <el-table-column label="操作" width="140" fixed="right">
+            <el-table-column label="操作" width="200" fixed="right">
               <template #default="{ row }">
                 <el-button v-if="!row.channelCode" size="small" type="primary" :loading="labelGen && labelTaskId === row.id" @click="openLabel(row)">生成面单</el-button>
-                <el-button v-else size="small" @click="openLabel(row)">查看面单</el-button>
+                <el-button v-else-if="!outboundedIds.includes(row.id)" size="small" type="success" :loading="outboundingId === row.id" @click="outbound(row)">出库</el-button>
+                <el-button v-else size="small" @click="openOutbound(row)">查看出库</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -346,13 +354,59 @@
         <el-button v-else-if="labelData" type="primary" @click="printLabel">打印</el-button>
       </template>
     </el-dialog>
+
+    <!-- 出库闭环 + 物流同步（6.9）：回写平台 + 跨境物流轨迹时间线 -->
+    <el-dialog v-model="outboundVisible" title="出库成功 · 物流同步" width="660px" :close-on-click-modal="false">
+      <div v-if="outboundResult" class="ob-body">
+        <el-alert type="success" :closable="false" show-icon :title="outboundResult.message" />
+        <div class="ob-grid">
+          <div class="ob-cell">
+            <span class="ob-k">跨境运单</span>
+            <span class="ob-v mono">{{ outboundResult.shipment.trackingNo || outboundResult.shipment.id }}</span>
+          </div>
+          <div class="ob-cell">
+            <span class="ob-k">运单状态</span>
+            <span class="ob-v"><span class="tag-soft" :class="statusClass(outboundResult.shipment.status)">{{ statusLabel(outboundResult.shipment.status) }}</span></span>
+          </div>
+          <div v-if="outboundResult.order" class="ob-cell">
+            <span class="ob-k">关联订单</span>
+            <span class="ob-v"><span class="tag-soft" :class="orderStatusClass(outboundResult.order.status)">{{ orderStatusLabel(outboundResult.order.status) }}</span></span>
+          </div>
+          <div v-if="outboundResult.purchaseOrder.length" class="ob-cell">
+            <span class="ob-k">采购单</span>
+            <span class="ob-v">{{ outboundResult.purchaseOrder.length }} 单 · {{ statusLabel(outboundResult.purchaseOrder[0].status) }}</span>
+          </div>
+        </div>
+        <div class="ob-section">
+          <div class="section-subtitle">物流轨迹时间线</div>
+          <el-timeline class="ob-timeline">
+            <el-timeline-item
+              v-for="ev in outboundResult.tracking"
+              :key="ev.id"
+              :timestamp="fmt(ev.occurredAt)"
+              :type="ev.status === 'picked_up' ? 'primary' : 'info'"
+              placement="top"
+            >
+              <div class="ob-ev">
+                <span class="tag-soft" :class="trackingClass(ev.status)">{{ trackingLabel(ev.status) }}</span>
+                <span v-if="ev.location" class="muted sm"> · {{ ev.location }}</span>
+                <div v-if="ev.description" class="muted sm">{{ ev.description }}</div>
+              </div>
+            </el-timeline-item>
+          </el-timeline>
+        </div>
+      </div>
+      <template #footer>
+        <el-button type="primary" @click="outboundVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { transferApi, type TransferBoard, type TransferWarehouse, type TransferBoardPo, type ScanTransferDto, type ScanTransferResult, type PackQueue, type PackQueueItem, type PackTaskDto, type ShippingLabelDto } from '@/api/transfer'
+import { transferApi, type TransferBoard, type TransferWarehouse, type TransferBoardPo, type ScanTransferDto, type ScanTransferResult, type PackQueue, type PackQueueItem, type PackTaskDto, type ShippingLabelDto, type OutboundResult } from '@/api/transfer'
 import PageHeader from '@/components/PageHeader.vue'
 import AppIcon from '@/components/AppIcon.vue'
 
@@ -374,13 +428,35 @@ const ORDER_STATUS_LABELS: Record<string, string> = {
   pending_review: '待审单',
   approved: '已通过',
   pending: '待处理',
+  pushed: '已推单',
+  picked_up: '已揽收',
   fulfilled: '已履约',
   shipped: '已发货',
   in_transit: '运输中',
+  customs_clearing: '清关中',
+  out_for_delivery: '派送中',
+  delivered: '已签收',
   completed: '已完成',
   exception: '异常',
   cancelled: '已取消',
   rejected: '已拒绝',
+}
+const ORDER_STATUS_CLASS: Record<string, string> = {
+  pending_review: 'tag-gray',
+  approved: 'tag-green',
+  pending: 'tag-gray',
+  pushed: 'tag-blue',
+  picked_up: 'tag-violet',
+  fulfilled: 'tag-green',
+  shipped: 'tag-blue',
+  in_transit: 'tag-blue',
+  customs_clearing: 'tag-orange',
+  out_for_delivery: 'tag-orange',
+  delivered: 'tag-green',
+  completed: 'tag-green',
+  exception: 'tag-red',
+  cancelled: 'tag-gray',
+  rejected: 'tag-gray',
 }
 
 const board = ref<TransferBoard | null>(null)
@@ -398,6 +474,37 @@ function statusClass(s: string): string {
 }
 function orderStatusLabel(s: string): string {
   return ORDER_STATUS_LABELS[s] ?? s
+}
+function orderStatusClass(s: string): string {
+  return ORDER_STATUS_CLASS[s] ?? 'tag-gray'
+}
+
+// ===== 6.9 物流轨迹节点状态（出库结果展示用）=====
+const TRACKING_LABELS: Record<string, string> = {
+  booked: '已建单',
+  pushed: '已推单',
+  picked_up: '已揽收',
+  in_transit: '运输中',
+  customs_clearing: '清关中',
+  out_for_delivery: '派送中',
+  delivered: '已签收',
+  exception: '异常',
+}
+const TRACKING_CLASS: Record<string, string> = {
+  booked: 'tag-gray',
+  pushed: 'tag-blue',
+  picked_up: 'tag-violet',
+  in_transit: 'tag-blue',
+  customs_clearing: 'tag-orange',
+  out_for_delivery: 'tag-orange',
+  delivered: 'tag-green',
+  exception: 'tag-red',
+}
+function trackingLabel(s: string): string {
+  return TRACKING_LABELS[s] ?? s
+}
+function trackingClass(s: string): string {
+  return TRACKING_CLASS[s] ?? 'tag-gray'
 }
 function itemSummary(row: TransferBoardPo): string {
   if (!row.items || !row.items.length) return '—'
@@ -636,6 +743,38 @@ async function generateLabel(): Promise<void> {
 /** 打印面单（在新标签打开预览，由浏览器打印对话框处理）。 */
 function printLabel(): void {
   if (labelData.value?.pdfUrl) window.open(labelData.value.pdfUrl, '_blank')
+}
+
+// ===== 6.9 出库闭环 + 物流同步 =====
+const outboundVisible = ref(false)
+const outboundingId = ref<string | null>(null)
+const outboundedIds = ref<string[]>([])
+const outboundResults = ref<Record<string, OutboundResult>>({})
+const outboundResult = ref<OutboundResult | null>(null)
+
+/** 出库：打包任务 → fulfill 回写平台 + 出库轨迹节点 → 流转正式跨境物流；状态机贯通采购单/订单。 */
+async function outbound(row: PackTaskDto): Promise<void> {
+  outboundingId.value = row.id
+  try {
+    const res = await transferApi.outbound({ packTaskId: row.id })
+    outboundResults.value = { ...outboundResults.value, [row.id]: res }
+    outboundedIds.value = [...outboundedIds.value, row.id]
+    outboundResult.value = res
+    outboundVisible.value = true
+    ElMessage.success('出库成功，运单已回写平台并进入正式跨境物流')
+    // 刷新看板与打包作业：关联采购单 packed → outbound（离仓），订单 pushed → picked_up
+    await Promise.all([load(), loadPack()])
+  } catch (e) {
+    ElMessage.error('出库失败：' + (e as Error).message)
+  } finally {
+    outboundingId.value = null
+  }
+}
+
+/** 查看已出库结果（轨迹时间线 + 状态汇聚）。 */
+function openOutbound(row: PackTaskDto): void {
+  outboundResult.value = outboundResults.value[row.id] ?? null
+  outboundVisible.value = true
 }
 
 onMounted(() => {
@@ -960,5 +1099,42 @@ onMounted(() => {
   line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-all;
+}
+.ob-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.ob-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 16px;
+}
+.ob-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.ob-k {
+  font-size: 12px;
+  color: var(--ink-500);
+}
+.ob-v {
+  font-size: 14px;
+  color: var(--ink-800);
+  font-weight: 500;
+}
+.ob-section {
+  margin-top: 4px;
+}
+.ob-timeline {
+  margin-top: 8px;
+  padding-left: 4px;
+}
+.ob-ev {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
 }
 </style>

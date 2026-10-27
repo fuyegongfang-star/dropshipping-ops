@@ -17,7 +17,7 @@ import type { WalletSummary, LedgerType, LedgerItem } from './finance'
 import type { BillItem, ReconciliationItem, ProfitSummary, GenerateResult, ProfitBreakdown, TenantProfit, CarrierCost } from './billing'
 import type { ReportDashboard } from './reports'
 import type { ClaimOut, ClaimType, ClaimStatus, ClaimResponsibleParty, CreateClaimDto, UpdateClaimStatusDto } from './claims'
-import type { PackCheckRow, PackCheckSummary, PackQueueItem, PackQueue, PackTaskDto, PackTaskCheck, ChannelOption, ShippingLabelDto, PackLabelResult } from './transfer'
+import type { PackCheckRow, PackCheckSummary, PackQueueItem, PackQueue, PackTaskDto, PackTaskCheck, ChannelOption, ShippingLabelDto, PackLabelResult, OutboundTransferDto, OutboundTrackingVo, OutboundResult } from './transfer'
 import type { RiskRule, RiskOrderEvaluation, BlacklistEntry, RiskSummary, CreateRiskRuleDto, UpdateRiskRuleDto, CreateBlacklistDto, ReviewDecisionDto } from './risk'
 import type {
   AmazonHealth,
@@ -2825,6 +2825,23 @@ export function doGenerateLabel(packTaskId: string, dto: { channelCode: string }
     createdAt: NOW(),
   }
   packLabels.push(label)
+  // 同步建立跨境运单实体（镜像后端 Shipment），便于出库时 fulfill 回写平台 + 轨迹联动订单
+  const cost = estimateMockCost(channel, weightG)
+  shipments.push({
+    id: shipmentId,
+    orderId: task.orderId ?? '',
+    carrierCode: channel.code,
+    carrierName: channel.name,
+    trackingNo,
+    waybillNo: trackingNo,
+    status: 'booked',
+    legType: 'direct',
+    carrierCost: cost.carrierCost,
+    sellPrice: cost.sellPrice,
+    currency: 'CNY',
+    legs: [{ legType: 'direct', carrierCode: channel.code, carrierName: channel.name, trackingNo, status: 'booked' }],
+    createdAt: NOW(),
+  })
   task.channelCode = channel.code
   task.labelId = label.id
   task.shipmentId = shipmentId
@@ -2838,6 +2855,101 @@ export function doGetLabel(packTaskId: string): ShippingLabelDto {
   const label = packLabels.find((l) => l.id === task.labelId)
   if (!label) throw new Error('LABEL_NOT_FOUND')
   return label
+}
+
+// ===== 6.9 出库闭环 + 物流同步（演示态，与后端 TransferService.outbound 同口径）=====
+// 出库扫码 → Shipment.fulfill 回写平台 + TrackingEvent 出库节点 → 流转正式跨境物流；
+// 状态机贯通采购单（packed → outbound）与店铺订单（approved → pushed → picked_up）。
+
+/**
+ * 出库（演示态）：
+ * - 通过 packTaskId 解析 shipmentId（要求该任务已生成面单，含 labelId + shipmentId；否则 OUTBOUND_NO_LABEL）；
+ * - 或直接传 shipmentId（否则 OUTBOUND_TARGET_REQUIRED）；
+ * - 调用 doFulfillShipment（回写平台 + 推进运单至 pushed）与 doRecordTracking（出库揽收节点 picked_up）；
+ * - 推进关联采购单 packed → outbound；联动店铺订单 pushed → picked_up；
+ * - 汇总 shipment + tracking（doListTracking）+ order + purchaseOrder 返回 OutboundResult。
+ */
+export function doOutbound(body: unknown): OutboundResult {
+  const dto = (body ?? {}) as OutboundTransferDto
+  let shipmentId: string | undefined
+  let targetTask: MockPackTask | null = null
+
+  if (dto.packTaskId) {
+    const task = packTasks.find((t) => t.id === dto.packTaskId)
+    if (!task) throw new Error('PACK_TASK_NOT_FOUND')
+    if (!task.labelId || !task.shipmentId) throw new Error('OUTBOUND_NO_LABEL')
+    shipmentId = task.shipmentId
+    targetTask = task
+  } else if (dto.shipmentId) {
+    shipmentId = dto.shipmentId
+  } else {
+    throw new Error('OUTBOUND_TARGET_REQUIRED')
+  }
+
+  // 回写平台：运单 → pushed（含轨迹节点）
+  doFulfillShipment(shipmentId)
+  // 出库揽收节点：运单 → picked_up（含轨迹节点）
+  doRecordTracking(shipmentId, {
+    status: 'picked_up',
+    location: '中转仓',
+    description: '已出库揽收，离港进入正式跨境物流',
+  })
+
+  // 关联订单：pushed → picked_up（演示态直接置终态便于看板可视化）
+  const shipment = shipments.find((s) => s.id === shipmentId)
+  let orderSnap: { id: string; status: string } | null = null
+  if (shipment?.orderId) {
+    const order = orders.find((o) => o.id === shipment.orderId)
+    if (order) {
+      order.status = 'picked_up'
+      orderSnap = { id: order.id, status: order.status }
+    }
+  }
+
+  // 关联采购单：packed → outbound（仅按任务聚合的采购单推进；按 shipmentId 出库时需回查任务）
+  const poSnaps: { id: string; status: string }[] = []
+  const poIds = targetTask ? targetTask.purchaseOrderIds : []
+  for (const id of poIds) {
+    const po = purchaseOrders.find((p) => p.id === id && p.tenantId === TENANT_ID)
+    if (po && po.status === 'packed') {
+      po.status = 'outbound'
+      po.updatedAt = NOW()
+    }
+    if (po) poSnaps.push({ id: po.id, status: po.status })
+  }
+
+  // 汇总运单与轨迹
+  const shipSnap = shipment
+    ? {
+        id: shipment.id,
+        trackingNo: shipment.trackingNo ?? null,
+        status: shipment.status,
+        channelCode: shipment.carrierCode ?? null,
+      }
+    : { id: shipmentId, trackingNo: null, status: 'picked_up', channelCode: null }
+
+  const tracking: OutboundTrackingVo[] = doListTracking(shipmentId).map((e) => ({
+    id: e.id,
+    shipmentId: e.shipmentId,
+    status: e.status,
+    location: e.location,
+    description: e.description,
+    occurredAt: e.occurredAt,
+    legType: e.legType,
+  }))
+
+  const packTaskSnap = targetTask ? doListPackTasks().find((t) => t.id === targetTask!.id) ?? null : null
+
+  return {
+    packTask: packTaskSnap,
+    shipment: shipSnap,
+    tracking,
+    purchaseOrder: poSnaps,
+    order: orderSnap,
+    message: targetTask
+      ? `出库完成：打包任务 ${targetTask.id} 关联运单 ${shipSnap.trackingNo ?? shipmentId} 已回写平台并进入正式跨境物流`
+      : `出库完成：运单 ${shipSnap.trackingNo ?? shipmentId} 已回写平台并进入正式跨境物流`,
+  }
 }
 
 // ===== 模拟路由分发（演示模式核心）：按 method+url 匹配 doXxx 实现，返回数据体 =====
@@ -3013,6 +3125,8 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     // 生成跨境面单（任务 6.8）：选渠道 → 建单 + 出 ZPL/预览面单，回填打包任务
     const packLabelDo = url.match(/^\/transfer\/pack-tasks\/([^/]+)\/label$/)
     if (packLabelDo) return delay(200).then(() => doGenerateLabel(packLabelDo[1], (body ?? {}) as { channelCode: string }))
+    // 出库闭环 + 物流同步（任务 6.9）：扫码/跨境运单 → fulfill 回写平台 + 出库轨迹节点 → 流转正式跨境物流
+    if (url === '/transfer/outbound') return delay(220).then(() => doOutbound(body))
     if (url === '/pricing/compare') return delay(260).then(() => doCompare(body))
     // 履约路由（模式A 自动选渠道，§4/§5）：给定发货上下文 + 策略，自动挑最优渠道
     if (url === '/pricing/route') return delay(280).then(() => doRoute(body))

@@ -152,3 +152,26 @@ export interface PackLabelResult {
   packTask: PackTaskDto
   label: ShippingLabelDto
 }
+
+// ===== 6.9 出库闭环 + 物流同步 =====
+
+/** 出库后跨境物流轨迹节点（6.9）：booked → pushed → picked_up（出库）→ 后续 in_transit… */
+export interface OutboundTrackingVo {
+  id: string // 轨迹事件 ID
+  shipmentId: string // 关联运单
+  legType?: string // 物流段（direct/first/last）
+  status: string // 归一化节点状态（pushed / picked_up / in_transit …）
+  location?: string // 节点地点
+  description?: string // 节点描述
+  occurredAt: string // 发生时间（ISO8601）
+}
+
+/** 出库闭环结果（6.9）：打包任务 + 运单 + 轨迹时间线 + 状态机贯通（采购单/订单） */
+export interface OutboundResult {
+  packTask: PackTaskDto | null // 最新打包任务快照（已出单/已出库）；按 shipmentId 出库时为 null
+  shipment: { id: string; trackingNo: string | null; status: string; channelCode: string | null } // 跨境运单
+  tracking: OutboundTrackingVo[] // 出库后的完整轨迹时间线（可在物流轨迹页查看）
+  purchaseOrder: { id: string; status: string }[] // 关联采购单状态（packed → outbound）
+  order: { id: string; status: string } | null // 关联店铺订单状态（pushed → picked_up）
+  message: string // 结果描述（中文）
+}

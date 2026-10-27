@@ -16,7 +16,8 @@ import { AppLogger } from '../../common/logger/app.logger'
 import { BusinessException } from '../../common/response/business.exception'
 import { HttpStatus } from '@nestjs/common'
 import { PurchaseOrderService } from '../purchase-orders/purchase-order.service'
-import { ScanTransferDto, GenerateLabelDto } from './transfer.dto'
+import { ShipmentsService } from '../shipments/shipments.service'
+import { ScanTransferDto, GenerateLabelDto, OutboundTransferDto } from './transfer.dto'
 import type {
   PackQueueItem,
   PackTaskDto,
@@ -36,6 +37,7 @@ export class TransferService {
     private readonly prisma: PrismaService,
     private readonly logger: AppLogger,
     private readonly poService: PurchaseOrderService,
+    private readonly shipments?: ShipmentsService,
   ) {}
 
   /** 获取中转仓看板：中转仓列表 + 待作业采购单（含关联订单概览） */
@@ -883,6 +885,116 @@ export class TransferService {
       pdfUrl: label.pdfUrl,
       status: label.status,
       createdAt: label.createdAt.toISOString(),
+    }
+  }
+
+  // ===== 6.9 出库闭环 + 物流同步 =====
+
+  /**
+   * 出库闭环（6.9）：中转仓打包出单完成后，扫码/点击出库，把跨境运单真正推入干线物流。
+   * 流程：
+   *  1) 定位运单（优先按打包任务 packTaskId → 取 shipmentId；或直接 shipmentId）；校验已出单（labelId 就绪）。
+   *  2) ShipmentsService.fulfill —— 回写销售渠道（pushFulfillment）+ 推进订单 approved→pushed（best-effort）。
+   *  3) 追加「出库揽收」轨迹节点 picked_up —— 驱动订单状态机 pushed→picked_up，正式进入跨境物流。
+   *  4) 关联采购单状态机推进 packed → outbound（离仓），全部租户隔离（§17 防越权）。
+   *  5) 聚合返回：打包任务快照 / 运单 / 完整轨迹时间线 / 采购单状态 / 关联订单状态，供「物流轨迹」页持续跟踪。
+   */
+  async outbound(tenantId: string, dto: OutboundTransferDto): Promise<import('./transfer.types').OutboundResult> {
+    // 1) 解析运单：优先打包任务，否则直接用 shipmentId
+    let shipmentId: string | null = dto.shipmentId ?? null
+    let task: {
+      id: string
+      tenantId: string
+      orderId: string | null
+      purchaseOrderIds: unknown
+      status: string
+      channelCode: string | null
+      labelId: string | null
+      shipmentId: string | null
+    } | null = null
+
+    if (dto.packTaskId) {
+      task = await this.prisma.packTask.findFirst({ where: { id: dto.packTaskId, tenantId } })
+      if (!task) {
+        throw new BusinessException('PACK_TASK_NOT_FOUND', '打包任务不存在或无权限', HttpStatus.NOT_FOUND)
+      }
+      // 出库前置：必须已生成跨境面单（labelId/shipmentId 就绪），否则不允许出库。
+      if (!task.labelId || !task.shipmentId) {
+        throw new BusinessException(
+          'OUTBOUND_NO_LABEL',
+          '该打包任务尚未生成跨境面单，请先出单再出库',
+          HttpStatus.BAD_REQUEST,
+        )
+      }
+      shipmentId = task.shipmentId
+    }
+    if (!shipmentId) {
+      throw new BusinessException('OUTBOUND_TARGET_REQUIRED', '请提供 packTaskId 或 shipmentId', HttpStatus.BAD_REQUEST)
+    }
+
+    // 2) 回传平台（推进订单至 pushed）+ 3) 出库揽收节点（推进订单至 picked_up）
+    await this.shipments!.fulfill(shipmentId, tenantId)
+    await this.shipments!.recordTracking(
+      {
+        shipmentId,
+        status: 'picked_up',
+        location: '中转仓',
+        description: '已出库揽收，离港进入正式跨境物流',
+      },
+      tenantId,
+    )
+
+    // 4) 采购单状态机推进：packed → outbound（离仓）
+    const poIds = (task?.purchaseOrderIds as unknown as string[] | undefined) ?? []
+    if (poIds.length) {
+      await this.prisma.purchaseOrder.updateMany({
+        where: { id: { in: poIds }, tenantId, status: 'packed' },
+        data: { status: 'outbound' },
+      })
+    }
+
+    // 5) 聚合返回
+    const shipment = await this.prisma.shipment.findFirst({ where: { id: shipmentId, tenantId } })
+    if (!shipment) {
+      throw new BusinessException('SHIPMENT_NOT_FOUND', '跨境运单不存在或无权限', HttpStatus.NOT_FOUND)
+    }
+    const tracking = await this.shipments!.listTracking(shipmentId, tenantId)
+    const order = shipment.orderId
+      ? await this.prisma.order.findFirst({ where: { id: shipment.orderId } })
+      : null
+    const pos = poIds.length
+      ? await this.prisma.purchaseOrder.findMany({ where: { id: { in: poIds }, tenantId } })
+      : []
+    const poMap = new Map(pos.map((p) => [p.id, { id: p.id, trackingNo: p.trackingNo, carrier: p.carrier, status: p.status }]))
+    const refreshedTask = task
+      ? await this.prisma.packTask.findFirst({ where: { id: task.id, tenantId } })
+      : null
+
+    this.logger.log(
+      `[TRANSFER] 出库闭环 tenant=${tenantId} shipment=${shipmentId} tracking=${shipment.trackingNo} order=${order?.id ?? '-'} poCount=${pos.length}`,
+      'Transfer',
+    )
+
+    return {
+      packTask: refreshedTask ? this.toPackTaskDto(refreshedTask, order, poMap) : null,
+      shipment: {
+        id: shipment.id,
+        trackingNo: shipment.trackingNo ?? null,
+        status: shipment.status,
+        channelCode: task?.channelCode ?? null,
+      },
+      tracking: tracking.map((e) => ({
+        id: e.id,
+        shipmentId: e.shipmentId,
+        legType: e.legType ?? undefined,
+        status: e.status,
+        location: e.location ?? undefined,
+        description: e.description ?? undefined,
+        occurredAt: e.occurredAt,
+      })),
+      purchaseOrder: pos.map((p) => ({ id: p.id, status: p.status })),
+      order: order ? { id: order.id, status: order.status } : null,
+      message: `出库成功：跨境运单 ${shipment.trackingNo ?? ''} 已回传平台并揽收，关联采购单已离仓`,
     }
   }
 

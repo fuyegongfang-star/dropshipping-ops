@@ -82,7 +82,7 @@
 | 6.6 | 阶段6 | 扫码到货入库端点 | POST /transfer/scan：快递单号/条码→解析采购单→匹配订单→到货登记；Asn 扩展 purchaseOrderId/scanSource/receivedItems | 6.4/6.5 | 1.5d | ✅ |
 | 6.7 | 阶段6 | 中转仓作业：打包任务 + 核对 | 按匹配订单聚合采购单生成打包任务；核对采购单 vs 店铺订单差异；PickTask 扩展 channelCode/labelId/shipmentId | 6.6 | 1.5d | ✅ |
 | 6.8 | 阶段6 | 跨境面单生成（中转仓出单） | 选渠道→承运商建单 + LabelService 出 PDF/ZPL；面单关联店铺订单与平台；Shipment 加 purchaseOrderId | 3.9/1.5/6.7 | 1d | ✅ |
-| 6.9 | 阶段6 | 出库闭环 + 物流同步 | 出库扫码→Shipment 建单/fulfill→承运商回传→TrackingEvent→正式跨境物流；状态机贯通采购单/订单 | 6.8/1.6 | 1d | ⬜ |
+| 6.9 | 阶段6 | 出库闭环 + 物流同步 | 出库扫码→Shipment 建单/fulfill→承运商回传→TrackingEvent→正式跨境物流；状态机贯通采购单/订单 | 6.8/1.6 | 1d | ✅ |
 
 ---
 
@@ -626,3 +626,15 @@
 - **测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**331 passed / 49 suites**）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
 - **提交**：随本批统一提交（6.8 后端/前端/进度生成器/进度表/检查点）。
 - **下一步（次日接力）**：6.9 出库闭环 + 物流同步（出库扫码 → Shipment.fulfill 回写平台 + TrackingEvent 追加出库节点 → 流转正式跨境物流轨迹；状态机贯通采购单/订单）。
+
+### 进度更新 · 2026-10-27（续跑 · 6.9 出库闭环 + 物流同步 · M6 收官）
+- **完成（✅）**：
+  - **6.9 出库闭环 + 物流同步（阶段6 详细设计，收官任务）** ——
+    - 后端 `TransferModule` 注入 `ShipmentsModule`（可选 `ShipmentsService`，保持历史 spec 3 参构造兼容）；`TransferService.outbound(tenantId, dto)`：① 解析 shipmentId——`packTaskId` 路径校验 `labelId + shipmentId` 齐备否则 `OUTBOUND_NO_LABEL`，或直接 `shipmentId` 否则 `OUTBOUND_TARGET_REQUIRED`（`PACK_TASK_NOT_FOUND`/`OUTBOUND_TARGET_REQUIRED` 守卫）；② `ShipmentsService.fulfill`（回写平台 + 推进运单/订单 `approved→pushed`，best-effort）+ `recordTracking({status:'picked_up',location:'中转仓',description:'已出库揽收，离港进入正式跨境物流'})`（追加出库轨迹节点 + 推进订单 `picked_up`）；③ `updateMany` 推进关联采购单 `packed→outbound`（仅 packed 命中，租户隔离）；④ 聚合 shipment + `listTracking`（完整轨迹时间线）+ order + poMap 返回 `OutboundResult`（`packTask: PackTaskDto|null`、`shipment`、`tracking: OutboundTrackingVo[]`、`purchaseOrder[]`、`order`、`message`）。`TransferController` 新增 `POST /transfer/outbound`（全租户隔离 + `ValidationPipe`）；`transfer.dto.ts` 增 `OutboundTransferDto`；`transfer.types.ts` `OutboundResult.packTask` 放宽为 `PackTaskDto|null`。`transfer.service.outbound.spec.ts` 新增 7 例（成功闭环 booked→pushed→picked_up·PO packed→outbound·订单 pushed→picked_up / shipmentId 直出 / OUTBOUND_NO_LABEL / OUTBOUND_TARGET_REQUIRED / PACK_TASK_NOT_FOUND / 租户隔离 / 仅 packed PO 推进），全仓 **338 passed / 50 suites**。
+  - **前端可视化（中转仓作业 出库闭环）**：`TransferView`（/transfer）「已建打包任务」子表增「出库状态」列（待出库/已出库）+「出库 / 查看出库」操作；新增出库结果对话框（成功告警 + 跨境运单号/运单状态/关联订单状态/采购单推进汇总 + 物流轨迹时间线 `el-timeline` 展示 booked→pushed→picked_up 节点）。出库后实时刷新：关联采购单 `packed→outbound` 离仓（移出待作业看板）、订单 `pushed→picked_up`。`transfer.ts` 增 `OutboundTransferDto/OutboundTrackingVo/OutboundResult` 与 `transferApi.outbound`；`mock-data.ts` 同口径内存实现 `doOutbound`（含 `doGenerateLabel` 同步建 `shipments` 实体以便 fulfill/轨迹联动订单）+ mockRouter 分发，演示与正式双路通。
+  - **M6 阶段6 全通**：采购单录入/匹配 → 中转仓扫码到货入库 → 打包贴跨境面单 → 出库同步跨境物流，与既有订单/渠道/承运商底座闭环，`progress:gen` 任务表 6.9→/transfer（EXPLICIT_ROUTES）。
+- **进行中（🔵）**：无（本批 6.9 完成，阶段6 / M6 里程碑收官）。
+- **受阻**：无。
+- **测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**338 passed / 50 suites**）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
+- **提交**：随本批统一提交（6.9 后端/前端/进度生成器/进度表/检查点）。
+- **下一步**：阶段6（M6 货代中转仓作业流）已全量交付，主线方案 v1.5 的「采购→中转仓→扫码→打包贴单→出库」核心作业流闭环完成；后续可推进真实平台凭证工厂化接入（淘宝 TOP/抖音开放平台/云途·DHL·4PX·燕文 联调，标注 TODO）+ 本机 PG 端到端验证 + §31 收尾文档。
