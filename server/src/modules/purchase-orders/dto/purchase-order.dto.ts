@@ -72,6 +72,11 @@ export class CreatePurchaseOrderDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(40)
+  purchaseNo?: string // 业务采购单号（可扫码）；不传由服务端按当日流水自动生成（6.12）
+
+  @IsOptional()
+  @IsString()
   @MaxLength(60)
   platformOrderNo?: string // 平台订单号（6.4 精确匹配 Order.platformOrderNo）
 

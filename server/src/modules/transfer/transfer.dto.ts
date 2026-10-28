@@ -1,7 +1,7 @@
 import { IsIn, IsNotEmpty, IsOptional, IsString } from 'class-validator'
 
-/** 扫码来源类型（6.6 扫码到货入库） */
-export type ScanType = 'trackingNo' | 'barcode' | 'purchaseNo'
+/** 扫码来源类型（6.6 扫码到货入库；6.12 新增 auto 自动识别） */
+export type ScanType = 'auto' | 'trackingNo' | 'barcode' | 'purchaseNo'
 
 /** 扫码到货入库请求体（6.6） */
 export class ScanTransferDto {
@@ -13,7 +13,8 @@ export class ScanTransferDto {
   @IsNotEmpty()
   scanValue: string // 扫码值：快递单号 / SKU 条码 / 采购单号
 
-  @IsIn(['trackingNo', 'barcode', 'purchaseNo'])
+  // auto：由条码规则引擎自动判定（6.12）；其余为人工指定兜底
+  @IsIn(['auto', 'trackingNo', 'barcode', 'purchaseNo'])
   scanType: ScanType // 解析维度
 }
 

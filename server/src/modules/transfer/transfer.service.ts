@@ -18,6 +18,7 @@ import { HttpStatus } from '@nestjs/common'
 import { PurchaseOrderService } from '../purchase-orders/purchase-order.service'
 import { ShipmentsService } from '../shipments/shipments.service'
 import { ScanTransferDto, GenerateLabelDto, OutboundTransferDto } from './transfer.dto'
+import { ScanKind, SCAN_KIND_LABELS, guessScanKind, normalizeScanValue, scanMissHint } from './scan-rules'
 import type {
   PackQueueItem,
   PackTaskDto,
@@ -169,6 +170,10 @@ export class TransferService {
     }
     matched: boolean
     advanced: boolean
+    /** 实际判定的语义类型（auto 模式下由规则引擎得出） */
+    resolvedType: ScanKind
+    /** 识别结果的人类可读说明（如「EAN-13 商品条码」） */
+    resolvedLabel: string
     message: string
   }> {
     // 1) 校验中转仓归属（租户隔离，防越权）
@@ -179,12 +184,13 @@ export class TransferService {
       throw new BusinessException('WAREHOUSE_NOT_FOUND', '中转仓不存在或无权限', HttpStatus.NOT_FOUND)
     }
 
-    // 2) 按扫码类型解析采购单
-    const po = await this.resolvePurchaseOrder(tenantId, dto)
+    // 2) 按扫码类型解析采购单（6.12：auto 走条码规则引擎，查询优先 + 号段兜底）
+    const resolved = await this.resolvePurchaseOrder(tenantId, dto)
+    const po = resolved.po
     if (!po) {
       throw new BusinessException(
         'SCAN_NO_PURCHASE_ORDER',
-        '未找到匹配的采购单，请核对快递单号 / 条码 / 采购单号',
+        `${scanMissHint(dto.scanValue)}，请核对${resolved.tried.join(' / ')}`,
         HttpStatus.NOT_FOUND,
       )
     }
@@ -203,7 +209,8 @@ export class TransferService {
         warehouseId: warehouse.id,
         status: 'received',
         purchaseOrderId: po.id,
-        scanSource: dto.scanType,
+        // 记录「实际判定的语义类型」而非请求里的 auto，便于事后统计各扫码维度的使用情况
+        scanSource: resolved.kind,
         receivedItems: receivedItems as unknown as Prisma.InputJsonValue,
       },
     })
@@ -262,6 +269,9 @@ export class TransferService {
       },
       matched,
       advanced,
+      // 6.12：回传实际识别结果，前端可提示「识别为快递单号」，现场不必猜
+      resolvedType: resolved.kind,
+      resolvedLabel: resolved.label,
       message: advanced
         ? `到货登记成功，采购单 ${po.trackingNo} 已转为 arrived`
         : `到货登记成功（采购单当前状态 ${latestPo.status}）`,
@@ -269,35 +279,81 @@ export class TransferService {
   }
 
   /** 按扫码类型解析采购单（快递单号 / SKU 条码 / 采购单号），均限定租户。 */
-  private async resolvePurchaseOrder(tenantId: string, dto: ScanTransferDto) {
-    switch (dto.scanType) {
-      case 'trackingNo':
-        return this.prisma.purchaseOrder.findFirst({
-          where: { tenantId, trackingNo: dto.scanValue },
-          include: { items: true },
-        })
-      case 'purchaseNo':
-        return this.prisma.purchaseOrder.findFirst({
-          where: { tenantId, id: dto.scanValue },
-          include: { items: true },
-        })
-      case 'barcode': {
-        // SKU 条码：经采购单明细反查父采购单（同租户）
-        const item = await this.prisma.purchaseOrderItem.findFirst({
-          where: { skuId: dto.scanValue },
-          include: { purchaseOrder: true },
-        })
-        if (item?.purchaseOrder && item.purchaseOrder.tenantId === tenantId) {
-          return this.prisma.purchaseOrder.findFirst({
-            where: { id: item.purchaseOrder.id, tenantId },
-            include: { items: true },
-          })
-        }
-        return null
-      }
-      default:
-        return null
+  /**
+   * 按扫码值解析采购单（6.12 解析层）。
+   * - `auto`：查询优先，依次尝试 快递单号 → 商品条码 → 采购单号，谁命中算谁；
+   *   全不命中时用号段规则给出「最可能类型」以便现场排查（EAN-13 与 13 位快递单号文本上
+   *   不可区分，纯正则无法判定，故必须以查库为准）。
+   * - 指定类型：只走对应分支（人工兜底，用于号段冲突时人工裁决）。
+   */
+  private async resolvePurchaseOrder(
+    tenantId: string,
+    dto: ScanTransferDto,
+  ): Promise<{
+    po: Prisma.PurchaseOrderGetPayload<{ include: { items: true } }> | null
+    kind: ScanKind
+    label: string
+    /** 本次实际尝试过的解析维度，用于未命中时的错误提示 */
+    tried: string[]
+  }> {
+    const value = normalizeScanValue(dto.scanValue)
+
+    const byTracking = async () =>
+      this.prisma.purchaseOrder.findFirst({ where: { tenantId, trackingNo: value }, include: { items: true } })
+
+    const byPurchaseNo = async () =>
+      this.prisma.purchaseOrder.findFirst({
+        where: { tenantId, OR: [{ id: value }, { purchaseNo: value }] },
+        include: { items: true },
+      })
+
+    /**
+     * 商品条码 → SKU → 采购单。
+     * 注意：扫码枪扫出来的是 Sku.barcode（如 EAN-13），而不是内部 skuId(cuid)；
+     * 6.6 原实现误用 skuId 匹配导致条码扫码必然落空，此处修正为走 Sku.barcode。
+     */
+    const byBarcode = async () => {
+      const sku = await this.prisma.sku.findFirst({ where: { tenantId, barcode: value }, select: { id: true } })
+      if (!sku) return null
+      const item = await this.prisma.purchaseOrderItem.findFirst({
+        where: { skuId: sku.id, purchaseOrder: { tenantId } },
+        include: { purchaseOrder: true },
+      })
+      if (!item?.purchaseOrder) return null
+      return this.prisma.purchaseOrder.findFirst({
+        where: { id: item.purchaseOrder.id, tenantId },
+        include: { items: true },
+      })
     }
+
+    // —— 人工指定类型：只走对应分支 ——
+    if (dto.scanType === 'trackingNo') {
+      return { po: await byTracking(), kind: 'trackingNo', label: SCAN_KIND_LABELS.trackingNo, tried: ['快递单号'] }
+    }
+    if (dto.scanType === 'purchaseNo') {
+      return { po: await byPurchaseNo(), kind: 'purchaseNo', label: SCAN_KIND_LABELS.purchaseNo, tried: ['采购单号'] }
+    }
+    if (dto.scanType === 'barcode') {
+      return { po: await byBarcode(), kind: 'barcode', label: SCAN_KIND_LABELS.barcode, tried: ['商品条码'] }
+    }
+
+    // —— auto：查询优先（顺序按命中率高低：快递单号 > 商品条码 > 采购单号）——
+    const tried: string[] = []
+    let po = await byTracking()
+    tried.push('快递单号')
+    if (po) return { po, kind: 'trackingNo', label: SCAN_KIND_LABELS.trackingNo, tried }
+
+    po = await byBarcode()
+    tried.push('商品条码')
+    if (po) return { po, kind: 'barcode', label: SCAN_KIND_LABELS.barcode, tried }
+
+    po = await byPurchaseNo()
+    tried.push('采购单号')
+    if (po) return { po, kind: 'purchaseNo', label: SCAN_KIND_LABELS.purchaseNo, tried }
+
+    // 全未命中：用号段规则给提示（不抛错，交由调用方决定）
+    const guessed = guessScanKind(value)
+    return { po: null, kind: guessed.kind, label: guessed.label, tried }
   }
 
   // ===== 6.7 中转仓作业：打包任务 + 核对 =====

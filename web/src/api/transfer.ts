@@ -47,7 +47,8 @@ export interface TransferBoard {
 }
 
 /** 扫码来源类型（6.6 扫码到货入库） */
-export type ScanType = 'trackingNo' | 'barcode' | 'purchaseNo'
+/** 扫码解析维度（6.6；6.12 新增 auto = 由条码规则引擎自动判定） */
+export type ScanType = 'auto' | 'trackingNo' | 'barcode' | 'purchaseNo'
 
 /** 扫码到货入库请求体（6.6） */
 export interface ScanTransferDto {
@@ -77,6 +78,10 @@ export interface ScanTransferResult {
   }
   matched: boolean
   advanced: boolean
+  /** 实际判定的语义类型（auto 模式下由规则引擎得出） */
+  resolvedType?: ScanType | 'unknown'
+  /** 识别结果的人类可读说明（如「EAN-13 商品条码」） */
+  resolvedLabel?: string
   message: string
 }
 

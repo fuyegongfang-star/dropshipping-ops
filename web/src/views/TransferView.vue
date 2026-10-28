@@ -220,38 +220,83 @@
       </div>
     </el-card>
 
-    <!-- 扫码到货入库（6.6） -->
-    <el-dialog v-model="scanVisible" title="扫码到货入库" width="560px" :close-on-click-modal="false">
-      <el-form label-width="92px" class="scan-form">
-        <el-form-item label="目标中转仓">
-          <el-select v-model="scanForm.warehouseId" placeholder="选择中转仓" style="width: 100%">
-            <el-option v-for="w in whs" :key="w.id" :label="`${w.name}（${w.region || '—'}）`" :value="w.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="扫码类型">
-          <el-radio-group v-model="scanForm.scanType">
-            <el-radio value="trackingNo">快递单号</el-radio>
-            <el-radio value="barcode">SKU 条码</el-radio>
-            <el-radio value="purchaseNo">采购单号</el-radio>
+    <!-- 扫码到货作业台（6.6 扫码入库 + 6.12 连续扫描 / 设备无关输入层） -->
+    <el-dialog v-model="scanVisible" title="扫码到货作业台" width="780px" :close-on-click-modal="false" @closed="onScanClosed">
+      <div class="scan-top">
+        <el-select v-model="scanForm.warehouseId" placeholder="选择目标中转仓" style="width: 260px">
+          <el-option v-for="w in whs" :key="w.id" :label="`${w.name}（${w.region || '—'}）`" :value="w.id" />
+        </el-select>
+        <span class="scan-stat">
+          本次已扫 <strong>{{ scanLog.length }}</strong> 件 ·
+          <span class="ok">成功 {{ scanOkCount }}</span> ·
+          <span v-if="scanFailCount" class="bad">失败 {{ scanFailCount }}</span>
+          <span v-else class="muted">失败 0</span>
+        </span>
+        <el-button size="small" text @click="deviceVisible = !deviceVisible">
+          <AppIcon name="setting" :size="14" class="btn-ico" />扫码设备设置
+        </el-button>
+      </div>
+
+      <!-- 设备设置：扫码枪免驱动，这里只调「怎么读这一串」 -->
+      <el-card v-if="deviceVisible" class="dev-card" shadow="never">
+        <div class="dev-row">
+          <span class="dev-lb">结束符</span>
+          <el-radio-group v-model="cfg.endKey" size="small" @change="saveCfg({ endKey: $event as ScanEndKey })">
+            <el-radio-button value="Enter">回车</el-radio-button>
+            <el-radio-button value="Tab">Tab</el-radio-button>
+            <el-radio-button value="none">无（停顿提交）</el-radio-button>
           </el-radio-group>
-        </el-form-item>
-        <el-form-item label="扫码值">
-          <el-input v-model="scanForm.scanValue" :placeholder="scanPlaceholder" clearable />
-        </el-form-item>
-        <el-form-item>
-          <div class="tips">
-            <span class="muted">演示数据：</span>
-            <el-tag size="small" class="tip-tag" @click="fillDemo('trackingNo')">快递单号 SF1234567890</el-tag>
-            <el-tag size="small" class="tip-tag" @click="fillDemo('barcode')">条码 690000000001</el-tag>
-            <el-tag size="small" class="tip-tag" @click="fillDemo('purchaseNo')">采购单号 po_demo_1</el-tag>
-          </div>
-        </el-form-item>
-      </el-form>
+          <span class="dev-lb">强制解析维度</span>
+          <el-select v-model="scanForm.scanType" size="small" style="width: 130px">
+            <el-option label="自动识别" value="auto" />
+            <el-option label="快递单号" value="trackingNo" />
+            <el-option label="商品条码" value="barcode" />
+            <el-option label="采购单号" value="purchaseNo" />
+          </el-select>
+        </div>
+        <div class="dev-row">
+          <span class="dev-lb">扫完自动提交</span>
+          <el-switch v-model="cfg.autoSubmit" size="small" @change="saveCfg({ autoSubmit: $event as boolean })" />
+          <span class="dev-lb">提示音</span>
+          <el-switch v-model="cfg.beep" size="small" @change="saveCfg({ beep: $event as boolean })" />
+          <span class="dev-lb">判定阈值 {{ cfg.maxIntervalMs }}ms</span>
+          <el-slider v-model="cfg.maxIntervalMs" :min="10" :max="120" :step="5" style="width: 140px" @change="saveCfg({ maxIntervalMs: $event as number })" />
+        </div>
+        <div class="dev-row">
+          <span class="dev-lb">剥离前缀</span>
+          <el-input v-model="cfg.stripPrefix" size="small" style="width: 96px" placeholder="无" @change="saveCfg({ stripPrefix: cfg.stripPrefix })" />
+          <span class="dev-lb">剥离后缀</span>
+          <el-input v-model="cfg.stripSuffix" size="small" style="width: 96px" placeholder="无" @change="saveCfg({ stripSuffix: cfg.stripSuffix })" />
+          <span class="dev-hint muted">
+            扫码枪为 HID 键盘模式，无需驱动；接上后扫一下可见诊断：
+            <strong>{{ lastSpeed ? `平均 ${lastSpeed}ms/字符` : '尚无数据' }}</strong>
+            <span v-if="isScannerInput" class="ok"> · 已识别为扫码枪</span>
+          </span>
+        </div>
+      </el-card>
+
+      <el-input
+        ref="scanInputRef"
+        v-model="scanForm.scanValue"
+        class="scan-input"
+        size="large"
+        clearable
+        autofocus
+        placeholder="扫码枪直接扫，或手工输入后回车（支持连续扫描，无需逐次点确认）"
+        @keyup.enter="submitScan"
+      />
+      <div class="tips">
+        <span class="muted">演示数据：</span>
+        <el-tag size="small" class="tip-tag" @click="fillDemo('trackingNo')">快递单号 SF1234567890</el-tag>
+        <el-tag size="small" class="tip-tag" @click="fillDemo('barcode')">条码 690000000001</el-tag>
+        <el-tag size="small" class="tip-tag" @click="fillDemo('purchaseNo')">采购单号 CG…</el-tag>
+      </div>
 
       <div v-if="scanResult" class="scan-result">
         <div class="sr-head">
           <AppIcon name="check" :size="16" class="sr-ico" />
           <span>到货登记成功</span>
+          <span v-if="scanResult.resolvedLabel" class="tag-soft tag-blue">识别为{{ scanResult.resolvedLabel }}</span>
           <span class="sr-id mono">ASN {{ scanResult.asn.id }}</span>
         </div>
         <div class="sr-grid">
@@ -288,9 +333,23 @@
         </div>
       </div>
 
+      <!-- 连续扫描流水：便于现场核对「扫了什么、成没成」 -->
+      <div v-if="scanLog.length" class="scan-log">
+        <div class="sl-head">
+          <span>本次扫描流水</span>
+          <el-button size="small" text @click="scanLog = []">清空</el-button>
+        </div>
+        <div v-for="r in scanLog" :key="r.id" class="sl-row" :class="{ 'sl-fail': !r.ok }">
+          <span class="sl-time mono">{{ r.time }}</span>
+          <span class="sl-val mono">{{ r.value }}</span>
+          <span class="tag-soft" :class="r.ok ? 'tag-green' : 'tag-red'">{{ r.ok ? '已到货' : '失败' }}</span>
+          <span class="sl-msg" :class="{ bad: !r.ok }">{{ r.msg }}</span>
+        </div>
+      </div>
+
       <template #footer>
         <el-button @click="scanVisible = false">关闭</el-button>
-        <el-button type="primary" :loading="scanning" @click="submitScan">确认到货</el-button>
+        <el-button type="primary" :loading="scanning" @click="submitScan">确认到货（手工兜底）</el-button>
       </template>
     </el-dialog>
 
@@ -433,9 +492,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
-import { transferApi, type TransferBoard, type TransferWarehouse, type TransferBoardPo, type ScanTransferDto, type ScanTransferResult, type PackQueue, type PackQueueItem, type PackTaskDto, type ShippingLabelDto, type OutboundResult } from '@/api/transfer'
+import { transferApi, type TransferBoard, type TransferWarehouse, type TransferBoardPo, type ScanTransferDto, type ScanTransferResult, type ScanType, type PackQueue, type PackQueueItem, type PackTaskDto, type ShippingLabelDto, type OutboundResult } from '@/api/transfer'
+import {
+  useScannerInput,
+  scanConfig,
+  saveScanConfig,
+  normalizeScanValue,
+  scanSound,
+  type ScanConfig,
+  type ScanEndKey,
+} from '@/composables/useScannerInput'
 import PageHeader from '@/components/PageHeader.vue'
 import AppIcon from '@/components/AppIcon.vue'
 
@@ -540,60 +608,127 @@ function itemSummary(row: TransferBoardPo): string {
   return row.items.map((i) => `${i.productName}×${i.quantity}`).join('，')
 }
 
-// ===== 6.6 扫码到货入库 =====
+// ===== 6.6 扫码到货入库 + 6.12 连续扫描 / 设备无关输入层 =====
 const scanVisible = ref(false)
 const scanning = ref(false)
-const scanForm = ref<ScanTransferDto>({ warehouseId: '', scanValue: '', scanType: 'trackingNo' })
+const scanForm = ref<ScanTransferDto>({ warehouseId: '', scanValue: '', scanType: 'auto' })
 const scanResult = ref<ScanTransferResult | null>(null)
+const deviceVisible = ref(false)
+const scanInputRef = ref<{ focus: () => void } | null>(null)
 
-const scanPlaceholder = computed(() => {
-  switch (scanForm.value.scanType) {
-    case 'trackingNo':
-      return '输入采购快递单号，如 SF1234567890'
-    case 'barcode':
-      return '输入 SKU 条码，如 690000000001'
-    case 'purchaseNo':
-      return '输入采购单号，如 po_demo_1'
-    default:
-      return ''
-  }
-})
+/** 扫码设备配置（全局单例，改动即持久化到 localStorage） */
+const cfg = scanConfig
+function saveCfg(patch: Partial<ScanConfig>): void {
+  saveScanConfig(patch)
+}
+
+/** 连续扫描流水（本次作业台会话内） */
+interface ScanLogRow {
+  id: string
+  time: string
+  value: string
+  ok: boolean
+  msg: string
+}
+const scanLog = ref<ScanLogRow[]>([])
+const scanOkCount = computed(() => scanLog.value.filter((r) => r.ok).length)
+const scanFailCount = computed(() => scanLog.value.filter((r) => !r.ok).length)
+
+/**
+ * 更新流水行状态。
+ * 必须替换数组元素而不是改原对象：row 是 raw object，直接赋值不会触发 Vue 的
+ * computed 重算（深响应式只追踪 proxy 上的写），会导致统计与行内状态不一致。
+ */
+function patchScanRow(id: string, patch: Partial<ScanLogRow>): void {
+  scanLog.value = scanLog.value.map((r) => (r.id === id ? { ...r, ...patch } : r))
+}
+
 
 function openScan(): void {
   scanForm.value = {
     warehouseId: whs.value[0]?.id ?? '',
     scanValue: '',
-    scanType: 'trackingNo',
+    scanType: 'auto',
   }
   scanResult.value = null
   scanVisible.value = true
+  // 光标落在扫码框：扫码枪输出直接进框，也是人工输入的落点
+  nextTick(() => scanInputRef.value?.focus())
 }
 
-function fillDemo(type: ScanTransferDto['scanType']): void {
-  scanForm.value.scanType = type
-  scanForm.value.scanValue = type === 'trackingNo' ? 'SF1234567890' : type === 'barcode' ? '690000000001' : 'po_demo_1'
+function onScanClosed(): void {
+  scanLog.value = []
+  scanResult.value = null
 }
 
-async function submitScan(): Promise<void> {
+/**
+ * 单次扫描处理（扫码枪 / 人工回车 / 演示填充 共用一条通路）。
+ * 连续扫描：扫一次即提交一次，结果追加到流水，无需逐次点确认。
+ */
+async function handleScanValue(raw: string): Promise<void> {
+  const value = normalizeScanValue(raw)
+  if (!value) return
   if (!scanForm.value.warehouseId) {
-    ElMessage.warning('请选择目标中转仓')
+    ElMessage.warning('请先选择目标中转仓')
+    scanSound.fail()
     return
   }
-  if (!scanForm.value.scanValue.trim()) {
-    ElMessage.warning('请输入扫码值')
-    return
-  }
+  if (scanning.value) return // 上一次未返回，忽略本次（防重复提交）
   scanning.value = true
+  const row: ScanLogRow = {
+    id: `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    time: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
+    value,
+    ok: false,
+    msg: '处理中',
+  }
+  scanLog.value = [row, ...scanLog.value]
   try {
-    const res = await transferApi.scan({ ...scanForm.value })
+    const res = await transferApi.scan({
+      warehouseId: scanForm.value.warehouseId,
+      scanValue: value,
+      scanType: scanForm.value.scanType,
+    })
     scanResult.value = res
+    patchScanRow(row.id, {
+      ok: true,
+      msg: `${res.resolvedLabel ?? '已识别'} · ${res.purchaseOrder.trackingNo} → ${statusLabel(res.purchaseOrder.status)}`,
+    })
+    scanSound.ok()
     ElMessage.success(res.message)
     await load() // 刷新看板：采购单状态推进即时可见
   } catch (e) {
-    ElMessage.error('扫码到货失败：' + (e as Error).message)
+    patchScanRow(row.id, { ok: false, msg: (e as Error).message })
+    scanSound.fail()
+    ElMessage.error('扫码失败：' + (e as Error).message)
   } finally {
     scanning.value = false
+    scanForm.value.scanValue = ''
+    nextTick(() => scanInputRef.value?.focus())
   }
+}
+
+/**
+ * 全局键盘钩子：捕获扫码枪输出（HID 键盘模拟）→ 自动提交。
+ * 与人工「输入后回车」走同一条通路，因此手工兜底始终可用。
+ */
+const { lastSpeed, isScannerInput } = useScannerInput({
+  onScan: (v) => void handleScanValue(v),
+  active: () => scanVisible.value,
+})
+
+function fillDemo(type: ScanType): void {
+  scanForm.value.scanType = 'auto' // 演示数据统一走自动识别，验证规则引擎
+  scanForm.value.scanValue =
+    type === 'trackingNo' ? 'SF1234567890' : type === 'barcode' ? '690000000001' : 'CG20261028-0001'
+}
+
+async function submitScan(): Promise<void> {
+  if (!scanForm.value.scanValue.trim()) {
+    ElMessage.warning('请输入扫码值或用扫码枪扫描')
+    return
+  }
+  await handleScanValue(scanForm.value.scanValue)
 }
 
 async function load(): Promise<void> {
@@ -1253,4 +1388,24 @@ onMounted(() => {
 }
 .scan-remark-k { font-size: 12px; font-weight: 700; color: #b45309; }
 .scan-remark-v { margin: 3px 0 0; font-size: 13px; line-height: 1.6; color: var(--ink-800); white-space: pre-wrap; word-break: break-word; }
+
+/* —— 6.12 连续扫描作业台 —— */
+.scan-top { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.scan-stat { font-size: 13px; color: var(--ink-600); }
+.scan-stat strong { color: var(--ink-900); }
+.ok { color: #15803d; font-weight: 600; }
+.bad { color: #b91c1c; font-weight: 600; }
+.dev-card { margin-bottom: 12px; background: var(--bg-soft, rgba(0, 0, 0, 0.02)); }
+.dev-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.dev-row:last-child { margin-bottom: 0; }
+.dev-lb { font-size: 12px; color: var(--ink-500); white-space: nowrap; }
+.dev-hint { font-size: 12px; line-height: 1.6; }
+.scan-input { margin-bottom: 10px; }
+.scan-log { margin-top: 14px; border-top: 1px dashed var(--line, rgba(0, 0, 0, 0.12)); padding-top: 10px; }
+.sl-head { display: flex; align-items: center; justify-content: space-between; font-size: 13px; font-weight: 600; color: var(--ink-800); margin-bottom: 8px; }
+.sl-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid rgba(0, 0, 0, 0.05); font-size: 12px; }
+.sl-fail { background: rgba(239, 68, 68, 0.05); }
+.sl-time { color: var(--ink-400); width: 68px; }
+.sl-val { color: var(--ink-800); max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sl-msg { color: var(--ink-600); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>

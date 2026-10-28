@@ -60,6 +60,20 @@ export class PurchaseOrderService {
    * 任务 6.10：支持录入时直接带 orderId 建立关联——校验订单归属本租户（防 IDOR），
    * 并自动回填 shopId / platformOrderNo / recipientName，避免二次手动匹配出错。
    */
+  /**
+   * 生成业务采购单号：CG + 年月日 + 当日 4 位流水（如 CG20261028-0001）。
+   * 与内部 id(cuid) 区分：cuid 无法印成条码，现场只能扫业务单号（6.12 扫码维度）。
+   */
+  private async nextPurchaseNo(tenantId: string): Promise<string> {
+    const d = new Date()
+    const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
+    const prefix = `CG${ymd}-`
+    const used = await this.prisma.purchaseOrder.count({
+      where: { tenantId, purchaseNo: { startsWith: prefix } },
+    })
+    return `${prefix}${String(used + 1).padStart(4, '0')}`
+  }
+
   async create(tenantId: string, dto: CreatePurchaseOrderDto) {
     if (!dto.items || dto.items.length === 0) {
       throw new BusinessException('PO_ITEM_REQUIRED', '采购单至少需要 1 个行项', HttpStatus.BAD_REQUEST)
@@ -86,6 +100,8 @@ export class PurchaseOrderService {
         shopId,
         orderId: dto.orderId ?? null,
         trackingNo: dto.trackingNo,
+        // 6.12：业务采购单号（可印成条码供扫码枪识别），不传则按当日流水自动生成
+        purchaseNo: dto.purchaseNo ?? (await this.nextPurchaseNo(tenantId)),
         carrier: dto.carrier,
         platformOrderNo,
         recipientName,

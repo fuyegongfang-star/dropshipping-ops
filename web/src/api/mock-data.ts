@@ -61,6 +61,8 @@ export interface MockPurchaseOrder {
   shopId: string | null
   orderId: string | null
   trackingNo: string
+  /** 业务采购单号（人类可读、可印成条码供扫码枪识别，6.12） */
+  purchaseNo: string | null
   carrier: string
   platformOrderNo: string | null
   recipientName: string | null
@@ -165,7 +167,7 @@ const shops: MockShop[] = [
 // ===== 采购单（阶段6 中转仓作业流，任务 6.2/6.3，方案 §21 衍生）=====
 const purchaseOrders: MockPurchaseOrder[] = [
   {
-    id: 'po_demo_1', tenantId: TENANT_ID, shopId: 's_shopify', orderId: null, trackingNo: 'SF1234567890',
+    id: 'po_demo_1', tenantId: TENANT_ID, shopId: 's_shopify', orderId: null, trackingNo: 'SF1234567890', purchaseNo: 'CG20261023-0001',
     carrier: '顺丰速运', platformOrderNo: 'SO-10001', recipientName: 'John Doe', purchaseUrl: 'https://item.demo.com/p/earbud',
     productImages: ['https://img.demo.com/earbud.jpg'], remark: '首批蓝牙耳机采购（与 SO-10001 自动命中）', status: 'pending',
     createdAt: '2026-10-23T09:00:00.000Z', updatedAt: '2026-10-23T09:00:00.000Z',
@@ -174,7 +176,7 @@ const purchaseOrders: MockPurchaseOrder[] = [
     ],
   },
   {
-    id: 'po_demo_2', tenantId: TENANT_ID, shopId: 's_amazon', orderId: null, trackingNo: 'YT9876543210',
+    id: 'po_demo_2', tenantId: TENANT_ID, shopId: 's_amazon', orderId: null, trackingNo: 'YT9876543210', purchaseNo: 'CG20261023-0002',
     carrier: '圆通速递', platformOrderNo: null, recipientName: null, purchaseUrl: 'https://item.demo.com/p/case',
     productImages: ['https://img.demo.com/case.jpg'], remark: null, status: 'arrived',
     createdAt: '2026-10-23T10:30:00.000Z', updatedAt: '2026-10-24T08:00:00.000Z',
@@ -184,7 +186,7 @@ const purchaseOrders: MockPurchaseOrder[] = [
   },
   // 阶段6 演示：已到仓并匹配订单的采购单（6.7 待打包队列演示数据）
   {
-    id: 'po_pack_1', tenantId: TENANT_ID, shopId: 's_shopify', orderId: 'o1', trackingNo: 'PACK-SF001',
+    id: 'po_pack_1', tenantId: TENANT_ID, shopId: 's_shopify', orderId: 'o1', trackingNo: 'PACK-SF001', purchaseNo: 'CG20261025-0001',
     carrier: '顺丰速运', platformOrderNo: 'SO-10001', recipientName: 'John Doe', purchaseUrl: 'https://item.demo.com/p/earbud',
     productImages: ['https://img.demo.com/earbud.jpg'], remark: '蓝牙耳机到仓，已匹配 SO-10001', status: 'matched',
     createdAt: '2026-10-25T09:00:00.000Z', updatedAt: '2026-10-25T09:00:00.000Z',
@@ -193,7 +195,7 @@ const purchaseOrders: MockPurchaseOrder[] = [
     ],
   },
   {
-    id: 'po_pack_2', tenantId: TENANT_ID, shopId: 's_shopify', orderId: 'o2', trackingNo: 'PACK-YT002',
+    id: 'po_pack_2', tenantId: TENANT_ID, shopId: 's_shopify', orderId: 'o2', trackingNo: 'PACK-YT002', purchaseNo: 'CG20261025-0002',
     carrier: '圆通速递', platformOrderNo: 'SO-10002', recipientName: 'Jane Smith', purchaseUrl: 'https://item.demo.com/p/power',
     productImages: ['https://img.demo.com/power.jpg'], remark: '充电宝到仓，已匹配 SO-10002（数量不符演示）', status: 'matched',
     createdAt: '2026-10-25T10:00:00.000Z', updatedAt: '2026-10-25T10:00:00.000Z',
@@ -1958,7 +1960,8 @@ export interface MockAsn {
   warehouseId: string
   status: 'pending' | 'received' | 'closed'
   purchaseOrderId?: string | null // 6.6 中转仓扫码到货关联采购单
-  scanSource?: 'trackingNo' | 'barcode' | 'purchaseNo' | null
+  /** 扫码来源：实际判定的语义类型（6.12 支持 auto 解析，取值含 unknown） */
+  scanSource?: string | null
   receivedItems?: { id: string; productName: string; quantity: number; skuId: string | null; imageUrl: string | null }[] | null
   createdAt: string
 }
@@ -2245,8 +2248,18 @@ export function doListPurchaseOrders(filters: { status?: string; shopId?: string
 }
 
 /** 新增采购单（演示态：租户隔离 + 至少 1 行项）。 */
+/** 生成业务采购单号：CG + 年月日 + 当日 4 位流水（与后端 nextPurchaseNo 保持一致） */
+function nextPurchaseNo(): string {
+  const d = new Date()
+  const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
+  const prefix = `CG${ymd}-`
+  const used = purchaseOrders.filter((p) => p.purchaseNo?.startsWith(prefix)).length
+  return `${prefix}${String(used + 1).padStart(4, '0')}`
+}
+
 export function doCreatePurchaseOrder(body: {
   trackingNo: string
+  purchaseNo?: string
   carrier: string
   platformOrderNo?: string
   recipientName?: string
@@ -2268,6 +2281,8 @@ export function doCreatePurchaseOrder(body: {
     shopId: body.shopId ?? linkedOrder?.shopId ?? null,
     orderId: body.orderId ?? null,
     trackingNo: body.trackingNo,
+    // 6.12：与后端一致，按当日流水生成可扫码的业务采购单号
+    purchaseNo: body.purchaseNo ?? nextPurchaseNo(),
     carrier: body.carrier,
     platformOrderNo: body.platformOrderNo ?? linkedOrder?.platformOrderNo ?? null,
     recipientName: body.recipientName ?? linkedOrder?.recipient?.name ?? null,
@@ -2459,10 +2474,24 @@ export function doGetTransferBoard(): MockTransferBoard {
 /** 扫码到货入库（任务 6.6，演示态与后端 TransferService.scan 同口径）。
  * 流程：校验中转仓归属 → 按扫码类型解析采购单 → 生成收货单 ASN（received + 行项快照）
  * → 推进采购单 pending→arrived → 复用 6.4 自动匹配关联店铺订单。 */
+/**
+ * 演示态扫码值号段猜测（6.12 轻量版；权威实现见 server/src/modules/transfer/scan-rules.ts）。
+ * 仅用于 mock 回传识别文案，真正判定以查库命中为准。
+ */
+function guessScanKindLite(v: string): { kind: string; label: string } {
+  if (/^po[_-]/i.test(v) || /^CG\d{6,}$/i.test(v)) return { kind: 'purchaseNo', label: '采购单号' }
+  if (/^(SF|YT|ZTO|STO|YD|EMS|JD|DBL|ZT)[A-Z0-9]{8,}$/i.test(v)) return { kind: 'trackingNo', label: '快递单号' }
+  if (/^[A-Z]{2}\d{9}[A-Z]{2}$/i.test(v)) return { kind: 'trackingNo', label: '国际邮政单号' }
+  if (/^\d{13}$/.test(v)) return { kind: 'barcode', label: 'EAN-13 商品条码' }
+  if (/^\d{8}$|^\d{12}$|^\d{14}$/.test(v)) return { kind: 'barcode', label: '商品条码' }
+  if (/^\d{10,30}$/.test(v)) return { kind: 'trackingNo', label: '纯数字快递单号' }
+  return { kind: 'unknown', label: '未识别号段' }
+}
+
 export function doScanTransfer(body: {
   warehouseId: string
   scanValue: string
-  scanType: 'trackingNo' | 'barcode' | 'purchaseNo'
+  scanType: 'auto' | 'trackingNo' | 'barcode' | 'purchaseNo'
 }): {
   asn: { id: string; warehouseId: string; purchaseOrderId: string | null; scanSource: string; status: string; receivedItemCount: number; createdAt: string }
   purchaseOrder: {
@@ -2475,27 +2504,68 @@ export function doScanTransfer(body: {
   }
   matched: boolean
   advanced: boolean
+  resolvedType: string
+  resolvedLabel: string
   message: string
 } {
   const wh = warehouses.find((w) => w.id === body.warehouseId && w.tenantId === TENANT_ID)
   if (!wh) throw new Error('中转仓不存在或无权限')
 
-  // 按扫码类型解析采购单（demo 租户隔离）
-  let po: MockPurchaseOrder | undefined
-  if (body.scanType === 'trackingNo') {
-    po = purchaseOrders.find((p) => p.tenantId === TENANT_ID && p.trackingNo === body.scanValue)
-  } else if (body.scanType === 'purchaseNo') {
-    po = purchaseOrders.find((p) => p.tenantId === TENANT_ID && p.id === body.scanValue)
-  } else {
-    // SKU 条码：经采购单明细反查父采购单（同租户）
-    const sku = skus.find((s) => s.barcode === body.scanValue)
-    if (sku) {
-      po = purchaseOrders.find(
-        (p) => p.tenantId === TENANT_ID && p.items.some((it) => it.skuId === sku.id),
-      )
-    }
+  // 6.12 解析层：查询优先（快递单号 → 商品条码 → 采购单号），号段仅用于未命中提示
+  const value = body.scanValue.replace(/\s+/g, '')
+  const byTracking = () => purchaseOrders.find((p) => p.tenantId === TENANT_ID && p.trackingNo === value)
+  const byPurchaseNo = () =>
+    purchaseOrders.find((p) => p.tenantId === TENANT_ID && (p.id === value || p.purchaseNo === value))
+  const byBarcode = () => {
+    const sku = skus.find((s) => s.tenantId === TENANT_ID && s.barcode === value)
+    if (!sku) return undefined
+    return purchaseOrders.find((p) => p.tenantId === TENANT_ID && p.items.some((it) => it.skuId === sku.id))
   }
-  if (!po) throw new Error('未找到匹配的采购单，请核对快递单号 / 条码 / 采购单号')
+
+  let po: MockPurchaseOrder | undefined
+  let kind = 'unknown'
+  let label = '未识别号段'
+  if (body.scanType === 'auto') {
+    po = byTracking()
+    if (po) {
+      kind = 'trackingNo'
+      label = '快递单号'
+    } else {
+      po = byBarcode()
+      if (po) {
+        kind = 'barcode'
+        label = '商品条码'
+      } else {
+        po = byPurchaseNo()
+        if (po) {
+          kind = 'purchaseNo'
+          label = '采购单号'
+        } else {
+          const g = guessScanKindLite(value)
+          kind = g.kind
+          label = g.label
+        }
+      }
+    }
+  } else if (body.scanType === 'trackingNo') {
+    po = byTracking()
+    kind = 'trackingNo'
+    label = '快递单号'
+  } else if (body.scanType === 'purchaseNo') {
+    po = byPurchaseNo()
+    kind = 'purchaseNo'
+    label = '采购单号'
+  } else {
+    po = byBarcode()
+    kind = 'barcode'
+    label = '商品条码'
+  }
+  if (!po)
+    throw new Error(
+      kind === 'unknown'
+        ? '未能识别该扫码值的号段，且未匹配到采购单，请核对快递单号 / 商品条码 / 采购单号'
+        : `已识别为${label}，但未匹配到采购单，请核对快递单号 / 商品条码 / 采购单号`,
+    )
 
   const receivedItems = po.items.map((it) => ({
     id: it.id,
@@ -2511,7 +2581,7 @@ export function doScanTransfer(body: {
     warehouseId: wh.id,
     status: 'received',
     purchaseOrderId: po.id,
-    scanSource: body.scanType,
+    scanSource: kind, // 记录实际判定类型（auto 模式下由解析得出）
     receivedItems,
     createdAt: NOW(),
   }
@@ -2553,6 +2623,8 @@ export function doScanTransfer(body: {
     },
     matched,
     advanced,
+    resolvedType: kind,
+    resolvedLabel: label,
     message: advanced
       ? `到货登记成功，采购单 ${po.trackingNo} 已转为 arrived`
       : `到货登记成功（采购单当前状态 ${po.status}）`,
@@ -3254,7 +3326,13 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     // 中转仓扫码到货入库（任务 6.6）：快递单号 / SKU 条码 / 采购单号 → 到货登记 + 状态推进 + 自动匹配
     if (url === '/transfer/scan')
       return delay(180).then(() =>
-        doScanTransfer((body ?? {}) as { warehouseId: string; scanValue: string; scanType: 'trackingNo' | 'barcode' | 'purchaseNo' }),
+        doScanTransfer(
+          (body ?? {}) as {
+            warehouseId: string
+            scanValue: string
+            scanType: 'auto' | 'trackingNo' | 'barcode' | 'purchaseNo'
+          },
+        ),
       )
     // 生成打包任务（任务 6.7）：幂等，按订单聚合创建
     if (url === '/transfer/pack-tasks/generate') return delay(180).then(() => doGeneratePackTasks())

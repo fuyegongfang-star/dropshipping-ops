@@ -106,6 +106,8 @@ model Sku {
 
   @@unique([tenantId, code])
   @@index([tenantId])
+  // 扫码枪扫商品条码反查 SKU（6.12 扫码输入层）：barcode 可为 null，用普通索引即可
+  @@index([tenantId, barcode])
 }
 
 // ---- 订单与状态机（§13）----------------------------------------------------
@@ -649,6 +651,7 @@ model PurchaseOrder {
   shopId         String? // 来源店铺（绑定渠道，§3）；中转仓作业可空
   orderId        String? // 关联店铺订单（6.4 匹配/关联后回填，§13）
   trackingNo     String // 采购/供应商快递单号（6.6 扫码入库主键）
+  purchaseNo     String? // 业务采购单号（人类可读、可印成条码，6.12 扫码维度；形如 CG20261028-0001）
   carrier        String // 物流公司（采购侧承运方，非末端跨境承运商）
   platformOrderNo String? // 平台订单号（6.4 精确匹配 Order.platformOrderNo）
   recipientName  String? // 收件人姓名（6.4 与 Order.recipient.name 比对匹配）
@@ -665,6 +668,7 @@ model PurchaseOrder {
   @@index([tenantId, status])
   @@index([trackingNo])
   @@index([orderId])
+  @@index([tenantId, purchaseNo])
 }
 
 // 采购单行项（与店铺 OrderItem 对照核对，6.7 差异高亮，§1/§21）

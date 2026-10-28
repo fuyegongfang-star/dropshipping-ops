@@ -20,6 +20,8 @@ export interface PurchaseOrder {
   shopId?: string | null
   orderId?: string | null
   trackingNo: string
+  /** 业务采购单号（人类可读、可印成条码供扫码枪识别，6.12） */
+  purchaseNo?: string | null
   carrier: string
   platformOrderNo?: string | null
   recipientName?: string | null

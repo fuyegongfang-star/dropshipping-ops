@@ -65,8 +65,14 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="快递单号" min-width="170">
-          <template #default="{ row }"><span class="mono">{{ row.trackingNo }}</span></template>
+        <el-table-column label="快递单号 / 采购单号" min-width="180">
+          <template #default="{ row }">
+            <div class="mono">{{ row.trackingNo }}</div>
+            <div v-if="row.purchaseNo" class="mono muted po-no" title="业务采购单号（可印成条码供扫码枪识别）">
+              {{ row.purchaseNo }}
+            </div>
+            <div v-else class="muted">—</div>
+          </template>
         </el-table-column>
         <el-table-column label="物流公司" width="120" prop="carrier" />
         <el-table-column label="平台订单号" min-width="150">
@@ -659,6 +665,7 @@ onMounted(load)
 .mono { font-family: 'SFMono-Regular', Consolas, monospace; font-size: 13px; }
 .muted { color: var(--ink-500); }
 .img-count { display: inline-flex; align-items: center; gap: 4px; color: var(--ink-600); }
+.po-no { font-size: 12px; margin-top: 2px; }
 .tag-soft { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; border: 1px solid transparent; }
 .tag-gray { color: #64748b; background: rgba(100, 116, 139, 0.12); }
 .tag-blue { color: #2563eb; background: rgba(37, 99, 235, 0.12); }
