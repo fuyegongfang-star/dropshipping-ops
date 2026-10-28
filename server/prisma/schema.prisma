@@ -135,6 +135,7 @@ model OrderItem {
   skuId     String?
   quantity  Int
   price     Decimal?        @db.Decimal(12, 2)
+  imageUrl  String? // 平台商品主图（关联采购单时拉取，便于货代侧核对）
 
   @@index([tenantId])
 }
@@ -427,10 +428,12 @@ model Bin {
   id          String   @id @default(cuid())
   tenantId    String
   warehouseId String
-  code        String // 库位编码
+  code        String // 库位编码（货架编号，如 A-01-02）
+  zone        String? // 库区（可选，用于分组，如 A 区 / 拣货区）
   createdAt   DateTime @default(now())
 
   @@index([tenantId])
+  @@index([tenantId, warehouseId])
 }
 
 model Asn {

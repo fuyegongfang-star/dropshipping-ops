@@ -44,6 +44,8 @@ export interface OrderItem {
   skuId: string | null
   quantity: number
   price: number | null
+  /** 平台商品主图：采购单关联该订单后自动拉取，供货代侧核对实物 */
+  imageUrl?: string | null
   sku?: { code: string; platformSku: string | null; supplierSku: string | null } | null
 }
 

@@ -32,6 +32,8 @@ export interface OrderDetail extends OrderListItem {
     skuId: string | null
     quantity: number
     price: unknown
+    /** 平台商品主图（关联采购单时自动拉取，便于货代侧核对实物） */
+    imageUrl: string | null
     sku: { code: string; platformSku: string | null; supplierSku: string | null } | null
   }>
   events: Array<{

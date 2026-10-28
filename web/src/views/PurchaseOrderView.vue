@@ -187,17 +187,13 @@
         </el-row>
 
         <el-form-item label="产品图">
-          <div class="imgs">
-            <div v-for="(img, i) in form.productImages" :key="i" class="img-row">
-              <el-input v-model="form.productImages[i]" placeholder="图片 URL" />
-              <el-button size="small" text type="danger" @click="form.productImages.splice(i, 1)">
-                <AppIcon name="close" :size="14" />
-              </el-button>
-            </div>
-            <el-button size="small" @click="form.productImages.push('')">
-              <AppIcon name="plus" :size="14" class="btn-ico" />添加图片 URL
-            </el-button>
+          <div v-if="pulledImageCount > 0" class="pulled-tip">
+            <AppIcon name="check" :size="13" />
+            <span>
+              已从关联店铺订单拉取 {{ pulledImageCount }} 张商品主图，可继续上传实拍图补充
+            </span>
           </div>
+          <ProductImageUploader v-model="form.productImages" />
         </el-form-item>
 
         <el-form-item label="作业备注">
@@ -291,6 +287,7 @@ import { ordersApi, ORDER_STATUS_LABELS, type Order } from '@/api/orders'
 import { money } from '@/locales'
 import PageHeader from '@/components/PageHeader.vue'
 import AppIcon from '@/components/AppIcon.vue'
+import ProductImageUploader from '@/components/ProductImageUploader.vue'
 
 const STATUS_LABELS: Record<PurchaseOrderStatus, string> = {
   pending: '待处理',
@@ -328,6 +325,9 @@ const matching = ref(false)
 const matchTarget = ref<PurchaseOrder | null>(null)
 const candidates = ref<PurchaseOrderCandidate[]>([])
 const linkOrderId = ref<string>('')
+
+// 6.11 关联订单后自动拉取的商品主图数量（仅用于界面提示）
+const pulledImageCount = ref(0)
 
 // 6.10 录入即关联店铺订单（选单器）
 interface OrderOption {
@@ -467,26 +467,44 @@ async function onPickOrder(orderId: string): Promise<void> {
   if (poCountOf(o.id) > 0) {
     ElMessage.warning(`该订单已有 ${poCountOf(o.id)} 张采购单，请确认是补采或多供应商分单`)
   }
-  if (!orderItemsBlank()) return
   try {
     const detail = await ordersApi.detail(o.id)
-    // 订单行项有 skuId 直接用；演示态订单只带 sku.code，则按 code 反查内部 SKU
-    const byCode = new Map(skuOptions.value.map((s) => [s.code, s.id]))
-    const prefilled = (detail.items ?? []).map((it) => {
-      const code = it.sku?.code ?? ''
-      return {
-        skuId: (it.skuId as string | null) ?? byCode.get(code) ?? '',
-        productName: code,
-        quantity: it.quantity,
-        unitPrice: undefined as number | undefined,
+    const items = detail.items ?? []
+
+    // 自动拉取该订单商品主图（任务 6.11）：货代收货/打包时可据此核对实物
+    const imgs = items.map((it) => (it.imageUrl ?? '').trim()).filter(Boolean) as string[]
+    if (imgs.length) {
+      const merged = [...form.productImages]
+      let added = 0
+      for (const u of imgs) {
+        if (!merged.includes(u)) {
+          merged.push(u)
+          added += 1
+        }
       }
-    })
-    if (prefilled.length) {
+      form.productImages = merged
+      pulledImageCount.value += added
+      ElMessage.success(`已自动拉取关联订单的 ${added} 张商品主图`)
+    }
+
+    // 行项预填：仅在用户尚未填写行项时覆盖，避免冲掉已录入内容
+    if (orderItemsBlank() && items.length) {
+      // 订单行项有 skuId 直接用；演示态订单只带 sku.code，则按 code 反查内部 SKU
+      const byCode = new Map(skuOptions.value.map((s) => [s.code, s.id]))
+      const prefilled = items.map((it) => {
+        const code = it.sku?.code ?? ''
+        return {
+          skuId: (it.skuId as string | null) ?? byCode.get(code) ?? '',
+          productName: code,
+          quantity: it.quantity,
+          unitPrice: undefined as number | undefined,
+        }
+      })
       form.items = prefilled
       ElMessage.info(`已按订单行项预填 ${prefilled.length} 行，可按实际采购修改`)
     }
   } catch {
-    // 预填失败不阻断录入
+    // 预填 / 拉图失败不阻断录入
   }
 }
 
@@ -509,6 +527,7 @@ function resetCreate(): void {
   form.remark = ''
   form.items = [{ skuId: '', productName: '', quantity: 1, unitPrice: undefined }]
   pickedOrder.value = null
+  pulledImageCount.value = 0
 }
 
 async function submitCreate(): Promise<void> {
@@ -652,8 +671,19 @@ onMounted(load)
 .item-img img { width: 36px; height: 36px; border-radius: 6px; object-fit: cover; }
 .item-name { font-weight: 500; color: var(--ink-800); }
 .item-meta { font-size: 12px; color: var(--ink-500); }
-.imgs { display: flex; flex-direction: column; gap: 8px; }
-.img-row { display: flex; align-items: center; gap: 8px; }
+/* 关联订单自动拉取主图后的提示条 */
+.pulled-tip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding: 5px 9px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #15803d;
+  background: var(--green-soft, #dcfce7);
+  border-radius: var(--r-sm);
+}
 .line-item { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 
 /* 6.10 录入即关联（选单器） */

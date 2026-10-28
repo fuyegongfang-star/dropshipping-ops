@@ -15,10 +15,10 @@
       <!-- 仓库 -->
       <el-tab-pane label="仓库" name="wh">
         <el-row :gutter="16" class="stat-row">
-          <el-col :span="6"><el-card class="stat-card" shadow="hover"><div class="stat-ico ico-brand"><AppIcon name="warehouse" :size="20" /></div><div class="stat-label">仓库总数</div><div class="stat-value">{{ warehouses.length }}</div><div class="stat-sub">国内 + 海外</div></el-card></el-col>
+          <el-col :span="6"><el-card class="stat-card" shadow="hover"><div class="stat-ico ico-brand"><AppIcon name="warehouse" :size="20" /></div><div class="stat-label">仓库总数</div><div class="stat-value">{{ warehouses.length }}</div><div class="stat-sub">国内 + 海外 + 中转</div></el-card></el-col>
           <el-col :span="6"><el-card class="stat-card" shadow="hover"><div class="stat-ico ico-info"><AppIcon name="package" :size="20" /></div><div class="stat-label">在库 SKU 种类</div><div class="stat-value">{{ skuKinds }}</div><div class="stat-sub">去重 SKU 数</div></el-card></el-col>
           <el-col :span="6"><el-card class="stat-card" shadow="hover"><div class="stat-ico ico-done"><AppIcon name="check" :size="20" /></div><div class="stat-label">库存总量</div><div class="stat-value">{{ totalQty }}</div><div class="stat-sub">全部仓库数量合计</div></el-card></el-col>
-          <el-col :span="6"><el-card class="stat-card" shadow="hover"><div class="stat-ico ico-warn"><AppIcon name="pin" :size="20" /></div><div class="stat-label">海外仓</div><div class="stat-value">{{ overseasCount }}</div><div class="stat-sub">跨境备货主力</div></el-card></el-col>
+          <el-col :span="6"><el-card class="stat-card" shadow="hover"><div class="stat-ico ico-warn"><AppIcon name="pin" :size="20" /></div><div class="stat-label">海外仓 / 中转仓</div><div class="stat-value">{{ overseasCount }} / {{ transferCount }}</div><div class="stat-sub">备货主力 / 货代作业</div></el-card></el-col>
         </el-row>
         <el-card v-loading="lwh" class="list-card" shadow="never">
           <el-table :data="warehouses" empty-text="暂无仓库" row-key="id">
@@ -74,7 +74,7 @@
             <el-table-column label="库存 ID" prop="id" min-width="140"><template #default="{ row }"><span class="mono">{{ row.id }}</span></template></el-table-column>
             <el-table-column label="仓库" min-width="200"><template #default="{ row }">{{ whName(row.warehouseId) }}</template></el-table-column>
             <el-table-column label="SKU" prop="skuId" min-width="140"><template #default="{ row }"><span class="mono">{{ row.skuId }}</span></template></el-table-column>
-            <el-table-column label="库位" min-width="120"><template #default="{ row }"><span class="mono">{{ row.binId || '—' }}</span></template></el-table-column>
+            <el-table-column label="库位" min-width="130"><template #default="{ row }"><span class="mono strong-cell">{{ row.binCode || '—' }}</span></template></el-table-column>
             <el-table-column label="可用数量" prop="qty" min-width="110" />
             <el-table-column label="锁定" prop="lockedQty" min-width="90" />
             <el-table-column label="操作" min-width="110" fixed="right"><template #default="{ row }"><el-button type="primary" link @click="openAdjust(row)">调整</el-button></template></el-table-column>
@@ -102,6 +102,61 @@
           </el-table>
         </el-card>
       </el-tab-pane>
+
+      <!-- 货架 / 库位管理 -->
+      <el-tab-pane label="货架/库位" name="bin">
+        <el-row :gutter="16" class="stat-row">
+          <el-col :span="6"><el-card class="stat-card" shadow="hover"><div class="stat-ico ico-info"><AppIcon name="pin" :size="20" /></div><div class="stat-label">库位总数</div><div class="stat-value">{{ bins.length }}</div><div class="stat-sub">全部仓库货架位</div></el-card></el-col>
+          <el-col :span="6"><el-card class="stat-card" shadow="hover"><div class="stat-ico ico-done"><AppIcon name="check" :size="20" /></div><div class="stat-label">已占用库位</div><div class="stat-value">{{ binUsedCount }}</div><div class="stat-sub">有库存的库位</div></el-card></el-col>
+          <el-col :span="6"><el-card class="stat-card" shadow="hover"><div class="stat-ico ico-warn"><AppIcon name="package" :size="20" /></div><div class="stat-label">库位在库总量</div><div class="stat-value">{{ binTotalQty }}</div><div class="stat-sub">占用件数合计</div></el-card></el-col>
+          <el-col :span="6"><el-card class="stat-card" shadow="hover"><div class="stat-ico ico-brand"><AppIcon name="warehouse" :size="20" /></div><div class="stat-label">覆盖仓库</div><div class="stat-value">{{ binWhCount }}</div><div class="stat-sub">已建档库位的仓库</div></el-card></el-col>
+        </el-row>
+        <el-card v-loading="lbin" class="list-card" shadow="never">
+          <div class="toolbar">
+            <el-button type="primary" @click="openBin"><AppIcon name="plus" :size="15" /> 新建库位</el-button>
+            <el-select v-model="binWhFilter" placeholder="全部仓库" clearable style="width: 240px">
+              <el-option v-for="w in warehouses" :key="w.id" :label="`${w.name}（${WAREHOUSE_TYPE_LABELS[w.type]}）`" :value="w.id" />
+            </el-select>
+            <el-button text @click="refreshBins"><AppIcon name="refresh" :size="15" /> 刷新</el-button>
+          </div>
+          <el-table :data="filteredBins" empty-text="暂无库位，点击「新建库位」建档" row-key="id">
+            <el-table-column label="库位编码" min-width="150">
+              <template #default="{ row }"><span class="mono strong-cell">{{ row.code }}</span></template>
+            </el-table-column>
+            <el-table-column label="库区" min-width="140">
+              <template #default="{ row }">{{ row.zone || '—' }}</template>
+            </el-table-column>
+            <el-table-column label="所属仓库" min-width="220">
+              <template #default="{ row }">{{ row.warehouseName }}</template>
+            </el-table-column>
+            <el-table-column label="占用 SKU" prop="skuKinds" min-width="110" />
+            <el-table-column label="在库数量" prop="totalQty" min-width="110" />
+            <el-table-column label="状态" width="110">
+              <template #default="{ row }">
+                <el-tag :type="row.totalQty > 0 ? 'warning' : 'success'" size="small" effect="light">
+                  {{ row.totalQty > 0 ? '已占用' : '空闲' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="建档时间" min-width="170">
+              <template #default="{ row }">{{ fmtTime(row.createdAt) }}</template>
+            </el-table-column>
+            <el-table-column label="操作" min-width="110" fixed="right">
+              <template #default="{ row }">
+                <el-button
+                  type="danger"
+                  link
+                  :disabled="row.totalQty > 0"
+                  :loading="actingId === row.id"
+                  @click="removeBin(row)"
+                >
+                  删除
+                </el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-card>
+      </el-tab-pane>
     </el-tabs>
 
     <!-- 新建仓库 -->
@@ -112,10 +167,27 @@
           <el-radio-group v-model="whForm.type">
             <el-radio value="domestic">国内仓</el-radio>
             <el-radio value="overseas">海外仓</el-radio>
+            <el-radio value="transfer">中转仓（货代）</el-radio>
           </el-radio-group>
+          <div class="hint">
+            {{
+              whForm.type === 'transfer'
+                ? '中转仓供货代收货 / 打包 / 贴跨境面单使用，创建后会自动出现在「中转仓作业看板」'
+                : whForm.type === 'overseas'
+                  ? '海外仓用于跨境备货（先囤货再卖）'
+                  : '国内仓用于收货集货、国内段作业'
+            }}
+          </div>
         </el-form-item>
-        <el-form-item v-if="whForm.type === 'overseas'" label="国家/区域" required>
-          <el-input v-model="whForm.region" placeholder="如：US / DE / JP" />
+        <el-form-item
+          v-if="whForm.type !== 'domestic'"
+          :label="whForm.type === 'overseas' ? '国家/区域' : '城市/口岸'"
+          :required="whForm.type === 'overseas'"
+        >
+          <el-input
+            v-model="whForm.region"
+            :placeholder="whForm.type === 'overseas' ? '如：US / DE / JP' : '如：深圳 / 义乌（可选）'"
+          />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -190,6 +262,30 @@
         <el-button type="primary" :loading="saving" :disabled="warehouses.length === 0" @click="confirmWave">生成任务</el-button>
       </template>
     </el-dialog>
+
+    <!-- 新建库位（货架编号） -->
+    <el-dialog v-model="binVisible" title="新建库位（货架编号）" width="460px">
+      <el-form label-width="92px">
+        <el-form-item label="所属仓库" required>
+          <el-select v-model="binForm.warehouseId" placeholder="请选择仓库" class="full">
+            <el-option v-for="w in warehouses" :key="w.id" :label="`${w.name}（${WAREHOUSE_TYPE_LABELS[w.type]}）`" :value="w.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="库位编码" required>
+          <el-input v-model="binForm.code" placeholder="如 A-01-01（区-架-层）" />
+        </el-form-item>
+        <el-form-item label="库区">
+          <el-input v-model="binForm.zone" placeholder="如 A 区 / 拣货区（可选）" />
+        </el-form-item>
+      </el-form>
+      <div class="hint">
+        编码建议遵循「区-架-层-位」（如 A-01-02），同一仓库内编码不可重复；库位上有库存时不允许删除。
+      </div>
+      <template #footer>
+        <el-button @click="binVisible = false">取消</el-button>
+        <el-button type="primary" :loading="saving" @click="confirmBin">创建库位</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -202,6 +298,7 @@ import {
   type AsnDto,
   type InventoryDto,
   type PickTaskDto,
+  type BinDto,
   type WarehouseType,
   type AsnStatus,
   type PickStatus,
@@ -225,12 +322,24 @@ const warehouses = ref<WarehouseDto[]>([])
 const asns = ref<AsnDto[]>([])
 const inventory = ref<InventoryDto[]>([])
 const picks = ref<PickTaskDto[]>([])
+const bins = ref<BinDto[]>([])
 const lwh = ref(false)
 const lasn = ref(false)
 const linv = ref(false)
 const lpick = ref(false)
+const lbin = ref(false)
 const saving = ref(false)
 const actingId = ref('')
+
+/** 货架管理：按仓库过滤库位（'' = 全部仓库） */
+const binWhFilter = ref('')
+const filteredBins = computed(() =>
+  binWhFilter.value ? bins.value.filter((b) => b.warehouseId === binWhFilter.value) : bins.value,
+)
+const transferCount = computed(() => warehouses.value.filter((w) => w.type === 'transfer').length)
+const binUsedCount = computed(() => bins.value.filter((b) => b.totalQty > 0).length)
+const binTotalQty = computed(() => bins.value.reduce((s, b) => s + b.totalQty, 0))
+const binWhCount = computed(() => new Set(bins.value.map((b) => b.warehouseId)).size)
 
 const skuKinds = computed(() => new Set(inventory.value.map((i) => i.skuId)).size)
 const totalQty = computed(() => inventory.value.reduce((s, i) => s + i.qty, 0))
@@ -299,6 +408,71 @@ async function confirmWh() {
     ElMessage.error((e as Error).message || '创建失败')
   } finally {
     saving.value = false
+  }
+}
+
+// —— 库位 / 货架管理 ——
+const binVisible = ref(false)
+const binForm = reactive({ warehouseId: '', code: '', zone: '' })
+async function refreshBins(): Promise<void> {
+  lbin.value = true
+  try {
+    bins.value = await wmsApi.listBins()
+  } catch {
+    bins.value = []
+  } finally {
+    lbin.value = false
+  }
+}
+function openBin(): void {
+  if (warehouses.value.length === 0) {
+    ElMessage.warning('请先创建仓库，再为其建立库位')
+    return
+  }
+  binForm.warehouseId = binWhFilter.value || warehouses.value[0].id
+  binForm.code = ''
+  binForm.zone = ''
+  binVisible.value = true
+}
+async function confirmBin(): Promise<void> {
+  if (!binForm.warehouseId) {
+    ElMessage.warning('请选择所属仓库')
+    return
+  }
+  if (!binForm.code.trim()) {
+    ElMessage.warning('请输入库位编码（如 A-01-01）')
+    return
+  }
+  saving.value = true
+  try {
+    await wmsApi.createBin({
+      warehouseId: binForm.warehouseId,
+      code: binForm.code.trim(),
+      zone: binForm.zone.trim() || undefined,
+    })
+    ElMessage.success('库位已创建')
+    binVisible.value = false
+    await refreshBins()
+  } catch (e) {
+    ElMessage.error((e as Error).message || '创建失败')
+  } finally {
+    saving.value = false
+  }
+}
+async function removeBin(row: BinDto): Promise<void> {
+  if (row.totalQty > 0) {
+    ElMessage.warning(`库位 ${row.code} 仍有 ${row.totalQty} 件库存，请先移库 / 清零`)
+    return
+  }
+  actingId.value = row.id
+  try {
+    await wmsApi.deleteBin(row.id)
+    ElMessage.success(`库位 ${row.code} 已删除`)
+    await refreshBins()
+  } catch (e) {
+    ElMessage.error((e as Error).message || '删除失败')
+  } finally {
+    actingId.value = ''
   }
 }
 
@@ -476,6 +650,7 @@ onMounted(() => {
   refreshAsns()
   refreshInventory()
   refreshPicks()
+  refreshBins()
 })
 </script>
 
@@ -548,5 +723,14 @@ onMounted(() => {
 .mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
+}
+/* 货架编号 / 库位编码：需要一眼扫到，故加粗提色 */
+.strong-cell {
+  font-weight: 600;
+  color: var(--ink-800, #1f2937);
+}
+.hint {
+  margin-top: 4px;
+  line-height: 1.6;
 }
 </style>

@@ -5,7 +5,7 @@
  * 负责人：自动开发引擎 ｜ 创建：2026-10-23
  */
 
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common'
+import { Body, Controller, Delete, Get, Param, Post, Query } from '@nestjs/common'
 import { ApiResponse, ok } from '../../common/response/api-response'
 import { TenantId } from '../../common/tenant/tenant.decorator'
 import { WmsService } from './wms.service'
@@ -15,16 +15,35 @@ import {
   PutawayDto,
   AdjustInventoryDto,
   CreateWaveDto,
+  CreateBinDto,
 } from './wms.dto'
 
 @Controller('wms')
 export class WmsController {
   constructor(private readonly wms: WmsService) {}
 
-  /** 仓库列表（租户隔离，国内/海外） */
+  /** 仓库列表（租户隔离，国内/海外/中转仓） */
   @Get('warehouses')
   async listWarehouses(@TenantId() tenantId: string): Promise<ApiResponse<unknown>> {
     return ok(await this.wms.listWarehouses(tenantId))
+  }
+
+  /** 库位（货架编号）列表：可按仓库过滤，带占用统计 */
+  @Get('bins')
+  async listBins(@TenantId() tenantId: string, @Query('warehouseId') warehouseId?: string): Promise<ApiResponse<unknown>> {
+    return ok(await this.wms.listBins(tenantId, warehouseId))
+  }
+
+  /** 新建库位（货架编号） */
+  @Post('bins')
+  async createBin(@TenantId() tenantId: string, @Body() body: CreateBinDto): Promise<ApiResponse<unknown>> {
+    return ok(await this.wms.createBin(tenantId, body))
+  }
+
+  /** 删除库位（仅当无库存占用时） */
+  @Delete('bins/:id')
+  async deleteBin(@TenantId() tenantId: string, @Param('id') id: string): Promise<ApiResponse<unknown>> {
+    return ok(await this.wms.deleteBin(tenantId, id))
   }
 
   /** 新建仓库 */

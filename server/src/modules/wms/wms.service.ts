@@ -22,6 +22,8 @@ import {
   PutawayDto,
   AdjustInventoryDto,
   CreateWaveDto,
+  CreateBinDto,
+  BinDto,
   WarehouseType,
   AsnStatus,
   PickStatus,
@@ -53,6 +55,7 @@ export interface InventoryDto {
   warehouseId: string
   skuId: string
   binId: string | null
+  binCode: string | null
   qty: number
   lockedQty: number
 }
@@ -166,13 +169,28 @@ export class WmsService {
 
   // ——— 库存（§15.2）———
 
-  /** 列出当前租户库存（可按仓库过滤） */
+  /** 列出当前租户库存（可按仓库过滤），附带库位编码（人类可读的货架编号） */
   async listInventory(tenantId: string, warehouseId?: string): Promise<InventoryDto[]> {
     const rows = await this.prisma.inventory.findMany({
       where: warehouseId ? { tenantId, warehouseId } : { tenantId },
       orderBy: { createdAt: 'desc' },
     })
-    return rows.map((r) => this.toInventoryDto(r))
+    const binIds = Array.from(new Set(rows.map((r) => r.binId).filter((v): v is string => !!v)))
+    const codes = await this.binCodeMap(tenantId, binIds)
+    return rows.map((r) => ({
+      ...this.toInventoryDto(r),
+      binCode: r.binId ? codes.get(r.binId) ?? null : null,
+    }))
+  }
+
+  /** 批量取「binId → 库位编码」。Inventory.binId 是普通字段（无外键），只能手工映射。 */
+  private async binCodeMap(tenantId: string, binIds: string[]): Promise<Map<string, string>> {
+    if (!binIds.length) return new Map()
+    const bins = await this.prisma.bin.findMany({
+      where: { tenantId, id: { in: binIds } },
+      select: { id: true, code: true },
+    })
+    return new Map(bins.map((b) => [b.id, b.code]))
   }
 
   /**
@@ -263,8 +281,122 @@ export class WmsService {
   private toAsnDto(r: Prisma.AsnGetPayload<object>): AsnDto {
     return { id: r.id, tenantId: r.tenantId, warehouseId: r.warehouseId, status: r.status as AsnStatus, createdAt: r.createdAt.toISOString() }
   }
+  // ——— 库位（货架编号，阶段6 货架管理 6.11）———
+
+  /** 列出当前租户库位（可按仓库过滤），带占用统计（SKU 种类 + 库存总量） */
+  async listBins(tenantId: string, warehouseId?: string): Promise<BinDto[]> {
+    const rows = await this.prisma.bin.findMany({
+      where: warehouseId ? { tenantId, warehouseId } : { tenantId },
+      orderBy: [{ warehouseId: 'asc' }, { code: 'asc' }],
+    })
+    if (!rows.length) return []
+    // 占用统计：Inventory.binId 无外键，按 binId 批量捞回后在内存聚合。
+    const inv = await this.prisma.inventory.findMany({
+      where: { tenantId, binId: { in: rows.map((r) => r.id) } },
+      select: { binId: true, skuId: true, qty: true },
+    })
+    const occ = this.aggregateOccupancy(inv)
+    const names = await this.warehouseNameMap(
+      tenantId,
+      Array.from(new Set(rows.map((r) => r.warehouseId))),
+    )
+    return rows.map((r) => this.toBinDto(r, occ.get(r.id), names.get(r.warehouseId) ?? r.warehouseId))
+  }
+
+  /** 新建库位（货架编号）：同一仓库内 code 唯一；校验仓库归属 */
+  async createBin(tenantId: string, dto: CreateBinDto): Promise<BinDto> {
+    await this.assertWarehouse(tenantId, dto.warehouseId)
+    const exist = await this.prisma.bin.findFirst({
+      where: { tenantId, warehouseId: dto.warehouseId, code: dto.code },
+    })
+    if (exist) {
+      throw new BusinessException('BIN_DUPLICATE', `仓库内已存在库位编码 ${dto.code}`, HttpStatus.CONFLICT)
+    }
+    const row = await this.prisma.bin.create({
+      data: { tenantId, warehouseId: dto.warehouseId, code: dto.code, zone: dto.zone ?? null },
+    })
+    const names = await this.warehouseNameMap(tenantId, [dto.warehouseId])
+    this.logger.log(`[WMS] 创建库位 ${row.id} (${dto.code}) @ ${dto.warehouseId}`, 'Wms')
+    return this.toBinDto(row, undefined, names.get(dto.warehouseId) ?? dto.warehouseId)
+  }
+
+  /** 删除库位：仅当该库位上无任何库存占用时允许（避免误删在用库位） */
+  async deleteBin(tenantId: string, binId: string): Promise<{ deleted: boolean }> {
+    const bin = await this.prisma.bin.findUnique({ where: { id: binId } })
+    if (!bin || bin.tenantId !== tenantId) {
+      throw new BusinessException('BIN_NOT_FOUND', '库位不存在或无权限', HttpStatus.NOT_FOUND)
+    }
+    const inv = await this.prisma.inventory.findMany({
+      where: { tenantId, binId },
+      select: { qty: true },
+    })
+    const occupied = inv.reduce((s, i) => s + i.qty, 0)
+    if (occupied > 0) {
+      throw new BusinessException(
+        'BIN_OCCUPIED',
+        `库位 ${bin.code} 仍有 ${occupied} 件库存，请先移库 / 清零后再删除`,
+        HttpStatus.CONFLICT,
+      )
+    }
+    await this.prisma.bin.delete({ where: { id: binId } })
+    this.logger.log(`[WMS] 删除库位 ${binId} (${bin.code})`, 'Wms')
+    return { deleted: true }
+  }
+
+  /** 按 binId 聚合占用：SKU 种类数 + 库存总量 */
+  private aggregateOccupancy(
+    inv: Array<{ binId: string | null; skuId: string; qty: number }>,
+  ): Map<string, { skuKinds: number; totalQty: number }> {
+    const m = new Map<string, { skuKinds: number; totalQty: number }>()
+    for (const i of inv) {
+      if (!i.binId) continue
+      const cur = m.get(i.binId) ?? { skuKinds: 0, totalQty: 0 }
+      cur.skuKinds += 1
+      cur.totalQty += i.qty
+      m.set(i.binId, cur)
+    }
+    return m
+  }
+
+  /** 批量取「warehouseId → 仓库名」 */
+  private async warehouseNameMap(tenantId: string, ids: string[]): Promise<Map<string, string>> {
+    if (!ids.length) return new Map()
+    const whs = await this.prisma.warehouse.findMany({
+      where: { tenantId, id: { in: ids } },
+      select: { id: true, name: true },
+    })
+    return new Map(whs.map((w) => [w.id, w.name]))
+  }
+
+  private toBinDto(
+    r: Prisma.BinGetPayload<object>,
+    occ: { skuKinds: number; totalQty: number } | undefined,
+    warehouseName: string,
+  ): BinDto {
+    return {
+      id: r.id,
+      tenantId: r.tenantId,
+      warehouseId: r.warehouseId,
+      warehouseName,
+      code: r.code,
+      zone: r.zone,
+      skuKinds: occ?.skuKinds ?? 0,
+      totalQty: occ?.totalQty ?? 0,
+      createdAt: r.createdAt.toISOString(),
+    }
+  }
+
   private toInventoryDto(r: Prisma.InventoryGetPayload<object>): InventoryDto {
-    return { id: r.id, tenantId: r.tenantId, warehouseId: r.warehouseId, skuId: r.skuId, binId: r.binId, qty: r.qty, lockedQty: r.lockedQty }
+    return {
+      id: r.id,
+      tenantId: r.tenantId,
+      warehouseId: r.warehouseId,
+      skuId: r.skuId,
+      binId: r.binId,
+      binCode: (r as { binCode?: string | null }).binCode ?? null,
+      qty: r.qty,
+      lockedQty: r.lockedQty,
+    }
   }
   private toPickDto(r: Prisma.PickTaskGetPayload<object>): PickTaskDto {
     return { id: r.id, tenantId: r.tenantId, warehouseId: r.warehouseId, orderId: r.orderId, status: r.status as PickStatus, createdAt: r.createdAt.toISOString() }

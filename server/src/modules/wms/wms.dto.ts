@@ -20,14 +20,29 @@ export type PickStatus = 'pending' | 'picking' | 'done'
 export class CreateWarehouseDto {
   @IsString()
   @IsNotEmpty()
-  name: string // 仓库名称（如「深圳前海仓」「US-West 海外仓」）
+  name: string // 仓库名称（如「深圳前海仓」「US-West 海外仓」「深圳福永中转仓」）
 
   @IsIn(['domestic', 'overseas', 'transfer'])
   type: WarehouseType // 仓库类型：国内 / 海外（§15）/ 中转仓（阶段6 6.5）
 
   @IsOptional()
   @IsString()
-  region?: string // 区域 / 国家（海外仓必填国家）
+  region?: string // 区域 / 国家（海外仓必填国家；中转仓可填城市/口岸）
+}
+
+/** 新建库位（货架编号） */
+export class CreateBinDto {
+  @IsString()
+  @IsNotEmpty()
+  warehouseId: string // 所属仓库（必须属于当前租户）
+
+  @IsString()
+  @IsNotEmpty()
+  code: string // 库位编码（货架编号，如 A-01-02）
+
+  @IsOptional()
+  @IsString()
+  zone?: string // 库区（可选，如 A 区 / 拣货区）
 }
 
 /** 新建入库预报(ASN) */
@@ -77,4 +92,19 @@ export class CreateWaveDto {
   warehouseId: string
 
   orderIds?: string[] // 波次包含的订单（生成对应拣货任务）
+}
+
+/** 库位（货架编号，归一化返回） */
+export interface BinDto {
+  id: string
+  tenantId: string
+  warehouseId: string
+  warehouseName: string
+  code: string
+  zone: string | null
+  /** 占用：该库位上的 SKU 种类数 */
+  skuKinds: number
+  /** 占用：该库位上的库存总量 */
+  totalQty: number
+  createdAt: string
 }

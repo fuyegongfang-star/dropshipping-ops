@@ -18,6 +18,7 @@ import type { BillItem, ReconciliationItem, ProfitSummary, GenerateResult, Profi
 import type { ReportDashboard } from './reports'
 import type { ClaimOut, ClaimType, ClaimStatus, ClaimResponsibleParty, CreateClaimDto, UpdateClaimStatusDto } from './claims'
 import type { PackCheckRow, PackCheckSummary, PackQueueItem, PackQueue, PackTaskDto, PackTaskCheck, ChannelOption, ShippingLabelDto, PackLabelResult, OutboundTransferDto, OutboundTrackingVo, OutboundResult } from './transfer'
+import type { BinDto } from './wms'
 import type { RiskRule, RiskOrderEvaluation, BlacklistEntry, RiskSummary, CreateRiskRuleDto, UpdateRiskRuleDto, CreateBlacklistDto, ReviewDecisionDto } from './risk'
 import type {
   AmazonHealth,
@@ -95,6 +96,8 @@ export interface MockSku {
 export interface MockOrderItem {
   sku: { code: string; platformSku: string | null; supplierSku: string | null } | null
   quantity: number
+  /** 平台商品主图（采购单关联订单后自动拉取；演示态为内联 SVG，可直接渲染） */
+  imageUrl?: string | null
 }
 export interface MockOrderEvent {
   id: string
@@ -317,6 +320,26 @@ const skus: MockSku[] = [
     createdAt: '2026-09-08T08:00:00.000Z',
   },
 ]
+
+// 演示商品主图：内联 SVG（data URL），无外网也能渲染，便于验证「关联订单自动拉取主图」。
+function demoImg(text: string, bg: string): string {
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240">` +
+    `<rect width="240" height="240" fill="${bg}"/>` +
+    `<text x="120" y="120" font-family="sans-serif" font-size="26" font-weight="600" fill="#ffffff" text-anchor="middle" dominant-baseline="middle">${text}</text>` +
+    `</svg>`
+  return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg)
+}
+
+/** SKU → 商品主图（与 skus 种子一一对应） */
+const SKU_IMAGES: Record<string, string> = {
+  sk1: demoImg('耳机 Pro', '#4f7cff'),
+  sk2: demoImg('充电宝 20K', '#0ea5e9'),
+  sk3: demoImg('智能手环', '#8b5cf6'),
+  sk4: demoImg('折叠支架', '#f59e0b'),
+  sk5: demoImg('耳机 白', '#7c5cff'),
+  sk6: demoImg('充电宝 10K', '#10b981'),
+}
 
 // 订单种子（覆盖正向 12 态 + 逆向/异常），便于演示各状态与操作
 const seedOrders: MockOrder[] = [
@@ -590,9 +613,17 @@ function mk(
     currency,
     createdAt,
     recipient,
-    items,
+    // 行项带上商品主图：采购单关联该订单时可一键拉取（任务 6.11）。
+    items: items.map((it) => ({ ...it, imageUrl: itemImage(it) })),
     events,
   }
+}
+
+/** 取订单行项的商品主图：行项自带优先，否则按 SKU ID 查演示主图 */
+function itemImage(it: MockOrderItem): string | null {
+  if (it.imageUrl) return it.imageUrl
+  const skuId = (it.sku as unknown as { id?: string } | null)?.id
+  return skuId ? SKU_IMAGES[skuId] ?? null : null
 }
 
 // ===== 工具 =====
@@ -1937,8 +1968,19 @@ export interface MockInventory {
   warehouseId: string
   skuId: string
   binId: string | null
+  /** 库位编码（人类可读货架编号，如 A-01）；仅列表返回时回填 */
+  binCode?: string | null
   qty: number
   lockedQty: number
+}
+/** 库位（货架编号）：阶段6 货架管理 6.11 */
+export interface MockBin {
+  id: string
+  tenantId: string
+  warehouseId: string
+  code: string
+  zone: string | null
+  createdAt: string
 }
 export interface MockPickTask {
   id: string
@@ -1970,13 +2012,26 @@ const inventory: MockInventory[] = [
 const pickTasks: MockPickTask[] = [
   { id: 'pick_1', tenantId: TENANT_ID, warehouseId: 'wh_dom_1', orderId: 'ORD-2001', status: 'pending', createdAt: '2026-10-22T08:00:00.000Z' },
 ]
+// 货架/库位种子（编号遵循「区-架-层」惯例；inventory.binId 指向这里）
+const bins: MockBin[] = [
+  { id: 'bin_A01', tenantId: TENANT_ID, warehouseId: 'wh_dom_1', code: 'A-01-01', zone: 'A 区', createdAt: '2026-08-02T08:00:00.000Z' },
+  { id: 'bin_A02', tenantId: TENANT_ID, warehouseId: 'wh_dom_1', code: 'A-01-02', zone: 'A 区', createdAt: '2026-08-02T08:00:00.000Z' },
+  { id: 'bin_A03', tenantId: TENANT_ID, warehouseId: 'wh_dom_1', code: 'A-02-01', zone: 'A 区', createdAt: '2026-08-02T08:00:00.000Z' },
+  { id: 'bin_US01', tenantId: TENANT_ID, warehouseId: 'wh_ovs_1', code: 'US-A-01', zone: 'A 区', createdAt: '2026-08-11T08:00:00.000Z' },
+  { id: 'bin_TF01', tenantId: TENANT_ID, warehouseId: 'wh_transfer_1', code: 'T-01', zone: '收货暂存区', createdAt: '2026-09-13T08:00:00.000Z' },
+  { id: 'bin_TF02', tenantId: TENANT_ID, warehouseId: 'wh_transfer_1', code: 'T-02', zone: '打包区', createdAt: '2026-09-13T08:00:00.000Z' },
+]
 
 /** 仓库列表（演示态，租户隔离） */
 export function doListWarehouses(): MockWarehouse[] {
   return warehouses.filter((w) => w.tenantId === TENANT_ID).map((w) => ({ ...w }))
 }
-/** 新建仓库（演示态，海外仓必填区域） */
-export function doCreateWarehouse(body: { name?: string; type?: 'domestic' | 'overseas'; region?: string }): MockWarehouse {
+/** 新建仓库（演示态，海外仓必填区域；支持国内仓 / 海外仓 / 货代中转仓） */
+export function doCreateWarehouse(body: {
+  name?: string
+  type?: 'domestic' | 'overseas' | 'transfer'
+  region?: string
+}): MockWarehouse {
   const name = (body.name ?? '').trim()
   if (!name) throw new Error('仓库名称必填')
   if (body.type === 'overseas' && !(body.region ?? '').trim()) throw new Error('海外仓必须填写所在国家/区域')
@@ -1985,11 +2040,78 @@ export function doCreateWarehouse(body: { name?: string; type?: 'domestic' | 'ov
     tenantId: TENANT_ID,
     name,
     type: body.type ?? 'domestic',
-    region: body.type === 'overseas' ? (body.region ?? null) : null,
+    region: (body.region ?? '').trim() || null,
     createdAt: NOW(),
   }
   warehouses.push(row)
   return { ...row }
+}
+
+// ===== 库位 / 货架管理（阶段6 6.11）=====
+
+/** 库位列表（可按仓库过滤），带占用统计（SKU 种类 + 库存总量） */
+export function doListBins(warehouseId?: string): BinDto[] {
+  return bins
+    .filter((b) => b.tenantId === TENANT_ID && (!warehouseId || b.warehouseId === warehouseId))
+    .sort((a, b) => a.code.localeCompare(b.code))
+    .map((b) => {
+      const inv = inventory.filter((i) => i.tenantId === TENANT_ID && i.binId === b.id)
+      const wh = warehouses.find((w) => w.id === b.warehouseId)
+      return {
+        id: b.id,
+        tenantId: b.tenantId,
+        warehouseId: b.warehouseId,
+        warehouseName: wh?.name ?? b.warehouseId,
+        code: b.code,
+        zone: b.zone,
+        skuKinds: inv.length,
+        totalQty: inv.reduce((s, i) => s + i.qty, 0),
+        createdAt: b.createdAt,
+      }
+    })
+}
+
+/** 新建库位（货架编号）：校验仓库归属 + 同仓编码唯一 */
+export function doCreateBin(body: { warehouseId?: string; code?: string; zone?: string }): BinDto {
+  const code = (body.code ?? '').trim()
+  if (!code) throw new Error('库位编码必填')
+  const wh = warehouses.find((w) => w.id === body.warehouseId && w.tenantId === TENANT_ID)
+  if (!wh) throw new Error('仓库不存在或无权限')
+  if (bins.some((b) => b.tenantId === TENANT_ID && b.warehouseId === wh.id && b.code === code)) {
+    throw new Error(`仓库内已存在库位编码 ${code}`)
+  }
+  const row: MockBin = {
+    id: `bin_demo_${bins.length + 1}`,
+    tenantId: TENANT_ID,
+    warehouseId: wh.id,
+    code,
+    zone: (body.zone ?? '').trim() || null,
+    createdAt: NOW(),
+  }
+  bins.push(row)
+  return {
+    id: row.id,
+    tenantId: row.tenantId,
+    warehouseId: row.warehouseId,
+    warehouseName: wh.name,
+    code: row.code,
+    zone: row.zone,
+    skuKinds: 0,
+    totalQty: 0,
+    createdAt: row.createdAt,
+  }
+}
+
+/** 删除库位：仅当该库位上无任何库存占用时允许 */
+export function doDeleteBin(id: string): { deleted: boolean } {
+  const idx = bins.findIndex((b) => b.id === id && b.tenantId === TENANT_ID)
+  if (idx < 0) throw new Error('库位不存在或无权限')
+  const occupied = inventory
+    .filter((i) => i.tenantId === TENANT_ID && i.binId === id)
+    .reduce((s, i) => s + i.qty, 0)
+  if (occupied > 0) throw new Error(`库位 ${bins[idx].code} 仍有 ${occupied} 件库存，请先移库 / 清零后再删除`)
+  bins.splice(idx, 1)
+  return { deleted: true }
 }
 /** 入库单(ASN)列表（演示态，租户隔离，可按仓库过滤） */
 export function doListAsns(warehouseId?: string): MockAsn[] {
@@ -2034,7 +2156,9 @@ export function doPutaway(id: string, body: { skuId?: string; qty?: number; binC
 }
 /** 库存列表（演示态，租户隔离，可按仓库过滤） */
 export function doListInventory(warehouseId?: string): MockInventory[] {
-  return inventory.filter((i) => i.tenantId === TENANT_ID && (!warehouseId || i.warehouseId === warehouseId)).map((i) => ({ ...i }))
+  return inventory
+    .filter((i) => i.tenantId === TENANT_ID && (!warehouseId || i.warehouseId === warehouseId))
+    .map((i) => ({ ...i, binCode: bins.find((b) => b.id === i.binId)?.code ?? null }))
 }
 /** 库存调整（入库 / 出库 / 盘点损益；出库不得使库存为负，演示态） */
 export function doAdjustInventory(body: { warehouseId?: string; skuId?: string; delta?: number; binId?: string }): MockInventory {
@@ -2998,6 +3122,7 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     if (url === '/suppliers/orders') return delay().then(() => doListSupplierOrders())
     // 仓储 / 海外仓（§15）：仓库 / 入库单 / 库存 / 拣货任务（演示态内存）
     if (url === '/wms/warehouses') return delay().then(() => doListWarehouses())
+    if (url === '/wms/bins' || url.startsWith('/wms/bins?')) return delay().then(() => doListBins(parseQ(url).warehouseId))
     if (url === '/wms/asns' || url.startsWith('/wms/asns?')) return delay().then(() => doListAsns(parseQ(url).warehouseId))
     if (url === '/wms/inventory' || url.startsWith('/wms/inventory?')) return delay().then(() => doListInventory(parseQ(url).warehouseId))
     if (url === '/wms/picks' || url.startsWith('/wms/picks?')) return delay().then(() => doListPicks(parseQ(url).warehouseId))
@@ -3191,7 +3316,11 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
       )
     // 仓储 / 海外仓（§15）：仓库 / 入库单 / 上架 / 库存调整 / 拣货波次（演示态内存）
     if (url === '/wms/warehouses')
-      return delay().then(() => doCreateWarehouse((body ?? {}) as { name?: string; type?: 'domestic' | 'overseas'; region?: string }))
+      return delay().then(() =>
+        doCreateWarehouse((body ?? {}) as { name?: string; type?: 'domestic' | 'overseas' | 'transfer'; region?: string }),
+      )
+    if (url === '/wms/bins')
+      return delay().then(() => doCreateBin((body ?? {}) as { warehouseId?: string; code?: string; zone?: string }))
     if (url === '/wms/asns') return delay().then(() => doCreateAsn((body ?? {}) as { warehouseId?: string }))
     const wmsReceive = url.match(/^\/wms\/asns\/([^/]+)\/receive$/)
     if (wmsReceive) return delay(140).then(() => doReceiveAsn(wmsReceive[1]))
@@ -3277,6 +3406,9 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     if (tdk) return delay().then(() => deleteTdkRule(tdk[1]))
     const prodDel = url.match(/^\/pricing\/products\/([^/]+)$/)
     if (prodDel) return delay().then(() => doRemoveProduct(prodDel[1]))
+    // 库位（货架编号）删除：仅空库位可删
+    const binDel = url.match(/^\/wms\/bins\/([^/]+)$/)
+    if (binDel) return delay().then(() => doDeleteBin(binDel[1]))
     // 风控规则 / 黑名单移除（§26）
     const riskRuleDel = url.match(/^\/risk\/rules\/([^/]+)$/)
     if (riskRuleDel) return delay().then(() => doDeleteRiskRule(riskRuleDel[1]))
