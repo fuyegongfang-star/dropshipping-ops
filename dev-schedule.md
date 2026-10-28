@@ -86,6 +86,11 @@
 | 6.10 | 阶段6 | 采购单录入即关联 + 作业备注贯通 | 录入弹窗内直接选店铺订单（平台单号/收件人远程搜索、自动带出单号与收件人、按订单行项预填、提示「已有 N 张采购单」防重复）；备注透传到中转仓看板/打包队列/打包任务/核对弹窗/扫码结果，供货代分拣装货 | 6.3/6.4/6.5/6.7 | 0.5d | ✅ |
 | 6.11 | 阶段6 | 仓库/货架补齐 + 采购产品图 | ①新建仓库加「中转仓（货代）」类型，创建后自动进中转仓看板；②新增「货架/库位」页签：库位编码（区-架-层）+库区+占用(SKU/数量)+建/删(空库位) ；库存/占用一律显示人类可读编码而非内部 ID；③OrderItem 增 imageUrl，采购单关联订单即自动拉取商品主图；④产品图支持本地上传（多图、等比压缩、可填地址） | 6.5/6.10 | 0.5d | ✅ |
 | 6.12 | 阶段6 | 扫码枪/PDA 设备无关接入 | ①新增扫码输入层 useScannerInput：全局键盘钩子识别 HID 键盘模拟扫码枪（击键间隔判定，与人工打字区分），结束符/自动提交/前后缀剥离/提示音可配；②新增条码规则引擎 scan-rules.ts：按号段判定快递单号/商品条码/采购单号，扫描 API 支持 scanType=auto（查询优先+号段兜底）；③修复 6.6 条码分支误用 skuId(cuid) 导致扫码必然落空的 bug，改走 Sku.barcode；④采购单新增可扫业务单号 purchaseNo（CGyyyymmdd-nnnn，自动生成）；⑤中转仓扫码弹窗升级为连续扫作业台：扫即提交、流水逐条追加、成功/失败音与统计 | 6.6 | 0.5d | ✅ |
+| 7.1 | 阶段7 | SKU/商品 条码录入 + 扫码建档 | Sku.barcode 录入入口（SKU 编辑可填可「扫一下」录入、多码管理、列表条码列 + 扫条码反查定位、批量连扫建档）；后端条码查重/反查接口；演示侧条码改动持久化 | 1.7/6.12 | 1d | ⬜ |
+| 7.2 | 阶段7 | 采购单收货标签打印（Code128） | 标签数据接口 + 零依赖 Code128B 编码器 + A4 三列拼版/热敏 100×100 打印页（供应商贴箱 → 中转仓一枪到货）；顺带修正 CG 号段正则漏了连字符导致 `CG20261028-0001` 识别为未识别号段的 bug | 6.2/6.12 | 1d | ⬜ |
+| 7.3 | 阶段7 | PDA 原生壳（Android WebView + DataWedge） | `pda-shell/` Android 源码工程：全屏 WebView + DataWedge/Honeywell Intent 收码 + 蜂鸣震动 + 常亮 + 侧键触发 + 离线队列补扫；页面侧暴露 `window.__onScan` 桥接；设备接入指引落中转仓「扫码设备设置」弹窗 | 6.12 | 1.5d | ⬜ |
+
+> 阶段7 执行顺序建议：**7.1 → 7.2 → 7.3**。7.1 是数据地基（没条码，②贴出去的箱码与 Sku.barcode 之间没有可用映射），7.2 把条码落到物理介质（仓库才有东西可扫），7.3 是终端形态升级且依赖外部工具链（Android Gradle），放最后。
 
 ---
 
@@ -98,6 +103,7 @@
 - **M4（阶段4 完成）**：结算/账务/多租户/运营后台闭环，具备对外收费运营能力。
 - **M5（阶段5 完成）**：风控/开放生态/Amazon 完整对接/容量灾备，达到生产级。
 - **M6（阶段6 完成）**：货代中转仓作业流全通——采购单录入/匹配 → 中转仓扫码到货入库 → 打包贴跨境面单 → 出库同步跨境物流，与既有订单/渠道/承运商底座闭环。
+- **M7（阶段7 完成）**：条码介质与终端接入闭环——商品条码可录入（含枪扫建档）、采购单可打印 Code128 收货标签供供应商贴箱、场站端可用 PDA 原生壳接管扫码输入，仓库「一枪到底」无需翻纸质单据。
 - **6.10 体验补强（已完成）**：采购单录入时直接选关联店铺订单（一步到位），备注透传至货代作业侧（看板 / 打包队列 / 打包任务 / 核对弹窗 / 扫码结果），避免订单量增长后手动关联对错单、仓库漏看分拣注意事项。
 
 ---
@@ -642,3 +648,57 @@
 - **测试结果**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**338 passed / 50 suites**）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅。
 - **提交**：随本批统一提交（6.9 后端/前端/进度生成器/进度表/检查点）。
 - **下一步**：阶段6（M6 货代中转仓作业流）已全量交付，主线方案 v1.5 的「采购→中转仓→扫码→打包贴单→出库」核心作业流闭环完成；后续可推进真实平台凭证工厂化接入（淘宝 TOP/抖音开放平台/云途·DHL·4PX·燕文 联调，标注 TODO）+ 本机 PG 端到端验证 + §31 收尾文档。
+
+---
+
+## 阶段7 详细设计（条码介质与终端接入）
+
+> 背景：阶段 6 把「采购 → 中转仓扫码 → 打包贴单 → 出库」作业流跑通，6.12 补齐了设备无关的扫码输入层。但链路两端仍是空的——**商品条码没有录入入口（Sku.barcode 恒为 null，扫商品码必然落空）**，且**包裹上没有可扫的条码介质**（供应商发货什么都没有，仓库只能靠翻纸质入库单）。阶段 7 补齐「数据 → 介质 → 终端」三段，让仓库真的能「一枪到底」。
+> 执行纪律：沿用本表「〇、自动化执行约定」全部红线；业务能力类任务必须 页面 + 菜单/路由 + 演示/正式双路通；每批末跑 `npm run progress:gen` 并随代码提交。
+> **真库提醒**：本阶段新增 `SkuBarcode` 模型与 `PurchaseOrder.boxCount` 字段，正式库需执行 `prisma db push`（或 migrate）。
+
+### 7.1 SKU/商品 条码录入 + 扫码建档
+
+- **数据层**：`Sku.barcode`（已有 `@@index([tenantId, barcode])`）继续作为**主条码**承担扫码反查；新增 `SkuBarcode` 模型承载多码：`id / tenantId / skuId / code / kind('supplier'|'internal'|'ean13'|'other') / createdAt`，约束 `@@unique([tenantId, code])`、`@@index([tenantId, skuId])`。
+  - 写入时须与 `Sku.barcode` 互斥去重：同一租户内同一 `code` 不得同时出现在 `Sku.barcode` 与 `SkuBarcode`，重复抛 `SKU_BARCODE_DUPLICATE`（400，附冲突的 SKU 编码，便于现场定位）。
+- **后端（catalog 模块）**：
+  - `CreateSkuDto / UpdateSkuDto` 增 `barcode?`——去首尾空白、空串存 `null`；EAN-13/UPC-A 若长度命中则做**校验位**计算，不符仅 warn 带入返回值不拦截（供应商乱贴码是常态，不能卡录入）。
+  - 新增 `GET /sku/barcode-lookup?code=`：按租户查主码与多码，返回 `{ skuId, code, productName, matchedBy: 'main'|'alt', kind }`，用于「扫条码定位 SKU」与后续 PDA。
+  - 新增多码管理：`GET /sku/:skuId/barcodes`、`POST /sku/:skuId/barcodes`、`DELETE /sku/barcodes/:id`、`PATCH /sku/:skuId/barcodes/main`（设为主码并回写 `Sku.barcode`，原主码降级为 alt 码）。
+  - 单测（≥8 例）：重复拦截（含与 `Sku.barcode` 冲突）、跨租户隔离、lookup 命中主码/多码/未命中、删除后立即失效、校验位提示、设主码幂等。
+- **前端 `CatalogView`（业务运营 → 商品 SKU）**：
+  - SKU 新增/编辑弹窗加「商品条码」输入框 + 右侧「扫一下」按钮：点击进入 capture 态，**复用 6.12 已落地的 `web/src/composables/useScannerInput.ts`** 接收扫码枪输入并回填（同一份 `localStorage` 设备配置：结束符/自动提交/前后缀/提示音）。
+  - SKU 详情/编辑内嵌「多码」小表格：码值 / 类型 / 删除 / 「设为主码」。
+  - SKU 列表加「条码」列（主码 + `+N` 多码徽章）；顶部工具栏加「**扫码定位**」按钮 → 吸附同一钩子，扫到即过滤并高亮命中行，未命中提示「该条码未建档，是否录入到当前 SKU」。
+  - 「**批量扫码建档**」：选定 SKU 后连续扫多个条码逐条写入多码（扫即提交 + 成功/失败音，与 6.12 连续扫作业台一致）。
+  - `catalog.ts` 增接口与类型；`mock-data.ts` 同口径内存实现，且**条码变更写入 localStorage 覆盖层（建议 key `dso.sku-barcodes-v1`），刷新后仍生效**——否则演示模式第二天打开条码全没了。
+- **验收**：演示模式下人工慢速键盘输入不误判为扫码枪；用 Edge headless + CDP 模拟 ≤35ms/字符输入能被识别为扫码枪并回填（沿用 6.12 验证手法）；条码改动刷新后仍在（localStorage 覆盖层生效）。
+
+### 7.2 采购单收货标签打印（Code128）
+
+- **为什么是 Code128 而不是二维码**：仓库常见的**枪式激光扫描器（Zebra/霍尼韦尔/得利捷老型号）普遍不识别 QR**，Code128 是这类设备通吃的字母数字码制；而采购单号 `CG20261028-0001` 含字母与连字符，EAN-13/UPC-A 装不下。QR 仅在未来需要塞更多字段时作为**附加**码出现，不做主码。
+- **编码器（零依赖自研）**：新增 `web/src/utils/code128.ts`，实现 **Code128B**（字符集 95 个可打印 ASCII → value 映射、StartB=104、加权累加**校验位**、Stop=106），导出 `code128Bars(text): number[]` 与 `code128SvgRects(text, opts)`。理由：不为一次性打印能力引入 npm 依赖（本机 `npm install` 易受沙箱/网络影响）。**必须**写临时断言脚本验证：① 已知样例（如 `"CODE128"`）bits 序列与公开实现一致；② 校验位计算正确；③ 含不可打印字符/中文时抛明确错误。
+- **标签数据**：新增 `GET /purchase-orders/:id/label-data`，返回 `{ purchaseNo, carrier?, trackingNo?, supplier?, items:[{ skuCode, productName, quantity }], remark, boxCount, printedAt }`；`PurchaseOrder` 增 `boxCount Int @default(1)`（备注复用既有 `remark`，**不新增字段**），`PATCH /purchase-orders/:id` 支持改 `boxCount`。
+- **打印交互 `PurchaseOrderView`（业务运营 → 采购单管理）**：行操作加「**收货标签**」按钮 → 标签预览对话框：
+  - 纸型切换：**A4 三列拼版**（普通打印机）/ **热敏 100×100 mm**（标签机）；
+  - 每张标签内容：`purchaseNo` 的 Code128 条码 + 明文、供应商/采购链接、目的中转仓（下拉列本租户 `type=transfer` 仓库，默认首个）、SKU 编码+品名+数量（>6 行折叠为「等 N 项」）、作业备注摘要（>40 字截断）、箱号 `x / N`、打印时间；
+  - 「打印」走 `window.print()` + `@media print` 只保留标签容器（隐藏后台框架/侧栏/按钮），**不引后端 PDF 依赖**；
+  - `purchase-order.ts` 增 `getLabelData`，`mock-data.ts` 补 `doGetLabelData`。
+- **顺带修 bug**：`server/src/modules/transfer/scan-rules.ts` 的采购单号规则 `/^CG\d{6,}$/i` **匹配不到实际格式**（生成的是 `CG20261028-0001`，含连字符），导致扫自己打印的收货标签时被判为「未识别号段」——补 `/^CG\d{8}-\d{3,6}$/i` 并保留原规则兜底，配单测。
+- **验收**：生成的标签条码能被读码 app 扫出明文 `CG...`（以 bits 序列自证）；`@media print` 预览只含标签；演示/正式双路都能打开。
+
+### 7.3 PDA 原生壳（Android WebView + DataWedge）
+
+- **定位（务必写在 README 与日报里）**：这是**体验升级而非功能必需**——PDA 自带浏览器 + 扫描 APP 设「键盘输出（Keystroke）」模式时，现有网页即可直接作业；本任务服务于已购置/将购置工业终端的用户。
+- **交付 `pda-shell/`（源码工程；本机无 Android SDK，不出 APK，禁止伪造已构建）**：
+  - `MainActivity.kt`：全屏 WebView（站点地址可在设置页配置并持久化）、JS 桥注入 `window.__onScan(value)`、加载失败重试与离线提示页。
+  - `ScanReceiver.kt`：`BroadcastReceiver` 兼容三类广播 —— Zebra DataWedge（action 可配，默认 `com.symbol.datawedge.data`，取 `com.symbol.datawedge.data_string`）、Honeywell（`com.honeywell.decode.intent.action.DECODE_DATA` / `data`）、通用 `android.intent.action.SCAN` 兜底（依次尝试常见 key）。
+  - 反馈与作业：解析成功 `ToneGenerator` 蜂鸣 + `Vibrator` 震动（失败不同节奏）、`FLAG_KEEP_SCREEN_ON` 常亮、侧键/PTT 触发扫描 Intent。
+  - 离线容灾：扫码值先落本地 SQLite 队列，网络可用时按序 `POST /transfer/scan` 补传（幂等由 6.6 Asn 侧幂等保证），页面可看补扫条数。
+  - `README.md`：DataWedge Profile 配置步骤（**关闭 Keystroke output、开启 Intent output、Intent action 与壳内配置一致**）、签名与打包命令（首次构建需联网 Gradle）、升级说明。
+  - Gradle 配置齐备（`settings.gradle` / `build.gradle` / `gradle.properties`），`minSdk 26`，依赖控制在 AndroidX WebKit 级别。
+  - **验收口径**：工程结构完整、README 可照做、Kotlin 源码无未解析引用；**明确记录「本机无法编译 APK，需在装 Android Studio 的机器执行 `./gradlew assembleRelease`」**。
+- **页面侧桥接（可视化载体）**：`TransferView`（/transfer）挂载时暴露 `window.__onScan = (value) => submitScan(value)`（卸载时清理），复用既有连续扫作业台；中转仓「扫码设备设置」弹窗新增「**PDA / 数据终端接入**」区块：桥接状态（未检测到原生壳 / 已连接 __onScan）、可一键复制的 DataWedge action 名与配置指引、离线队列条数（网页模式显示「本模式不支持离线队列，请用键盘输出模式或安装 PDA 壳」）。演示模式下该区块可打开、指引可复制。
+- **验收**：`npm run progress:gen` 后 /progress 页可见 7.3 条目（route → /transfer）；网页模式在缺少原生桥接时不报错。
+
+---

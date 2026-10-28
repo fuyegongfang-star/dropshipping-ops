@@ -2,8 +2,8 @@
  * 开发进度数据 —— **本文件由 scripts/gen-progress.cjs 自动生成，请勿手工修改。**
  *
  * 生成命令：`npm run progress:gen`（读取 dev-schedule.md 的任务表）
- * 生成时间：2026-10-27T15:38:26.923Z
- * 源码提交：df6b380
+ * 生成时间：2026-10-28T09:38:15.427Z
+ * 源码提交：c7f0c18
  *
  * 作用：让「演示模式」与「正式模式」都能在网页上直接看到开发进度与最近交付的能力，
  * 夜间自动开发每完成一批任务后重新生成并提交，次日刷新页面即可看到新内容。
@@ -42,10 +42,10 @@ export interface DevStats {
 }
 
 /** 数据生成时间（ISO 字符串） */
-export const DEV_PROGRESS_GENERATED_AT = "2026-10-27T15:38:27.953Z"
+export const DEV_PROGRESS_GENERATED_AT = "2026-10-28T09:38:15.653Z"
 
 /** 数据对应的源码提交号（短 SHA） */
-export const DEV_PROGRESS_COMMIT = "df6b380"
+export const DEV_PROGRESS_COMMIT = "c7f0c18"
 
 /** 全部任务（按 dev-schedule.md 顺序） */
 export const DEV_TASKS: DevTask[] = [
@@ -588,22 +588,82 @@ export const DEV_TASKS: DevTask[] = [
     "estimate": "1d",
     "status": "done",
     "route": "/transfer"
+  },
+  {
+    "id": "6.10",
+    "phase": "阶段6",
+    "name": "采购单录入即关联 + 作业备注贯通",
+    "deliverable": "录入弹窗内直接选店铺订单（平台单号/收件人远程搜索、自动带出单号与收件人、按订单行项预填、提示「已有 N 张采购单」防重复）；备注透传到中转仓看板/打包队列/打包任务/核对弹窗/扫码结果，供货代分拣装货",
+    "deps": "6.3/6.4/6.5/6.7",
+    "estimate": "0.5d",
+    "status": "done",
+    "route": "/channels"
+  },
+  {
+    "id": "6.11",
+    "phase": "阶段6",
+    "name": "仓库/货架补齐 + 采购产品图",
+    "deliverable": "①新建仓库加「中转仓（货代）」类型，创建后自动进中转仓看板；②新增「货架/库位」页签：库位编码（区-架-层）+库区+占用(SKU/数量)+建/删(空库位) ；库存/占用一律显示人类可读编码而非内部 ID；③OrderItem 增 imageUrl，采购单关联订单即自动拉取商品主图；④产品图支持本地上传（多图、等比压缩、可填地址）",
+    "deps": "6.5/6.10",
+    "estimate": "0.5d",
+    "status": "done",
+    "route": "/catalog"
+  },
+  {
+    "id": "6.12",
+    "phase": "阶段6",
+    "name": "扫码枪/PDA 设备无关接入",
+    "deliverable": "①新增扫码输入层 useScannerInput：全局键盘钩子识别 HID 键盘模拟扫码枪（击键间隔判定，与人工打字区分），结束符/自动提交/前后缀剥离/提示音可配；②新增条码规则引擎 scan-rules.ts：按号段判定快递单号/商品条码/采购单号，扫描 API 支持 scanType=auto（查询优先+号段兜底）；③修复 6.6 条码分支误用 skuId(cuid) 导致扫码必然落空的 bug，改走 Sku.barcode；④采购单新增可扫业务单号 purchaseNo（CGyyyymmdd-nnnn，自动生成）；⑤中转仓扫码弹窗升级为连续扫作业台：扫即提交、流水逐条追加、成功/失败音与统计",
+    "deps": "6.6",
+    "estimate": "0.5d",
+    "status": "done",
+    "route": "/catalog"
+  },
+  {
+    "id": "7.1",
+    "phase": "阶段7",
+    "name": "SKU/商品 条码录入 + 扫码建档",
+    "deliverable": "Sku.barcode 录入入口（SKU 编辑可填可「扫一下」录入、多码管理、列表条码列 + 扫条码反查定位、批量连扫建档）；后端条码查重/反查接口；演示侧条码改动持久化",
+    "deps": "1.7/6.12",
+    "estimate": "1d",
+    "status": "todo",
+    "route": "/catalog"
+  },
+  {
+    "id": "7.2",
+    "phase": "阶段7",
+    "name": "采购单收货标签打印（Code128）",
+    "deliverable": "标签数据接口 + 零依赖 Code128B 编码器 + A4 三列拼版/热敏 100×100 打印页（供应商贴箱 → 中转仓一枪到货）；顺带修正 CG 号段正则漏了连字符导致 `CG20261028-0001` 识别为未识别号段的 bug",
+    "deps": "6.2/6.12",
+    "estimate": "1d",
+    "status": "todo",
+    "route": null
+  },
+  {
+    "id": "7.3",
+    "phase": "阶段7",
+    "name": "PDA 原生壳（Android WebView + DataWedge）",
+    "deliverable": "`pda-shell/` Android 源码工程：全屏 WebView + DataWedge/Honeywell Intent 收码 + 蜂鸣震动 + 常亮 + 侧键触发 + 离线队列补扫；页面侧暴露 `window.__onScan` 桥接；设备接入指引落中转仓「扫码设备设置」弹窗",
+    "deps": "6.12",
+    "estimate": "1.5d",
+    "status": "todo",
+    "route": null
   }
 ]
 
 /** 统计汇总 */
 export const DEV_STATS: DevStats = {
-  "total": 54,
-  "done": 53,
+  "total": 60,
+  "done": 56,
   "doing": 0,
-  "todo": 0,
+  "todo": 3,
   "blocked": 0,
   "skipped": 1,
-  "percent": 98.1
+  "percent": 93.3
 }
 
 /** 阶段列表（去重，按出现顺序） */
-export const DEV_PHASES = ["阶段0","阶段1","阶段2","阶段3","阶段4","阶段5","阶段6"]
+export const DEV_PHASES = ["阶段0","阶段1","阶段2","阶段3","阶段4","阶段5","阶段6","阶段7"]
 
 /** 最近交付的任务号（已完成中序号最大的若干个），用于「最近更新」高亮 */
-export const DEV_RECENT_IDS = ["6.6","6.7","6.8","6.9"]
+export const DEV_RECENT_IDS = ["6.9","6.10","6.11","6.12"]

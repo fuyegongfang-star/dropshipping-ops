@@ -5,11 +5,11 @@
   "schedule_path": "D:/Workbuddy/2026-10-10-17-18-35/dropshipping-ops/dev-schedule.md",
   "log_path": "D:/Workbuddy/2026-10-10-17-18-35/dropshipping-ops/progress-log.md",
   "error_log": "D:/Workbuddy/2026-10-10-17-18-35/dropshipping-ops/.dev/errors.log",
-  "current_phase": "阶段6",
-  "task_index": 49,
+  "current_phase": "阶段7",
+  "task_index": 52,
   "last_completed_task": "6.12",
-  "next_task": null,
-  "last_commit": "2be11cc",
+  "next_task": "7.1",
+  "last_commit": "c7f0c18",
   "last_run": "2026-10-22T23:10:00+08:00",
   "blocked_tasks": [],
   "skipped_tasks": [],
@@ -33,5 +33,6 @@
   "batch_2026_10_14": "2026-10-14 夜间批次(23:10 启动)完成 3.12 地址校验+分区(§18) + 3.13 聚合平台兜底(§3e)，阶段3 收口(M3 达成)。3.12：carriers/address/ 子模块——AddressService(标准化+质量分70%完整度+30%格式+脏地址检测+分级问题 error/warning/info) + ZoneMapService(邮编→分区 ZONE_1..5 确定性落入、区域中文名、远程区前缀 US AK/HI/关岛 CA 北部 AU 北领地占位、按承运商可达性覆盖：4PX 美国 ZONE_5 不可达、燕文加拿大远区不可达) + POST /carriers/address/validate；单测 12。3.13：carriers/aggregator/——AggregatorService(经 AfterShip/17TRACK 归一化尾程轨迹，诚实原则：不支持平台抛 NOT_IMPLEMENTED、fail 哨兵返回 fallback=true 建议直连) + POST /carriers/aggregator/track + GET /carriers/aggregator/catalog；单测 5。前端两独立页(避免膨胀 ShipmentsView)：AddressView(物流履约→地址校验，质量分徽章+标准化地址+分区结论+分级问题+各承运商可行性表+合规/脏地址示例) 与 AggregatorView(物流履约→聚合追踪，归一化轨迹时间线+fallback 提示)；carriers.ts 增 validateAddress/aggregateTrack/listAggregators API；mock-data.ts 增 doValidateAddress/doAggregateTrack/doAggregatorCatalog(同口径)；AppIcon 增 pin；router+menuNodes 注册两页。进度生成器 EXPLICIT_ROUTES 补 3.12→/address、3.13→/aggregator；progress:gen(45 任务/25 完成/55.6%)。质量门禁：server tsc✅/eslint --max-warnings 0 ✅/jest 155 passed(23 suites)；web vue-tsc✅/eslint✅/vite build✅。提交 8554598。下一步 4.1 收款账务 wallet+ledger(§16 复式记账/预充值/账期/退款)。看门狗未触发(零外部网络/安装)。",
   "frontend_viewable_2026_10_14": "2026-10-14 夜间批次(23:10)交付两页：物流履约分组新增「地址校验」(web/src/views/AddressView.vue，/address) 与「聚合追踪」(web/src/views/AggregatorView.vue，/aggregator)。地址校验页：地址表单(目的国/收件人/电话/州省/城市/地址行/邮编/承运商多选)→ 质量分徽章(绿/橙/红)+标准化地址回显+分区结论(区/区域/远程/可达标签)+分级问题清单+各承运商可行性表；内置「合规/脏地址」一键示例。聚合追踪页：选聚合平台(AfterShip/17TRACK，GET /carriers/aggregator/catalog)+尾程承运商+轨迹号→归一化尾程轨迹时间线+fallback 提示，含 fail 哨兵演示未解析兜底。演示模式(mock-data doValidateAddress/doAggregateTrack/doAggregatorCatalog 与后端同口径)与正式模式(真实后端 /carriers/address/validate、/carriers/aggregator/track)双路均通；菜单与路由已注册，刷新即可见。",
   "batch_2026_10_27": "2026-10-27 夜间批次交付 6.9 出库闭环+物流同步，收官阶段6/M6。后端 7 例新单测+全仓 338 passed/50 suites；前端 lint/typecheck/build 全绿；进度表 54 任务/53 完成(98.1%)。看门狗未触发(零外部网络/安装)。",
-  "phase6_note": "阶段6 + 6.10/6.11/6.12 补强完成：中转仓可建、货架库位可管、采购单自动拉图+上传、扫码设备无关接入（HID键盘钩子+条码规则引擎+连续扫）"
+  "phase6_note": "阶段6 + 6.10/6.11/6.12 补强完成：中转仓可建、货架库位可管、采购单自动拉图+上传、扫码设备无关接入（HID键盘钩子+条码规则引擎+连续扫）",
+  "phase7_plan": "阶段7（7.1-7.3）条码介质与终端接入：①7.1 SKU/商品 条码录入+扫码建档（SkuBarcode 多码模型 + /sku/barcode-lookup + CatalogView 条码列/扫一下录入/扫码定位/批量建档，mock 侧 localStorage 持久化）；②7.2 采购单收货标签打印（零依赖 Code128B 编码器 web/src/utils/code128.ts + A4三列/热敏100×100 打印 + PurchaseOrder.boxCount，供应商贴箱→仓库一枪到货；顺带修 scan-rules.ts 的 CG 号段正则漏连字符导致 CG20261028-0001 判为未识别的 bug）；③7.3 PDA 原生壳源码工程 pda-shell/（Android WebView + Zebra DataWedge/Honeywell Intent → window.__onScan 桥接 + 蜂鸣震动常亮侧键 + 离线队列补扫，本机无 Android SDK 不出 APK）。执行顺序 7.1→7.2→7.3，详见 dev-schedule.md 阶段7 详细设计。真库需 prisma db push（新增 SkuBarcode、PurchaseOrder.boxCount）。"
 }
