@@ -2135,15 +2135,18 @@ export function doCreatePurchaseOrder(body: {
 }): MockPurchaseOrder {
   if (!body.items || body.items.length === 0) throw new Error('采购单至少需要 1 个行项')
   const now = NOW()
+  // 任务 6.10：录入时已带 orderId → 自动回填店铺/平台单号/收件人（对齐后端 create 派生逻辑）
+  const linkedOrder = body.orderId ? orders.find((o) => o.id === body.orderId) : undefined
+  if (body.orderId && !linkedOrder) throw new Error('关联的店铺订单不存在或无权限')
   const po: MockPurchaseOrder = {
     id: 'po_' + Date.now().toString(36),
     tenantId: TENANT_ID,
-    shopId: body.shopId ?? null,
+    shopId: body.shopId ?? linkedOrder?.shopId ?? null,
     orderId: body.orderId ?? null,
     trackingNo: body.trackingNo,
     carrier: body.carrier,
-    platformOrderNo: body.platformOrderNo ?? null,
-    recipientName: body.recipientName ?? null,
+    platformOrderNo: body.platformOrderNo ?? linkedOrder?.platformOrderNo ?? null,
+    recipientName: body.recipientName ?? linkedOrder?.recipient?.name ?? null,
     purchaseUrl: body.purchaseUrl ?? null,
     productImages: body.productImages ?? [],
     remark: body.remark ?? null,
@@ -2266,6 +2269,7 @@ export interface MockTransferBoardPo {
   carrier: string
   platformOrderNo: string | null
   recipientName: string | null
+  remark: string | null
   status: string
   items: { id: string; productName: string; quantity: number; skuId: string | null }[]
   order: { id: string; platformOrderNo: string | null; status: string; recipientName: string | null } | null
@@ -2297,6 +2301,7 @@ export function doGetTransferBoard(): MockTransferBoard {
       carrier: po.carrier,
       platformOrderNo: po.platformOrderNo,
       recipientName: po.recipientName,
+      remark: po.remark ?? null,
       status: po.status,
       items: po.items.map((it) => ({
         id: it.id,
@@ -2336,7 +2341,14 @@ export function doScanTransfer(body: {
   scanType: 'trackingNo' | 'barcode' | 'purchaseNo'
 }): {
   asn: { id: string; warehouseId: string; purchaseOrderId: string | null; scanSource: string; status: string; receivedItemCount: number; createdAt: string }
-  purchaseOrder: { id: string; trackingNo: string; carrier: string; status: string; orderId: string | null }
+  purchaseOrder: {
+    id: string
+    trackingNo: string
+    carrier: string
+    status: string
+    orderId: string | null
+    remark: string | null
+  }
   matched: boolean
   advanced: boolean
   message: string
@@ -2413,6 +2425,7 @@ export function doScanTransfer(body: {
       carrier: po.carrier,
       status: po.status,
       orderId: po.orderId,
+      remark: po.remark ?? null,
     },
     matched,
     advanced,
@@ -2563,6 +2576,7 @@ export function doGetPackQueue(): PackQueue {
         trackingNo: p.trackingNo,
         carrier: p.carrier,
         status: p.status,
+        remark: p.remark ?? null,
       })),
       purchaseOrderIds: groupPos.map((p) => p.id),
       task: t ? { id: t.id, status: t.status } : null,
@@ -2648,7 +2662,7 @@ export function doListPackTasks(): PackTaskDto[] {
       purchaseOrders: t.purchaseOrderIds
         .map((id) => poMap.get(id))
         .filter(Boolean)
-        .map((p) => ({ id: p!.id, trackingNo: p!.trackingNo, carrier: p!.carrier, status: p!.status })),
+        .map((p) => ({ id: p!.id, trackingNo: p!.trackingNo, carrier: p!.carrier, status: p!.status, remark: p!.remark ?? null })),
     }
   })
 }
@@ -2682,7 +2696,7 @@ export function doGetPackCheck(packTaskId: string): PackTaskCheck {
     purchaseOrders: task.purchaseOrderIds
       .map((id) => purchaseOrders.find((p) => p.id === id))
       .filter(Boolean)
-      .map((p) => ({ id: p!.id, trackingNo: p!.trackingNo, carrier: p!.carrier, status: p!.status })),
+      .map((p) => ({ id: p!.id, trackingNo: p!.trackingNo, carrier: p!.carrier, status: p!.status, remark: p!.remark ?? null })),
     diffs,
     summary,
   }
@@ -3650,7 +3664,20 @@ function filterSkus(url: string): MockSku[] {
 function filterOrders(url: string): MockOrder[] {
   const u = new URL(url, 'http://mock')
   const status = u.searchParams.get('status')
-  return status ? orders.filter((o) => o.status === status) : orders
+  // 选单关联用模糊搜索（任务 6.10）：平台订单号 / 收件人姓名
+  const keyword = u.searchParams.get('keyword')?.trim().toLowerCase()
+  const takeRaw = u.searchParams.get('take')
+  const take = takeRaw ? Number.parseInt(takeRaw, 10) : 0
+  let out = orders
+  if (status) out = out.filter((o) => o.status === status)
+  if (keyword) {
+    out = out.filter(
+      (o) =>
+        o.platformOrderNo.toLowerCase().includes(keyword) ||
+        (o.recipient?.name ?? '').toLowerCase().includes(keyword),
+    )
+  }
+  return take > 0 ? out.slice(0, Math.min(take, 200)) : out
 }
 
 // ===== 状态变更操作 =====

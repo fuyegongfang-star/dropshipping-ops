@@ -28,6 +28,8 @@ export interface TransferBoardPo {
   carrier: string
   platformOrderNo: string | null
   recipientName: string | null
+  /** 采购备注（货代分拣/打包/贴单注意事项） */
+  remark: string | null
   status: string
   items: { id: string; productName: string; quantity: number; skuId: string | null }[]
   order: LinkedOrderSummary | null
@@ -65,7 +67,14 @@ export interface ScanTransferResult {
     receivedItemCount: number
     createdAt: string
   }
-  purchaseOrder: { id: string; trackingNo: string; carrier: string; status: string; orderId: string | null }
+  purchaseOrder: {
+    id: string
+    trackingNo: string
+    carrier: string
+    status: string
+    orderId: string | null
+    remark: string | null
+  }
   matched: boolean
   advanced: boolean
   message: string
@@ -109,14 +118,23 @@ export interface PackTaskDto {
   packedAt: string | null
   createdAt: string
   order: { id: string; platformOrderNo: string | null; status: string; recipientName: string | null } | null
-  purchaseOrders: { id: string; trackingNo: string; carrier: string; status: string }[]
+  purchaseOrders: PackPoSummary[]
+}
+
+/** 打包任务里的采购单摘要（含备注：分拣/打包/贴单注意事项，任务 6.10） */
+export interface PackPoSummary {
+  id: string
+  trackingNo: string
+  carrier: string
+  status: string
+  remark: string | null
 }
 
 /** 待打包队列条目（按关联订单聚合的已匹配采购单 + 核对预览） */
 export interface PackQueueItem {
   orderId: string
   order: { id: string; platformOrderNo: string | null; status: string; recipientName: string | null } | null
-  purchaseOrders: { id: string; trackingNo: string; carrier: string; status: string }[]
+  purchaseOrders: PackPoSummary[]
   purchaseOrderIds: string[]
   task: { id: string; status: string } | null
   diffs: PackCheckRow[]
@@ -133,7 +151,7 @@ export interface PackQueue {
 export interface PackTaskCheck {
   packTaskId: string
   order: { id: string; platformOrderNo: string | null; status: string; recipientName: string | null } | null
-  purchaseOrders: { id: string; trackingNo: string; carrier: string; status: string }[]
+  purchaseOrders: PackPoSummary[]
   diffs: PackCheckRow[]
   summary: PackCheckSummary
 }

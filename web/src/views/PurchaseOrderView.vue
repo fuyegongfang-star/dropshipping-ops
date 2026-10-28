@@ -55,6 +55,13 @@
                 <span class="item-meta">数量：{{ it.quantity }}</span>
                 <span v-if="it.unitPrice != null" class="item-meta">单价：{{ money(it.unitPrice) }}</span>
               </div>
+              <div v-if="row.remark" class="remark-block">
+                <AppIcon name="info" :size="14" class="remark-ico" />
+                <div>
+                  <span class="remark-k">作业备注（货代分拣/打包/贴单）</span>
+                  <p class="remark-v">{{ row.remark }}</p>
+                </div>
+              </div>
             </div>
           </template>
         </el-table-column>
@@ -88,6 +95,14 @@
             <el-button size="small" text type="primary" @click="openMatch(row)">匹配/关联</el-button>
           </template>
         </el-table-column>
+        <el-table-column label="备注" min-width="170">
+          <template #default="{ row }">
+            <el-tooltip v-if="row.remark" :content="row.remark" placement="top" :show-after="250">
+              <span class="remark-chip"><AppIcon name="info" :size="12" />{{ row.remark }}</span>
+            </el-tooltip>
+            <span v-else class="muted">—</span>
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="120">
           <template #default="{ row }">
             <el-button size="small" type="primary" plain :disabled="!nextStatus(row.status)" @click="advance(row)">
@@ -106,8 +121,43 @@
     </el-card>
 
     <!-- 录入采购单对话框 -->
-    <el-dialog v-model="createVisible" title="录入采购单" width="640px" @closed="resetCreate">
-      <el-form :model="form" label-width="92px">
+    <el-dialog v-model="createVisible" title="录入采购单" width="680px" @closed="resetCreate">
+      <el-form :model="form" label-width="100px">
+        <!-- 任务 6.10：录入即关联店铺订单（一步到位，免二次手动匹配） -->
+        <el-form-item label="关联店铺订单">
+          <el-select
+            v-model="form.orderId"
+            filterable
+            remote
+            reserve-keyword
+            clearable
+            :remote-method="searchOrders"
+            :loading="orderLoading"
+            placeholder="输入平台订单号 / 收件人搜索，选中即建立关联"
+            style="width: 100%"
+            @change="onPickOrder"
+          >
+            <el-option v-for="o in orderOptions" :key="o.id" :label="`${o.platformOrderNo} · ${o.recipientName || '无收件人'}`" :value="o.id">
+              <div class="opt">
+                <span class="mono">{{ o.platformOrderNo }}</span>
+                <span class="opt-recipient">{{ o.recipientName || '无收件人' }}</span>
+                <span class="opt-shop">{{ o.shopName || '—' }}</span>
+                <span class="tag-soft" :class="orderTagClass(o.status)">{{ orderStatusLabel(o.status) }}</span>
+                <span v-if="poCountOf(o.id)" class="opt-warn">已有 {{ poCountOf(o.id) }} 张采购单</span>
+              </div>
+            </el-option>
+          </el-select>
+          <div class="pick-hint">
+            <template v-if="pickedOrder">
+              <AppIcon name="link" :size="13" class="hint-ico" />
+              已选 <b class="mono">{{ pickedOrder.platformOrderNo }}</b> · {{ pickedOrder.recipientName || '无收件人' }}，提交后自动建立「采购单 ↔ 店铺订单」关联并带出行项
+            </template>
+            <template v-else>
+              可留空（后续在列表里手动匹配）。选单后自动带出平台订单号 / 收件人，避免单子多了手动关联对错单
+            </template>
+          </div>
+        </el-form-item>
+
         <el-row :gutter="12">
           <el-col :span="12">
             <el-form-item label="快递单号" required>
@@ -121,12 +171,12 @@
           </el-col>
           <el-col :span="12">
             <el-form-item label="平台订单号">
-              <el-input v-model="form.platformOrderNo" placeholder="用于 6.4 匹配店铺订单" />
+              <el-input v-model="form.platformOrderNo" :disabled="!!pickedOrder" :placeholder="pickedOrder ? '已由所选订单带出' : '留空则后续手动匹配'" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
             <el-form-item label="收件人姓名">
-              <el-input v-model="form.recipientName" placeholder="用于 6.4 按收件人匹配" />
+              <el-input v-model="form.recipientName" :disabled="!!pickedOrder" :placeholder="pickedOrder ? '已由所选订单带出' : '用于按收件人匹配'" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -150,8 +200,19 @@
           </div>
         </el-form-item>
 
-        <el-form-item label="备注">
-          <el-input v-model="form.remark" type="textarea" :rows="2" maxlength="300" show-word-limit />
+        <el-form-item label="作业备注">
+          <el-input
+            v-model="form.remark"
+            type="textarea"
+            :rows="3"
+            maxlength="300"
+            show-word-limit
+            placeholder="给货代仓库的分拣 / 打包 / 贴单注意事项：如易碎品加气泡膜、两件分两箱发、需贴电池标、赠品不放箱内……"
+          />
+          <div class="pick-hint">
+            <AppIcon name="info" :size="13" class="hint-ico" />
+            该备注会同步到中转仓看板、打包队列、核对弹窗与扫码结果，供仓库人员分拣装货时查看
+          </div>
         </el-form-item>
 
         <el-divider content-position="left">采购行项</el-divider>
@@ -226,6 +287,7 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { purchaseOrderApi, type PurchaseOrder, type PurchaseOrderStatus, type PurchaseOrderCandidate } from '@/api/purchase-order'
 import { catalogApi, type Sku } from '@/api/catalog'
+import { ordersApi, ORDER_STATUS_LABELS, type Order } from '@/api/orders'
 import { money } from '@/locales'
 import PageHeader from '@/components/PageHeader.vue'
 import AppIcon from '@/components/AppIcon.vue'
@@ -267,7 +329,24 @@ const matchTarget = ref<PurchaseOrder | null>(null)
 const candidates = ref<PurchaseOrderCandidate[]>([])
 const linkOrderId = ref<string>('')
 
+// 6.10 录入即关联店铺订单（选单器）
+interface OrderOption {
+  id: string
+  platformOrderNo: string
+  recipientName: string | null
+  status: string
+  shopId: string
+  shopName: string | null
+}
+const orderOptions = ref<OrderOption[]>([])
+const orderLoading = ref(false)
+const pickedOrder = ref<OrderOption | null>(null)
+/** 每个店铺订单已挂了几张采购单（提示「已有 N 张」，防重复录单时无感知） */
+const poCountByOrder = ref<Record<string, number>>({})
+
 const form = reactive<{
+  orderId: string
+  shopId: string
   trackingNo: string
   carrier: string
   platformOrderNo: string
@@ -277,7 +356,8 @@ const form = reactive<{
   remark: string
   items: { skuId: string; productName: string; quantity: number; unitPrice?: number }[]
 }>({
-  trackingNo: '', carrier: '', platformOrderNo: '', recipientName: '', purchaseUrl: '', productImages: [], remark: '',
+  orderId: '', shopId: '', trackingNo: '', carrier: '', platformOrderNo: '', recipientName: '',
+  purchaseUrl: '', productImages: [], remark: '',
   items: [{ skuId: '', productName: '', quantity: 1, unitPrice: undefined }],
 })
 
@@ -306,25 +386,129 @@ async function load(): Promise<void> {
 }
 
 async function openCreate(): Promise<void> {
-  try {
-    skuOptions.value = await catalogApi.skus()
-  } catch {
-    skuOptions.value = []
-  }
   createVisible.value = true
+  orderLoading.value = true
+  try {
+    try {
+      skuOptions.value = await catalogApi.skus()
+    } catch {
+      skuOptions.value = []
+    }
+    // 选单器：预载最近 50 单 + 统计每单已挂采购单数（提示重复关联）
+    const [os, pos] = await Promise.all([
+      ordersApi.search({ take: 50 }).catch(() => [] as Order[]),
+      purchaseOrderApi.list().catch(() => [] as PurchaseOrder[]),
+    ])
+    orderOptions.value = os.map(toOrderOption)
+    const counts: Record<string, number> = {}
+    for (const po of pos) {
+      if (po.orderId) counts[po.orderId] = (counts[po.orderId] ?? 0) + 1
+    }
+    poCountByOrder.value = counts
+  } finally {
+    orderLoading.value = false
+  }
+}
+
+function toOrderOption(o: Order): OrderOption {
+  return {
+    id: o.id,
+    platformOrderNo: o.platformOrderNo,
+    recipientName: (o.recipient as { name?: string } | null)?.name ?? null,
+    status: o.status,
+    shopId: o.shopId,
+    shopName: o.shop?.name ?? null,
+  }
+}
+
+function orderStatusLabel(s: string): string {
+  return ORDER_STATUS_LABELS[s] ?? s
+}
+function orderTagClass(s: string): string {
+  if (['delivered', 'completed'].includes(s)) return 'tag-green'
+  if (['approved', 'pushed', 'picked_up', 'in_transit', 'customs_clearing', 'out_for_delivery'].includes(s)) return 'tag-blue'
+  if (['exception', 'rejected', 'pending_review'].includes(s)) return 'tag-orange'
+  return 'tag-gray'
+}
+function poCountOf(orderId: string): number {
+  return poCountByOrder.value[orderId] ?? 0
+}
+
+/** 远程搜索店铺订单（平台订单号 / 收件人），用于录入时选单关联。 */
+async function searchOrders(keyword: string): Promise<void> {
+  orderLoading.value = true
+  try {
+    const os = await ordersApi.search({ keyword: keyword?.trim() || undefined, take: 50 })
+    const list = os.map(toOrderOption)
+    // 保留当前已选中的那一项，避免搜索后下拉 label 变空
+    if (pickedOrder.value && !list.some((x) => x.id === pickedOrder.value!.id)) {
+      list.unshift(pickedOrder.value)
+    }
+    orderOptions.value = list
+  } catch (e) {
+    ElMessage.error('搜索订单失败：' + (e as Error).message)
+  } finally {
+    orderLoading.value = false
+  }
+}
+
+/** 选中订单：带出平台单号 / 收件人，并按订单行项预填采购行（仅当行项全空时）。 */
+async function onPickOrder(orderId: string): Promise<void> {
+  if (!orderId) {
+    pickedOrder.value = null
+    return
+  }
+  const o = orderOptions.value.find((x) => x.id === orderId) ?? null
+  pickedOrder.value = o
+  if (!o) return
+  form.shopId = o.shopId
+  form.platformOrderNo = o.platformOrderNo
+  form.recipientName = o.recipientName ?? ''
+  if (poCountOf(o.id) > 0) {
+    ElMessage.warning(`该订单已有 ${poCountOf(o.id)} 张采购单，请确认是补采或多供应商分单`)
+  }
+  if (!orderItemsBlank()) return
+  try {
+    const detail = await ordersApi.detail(o.id)
+    // 订单行项有 skuId 直接用；演示态订单只带 sku.code，则按 code 反查内部 SKU
+    const byCode = new Map(skuOptions.value.map((s) => [s.code, s.id]))
+    const prefilled = (detail.items ?? []).map((it) => {
+      const code = it.sku?.code ?? ''
+      return {
+        skuId: (it.skuId as string | null) ?? byCode.get(code) ?? '',
+        productName: code,
+        quantity: it.quantity,
+        unitPrice: undefined as number | undefined,
+      }
+    })
+    if (prefilled.length) {
+      form.items = prefilled
+      ElMessage.info(`已按订单行项预填 ${prefilled.length} 行，可按实际采购修改`)
+    }
+  } catch {
+    // 预填失败不阻断录入
+  }
+}
+
+function orderItemsBlank(): boolean {
+  return form.items.every((it) => !it.productName.trim() && !it.skuId)
 }
 
 function addItem(): void {
   form.items.push({ skuId: '', productName: '', quantity: 1, unitPrice: undefined })
 }
 function resetCreate(): void {
+  form.orderId = ''
+  form.shopId = ''
   form.trackingNo = ''
   form.carrier = ''
   form.platformOrderNo = ''
+  form.recipientName = ''
   form.purchaseUrl = ''
   form.productImages = []
   form.remark = ''
   form.items = [{ skuId: '', productName: '', quantity: 1, unitPrice: undefined }]
+  pickedOrder.value = null
 }
 
 async function submitCreate(): Promise<void> {
@@ -342,7 +526,11 @@ async function submitCreate(): Promise<void> {
     const po = await purchaseOrderApi.create({
       trackingNo: form.trackingNo.trim(),
       carrier: form.carrier.trim(),
+      // 选了店铺订单则一并提交 orderId/shopId，后端（或演示态）自动建立关联并回填单号/收件人
+      orderId: form.orderId || undefined,
+      shopId: form.orderId ? form.shopId || undefined : undefined,
       platformOrderNo: form.platformOrderNo.trim() || undefined,
+      recipientName: form.recipientName.trim() || undefined,
       purchaseUrl: form.purchaseUrl.trim() || undefined,
       productImages: form.productImages.map((x) => x.trim()).filter(Boolean) as string[],
       remark: form.remark.trim() || undefined,
@@ -353,9 +541,13 @@ async function submitCreate(): Promise<void> {
         unitPrice: it.unitPrice,
       })),
     })
+    const linkedNo = pickedOrder.value?.platformOrderNo
     orders.value = [po, ...orders.value]
     createVisible.value = false
-    ElMessage.success('采购单已创建')
+    ElMessage.success(linkedNo ? `采购单已创建并关联订单 ${linkedNo}` : '采购单已创建')
+    if (form.orderId) {
+      poCountByOrder.value[form.orderId] = poCountOf(form.orderId) + 1
+    }
   } catch (e) {
     ElMessage.error('创建失败：' + (e as Error).message)
   } finally {
@@ -463,4 +655,20 @@ onMounted(load)
 .imgs { display: flex; flex-direction: column; gap: 8px; }
 .img-row { display: flex; align-items: center; gap: 8px; }
 .line-item { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+
+/* 6.10 录入即关联（选单器） */
+.opt { display: flex; align-items: center; gap: 10px; }
+.opt-recipient { color: var(--ink-700); }
+.opt-shop { color: var(--ink-500); font-size: 12px; }
+.opt-warn { margin-left: auto; font-size: 12px; font-weight: 600; color: #b45309; background: rgba(245, 158, 11, 0.16); padding: 1px 8px; border-radius: 999px; }
+.pick-hint { display: flex; align-items: flex-start; gap: 5px; margin-top: 5px; font-size: 12px; line-height: 1.6; color: var(--ink-500); }
+.pick-hint b { color: var(--ink-800); }
+.hint-ico { margin-top: 2px; flex: none; color: #4f46e5; }
+
+/* 备注（货代作业提示） */
+.remark-chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 2px 8px; border-radius: 6px; font-size: 12px; color: #b45309; background: rgba(245, 158, 11, 0.14); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.remark-block { display: flex; align-items: flex-start; gap: 8px; margin-top: 8px; padding: 10px 12px; border-radius: var(--r-sm); background: rgba(245, 158, 11, 0.08); border: 1px dashed rgba(245, 158, 11, 0.45); }
+.remark-ico { margin-top: 2px; color: #b45309; flex: none; }
+.remark-k { font-size: 12px; font-weight: 600; color: #b45309; }
+.remark-v { margin: 3px 0 0; font-size: 13px; line-height: 1.6; color: var(--ink-800); white-space: pre-wrap; }
 </style>

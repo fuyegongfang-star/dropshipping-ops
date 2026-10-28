@@ -26,14 +26,28 @@ export class OrderController {
     private readonly query: OrdersQueryService,
   ) {}
 
-  /** 订单列表（可按状态过滤，配套前端订单中心） */
+  /**
+   * 订单列表（可按状态过滤，配套前端订单中心）
+   * keyword：平台订单号 / 收件人模糊搜索（采购单录入选单用，任务 6.10）
+   * take：返回条数上限（≤200）
+   */
   @Get()
   async list(
     @TenantId() tenantId: string,
     @Query('status') status?: string,
+    @Query('keyword') keyword?: string,
+    @Query('take') take?: string,
   ): Promise<ApiResponse<unknown>> {
     this.requireTenant(tenantId)
-    return ok(await this.query.list(tenantId, status))
+    const takeNum = take ? Number.parseInt(take, 10) : undefined
+    return ok(
+      await this.query.list(
+        tenantId,
+        status,
+        keyword,
+        Number.isFinite(takeNum) ? (takeNum as number) : undefined,
+      ),
+    )
   }
 
   /** 订单详情：明细 + 事件审计 + 逆向单 */

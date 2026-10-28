@@ -92,6 +92,7 @@ export class TransferService {
         carrier: po.carrier,
         platformOrderNo: po.platformOrderNo,
         recipientName: po.recipientName,
+        remark: po.remark ?? null,
         status: po.status,
         items: po.items.map((it) => ({
           id: it.id,
@@ -158,7 +159,14 @@ export class TransferService {
       receivedItemCount: number
       createdAt: string
     }
-    purchaseOrder: { id: string; trackingNo: string; carrier: string; status: string; orderId: string | null }
+    purchaseOrder: {
+      id: string
+      trackingNo: string
+      carrier: string
+      status: string
+      orderId: string | null
+      remark: string | null
+    }
     matched: boolean
     advanced: boolean
     message: string
@@ -213,7 +221,8 @@ export class TransferService {
     }
 
     // 5) 匹配订单（复用 6.4 自动匹配，关联店铺订单便于后续出单）
-    let matched = false
+    // 任务 6.10：录入时已选单关联（orderId 非空）的采购单直接视为已匹配，不再重复自动匹配。
+    let matched = !!latestPo.orderId
     if (!latestPo.orderId) {
       const m = await this.poService.autoMatch(tenantId, po.id)
       matched = m.linked
@@ -249,6 +258,7 @@ export class TransferService {
         carrier: latestPo.carrier,
         status: latestPo.status,
         orderId: latestPo.orderId,
+        remark: latestPo.remark ?? null, // 扫码即见分拣/打包注意事项（任务 6.10）
       },
       matched,
       advanced,
@@ -366,6 +376,7 @@ export class TransferService {
           trackingNo: p.trackingNo,
           carrier: p.carrier,
           status: p.status,
+          remark: p.remark ?? null,
         })),
         purchaseOrderIds: groupPos.map((p) => p.id),
         task: t ? { id: t.id, status: t.status } : null,
@@ -512,6 +523,7 @@ export class TransferService {
         trackingNo: p.trackingNo,
         carrier: p.carrier,
         status: p.status,
+        remark: p.remark ?? null,
       })),
       diffs,
       summary,
@@ -562,7 +574,7 @@ export class TransferService {
   private toPackTaskDto(
     task: { id: string; tenantId: string; warehouseId: string | null; orderId: string | null; purchaseOrderIds: unknown; status: string; channelCode: string | null; labelId: string | null; shipmentId: string | null; packedAt: Date | null; createdAt: Date },
     order: { id: string; platformOrderNo: string | null; status: string; recipient: unknown } | null | undefined,
-    poMap: Map<string, { id: string; trackingNo: string; carrier: string; status: string }>,
+    poMap: Map<string, { id: string; trackingNo: string; carrier: string; status: string; remark: string | null }>,
   ): PackTaskDto {
     const poIds = (task.purchaseOrderIds as unknown as string[]) ?? []
     return {
@@ -588,8 +600,14 @@ export class TransferService {
       purchaseOrders: poIds.map((id) => {
         const p = poMap.get(id)
         return p
-          ? { id: p.id, trackingNo: p.trackingNo, carrier: p.carrier, status: p.status }
-          : { id, trackingNo: '-', carrier: '-', status: '-' }
+          ? {
+              id: p.id,
+              trackingNo: p.trackingNo,
+              carrier: p.carrier,
+              status: p.status,
+              remark: p.remark ?? null,
+            }
+          : { id, trackingNo: '-', carrier: '-', status: '-', remark: null }
       }),
     }
   }
@@ -766,7 +784,7 @@ export class TransferService {
     task: { id: string; tenantId: string; orderId: string | null; purchaseOrderIds: unknown },
   ): Promise<{
     order: { id: string; platformOrderNo: string | null; status: string; recipient: unknown } | null
-    poMap: Map<string, { id: string; trackingNo: string; carrier: string; status: string }>
+    poMap: Map<string, { id: string; trackingNo: string; carrier: string; status: string; remark: string | null }>
   }> {
     const order = task.orderId
       ? await this.prisma.order.findFirst({
@@ -965,7 +983,18 @@ export class TransferService {
     const pos = poIds.length
       ? await this.prisma.purchaseOrder.findMany({ where: { id: { in: poIds }, tenantId } })
       : []
-    const poMap = new Map(pos.map((p) => [p.id, { id: p.id, trackingNo: p.trackingNo, carrier: p.carrier, status: p.status }]))
+    const poMap = new Map(
+      pos.map((p) => [
+        p.id,
+        {
+          id: p.id,
+          trackingNo: p.trackingNo,
+          carrier: p.carrier,
+          status: p.status,
+          remark: p.remark ?? null,
+        },
+      ]),
+    )
     const refreshedTask = task
       ? await this.prisma.packTask.findFirst({ where: { id: task.id, tenantId } })
       : null

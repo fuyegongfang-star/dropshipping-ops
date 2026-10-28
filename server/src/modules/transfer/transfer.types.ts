@@ -31,6 +31,7 @@ export interface TransferBoardPo {
   carrier: string
   platformOrderNo: string | null
   recipientName: string | null
+  remark: string | null // 采购备注（录入侧填写，货代分拣/打包/贴单注意事项）
   status: string
   items: { id: string; productName: string; quantity: number; skuId: string | null }[]
   order: LinkedOrderSummary | null
@@ -63,6 +64,7 @@ export interface PackTaskPoSummary {
   trackingNo: string
   carrier: string
   status: string
+  remark: string | null // 采购备注（分拣装货注意事项，透传给打包作业人员）
 }
 
 /** 打包任务核对差异行（采购行项 vs 店铺订单行项，差异高亮，§1/§21） */

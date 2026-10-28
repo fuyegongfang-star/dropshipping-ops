@@ -6,6 +6,7 @@
  */
 
 import { Injectable } from '@nestjs/common'
+import { Prisma } from '@prisma/client'
 import { PrismaService } from '../../database/prisma.service'
 
 /** 列表项（附带店铺简况，避免前端再查一次） */
@@ -48,11 +49,29 @@ export interface OrderDetail extends OrderListItem {
 export class OrdersQueryService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** 订单列表（可按状态过滤），附带店铺简况 */
-  async list(tenantId: string, status?: string): Promise<OrderListItem[]> {
+  /**
+   * 订单列表（可按状态过滤），附带店铺简况。
+   * keyword（任务 6.10）：按平台订单号 / 收件人姓名模糊搜索，供采购单录入时选单关联；
+   * take 限制返回条数（默认全量，最大 200），避免订单量增长后一次拉全表。
+   */
+  async list(
+    tenantId: string,
+    status?: string,
+    keyword?: string,
+    take?: number,
+  ): Promise<OrderListItem[]> {
+    const where: Prisma.OrderWhereInput = { tenantId, ...(status ? { status } : {}) }
+    const kw = keyword?.trim()
+    if (kw) {
+      where.OR = [
+        { platformOrderNo: { contains: kw, mode: 'insensitive' } },
+        { recipient: { path: ['name'], string_contains: kw } },
+      ]
+    }
     const orders = await this.prisma.order.findMany({
-      where: { tenantId, ...(status ? { status } : {}) },
+      where,
       orderBy: { createdAt: 'desc' },
+      ...(take && take > 0 ? { take: Math.min(take, 200) } : {}),
     })
     const shopIds = Array.from(
       new Set(orders.map((o) => o.shopId).filter(Boolean)),

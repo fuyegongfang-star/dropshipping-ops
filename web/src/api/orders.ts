@@ -82,6 +82,18 @@ export interface ReviewSummary {
 export const ordersApi = {
   list: (status?: string) =>
     http.get<Order[]>('/orders' + (status ? `?status=${encodeURIComponent(status)}` : '')),
+  /**
+   * 选单关联用（任务 6.10）：按平台订单号 / 收件人姓名模糊搜索，
+   * 供采购单录入弹窗「一步到位」关联店铺订单，避免订单量增长后手动匹配出错。
+   */
+  search: (params?: { keyword?: string; status?: string; take?: number }) => {
+    const q = new URLSearchParams()
+    if (params?.keyword?.trim()) q.set('keyword', params.keyword.trim())
+    if (params?.status) q.set('status', params.status)
+    if (params?.take) q.set('take', String(params.take))
+    const qs = q.toString()
+    return http.get<Order[]>(`/orders${qs ? '?' + qs : ''}`)
+  },
   detail: (id: string) => http.get<Order>(`/orders/${id}`),
   review: (id: string) =>
     http.post<ReviewSummary>(`/orders/${id}/review`, {}),

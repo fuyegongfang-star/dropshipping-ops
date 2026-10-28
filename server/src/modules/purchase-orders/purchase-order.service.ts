@@ -55,20 +55,40 @@ export class PurchaseOrderService {
     return po
   }
 
-  /** 新增采购单（含行项），tenantId 来自租户上下文（§0/§17）。 */
+  /**
+   * 新增采购单（含行项），tenantId 来自租户上下文（§0/§17）。
+   * 任务 6.10：支持录入时直接带 orderId 建立关联——校验订单归属本租户（防 IDOR），
+   * 并自动回填 shopId / platformOrderNo / recipientName，避免二次手动匹配出错。
+   */
   async create(tenantId: string, dto: CreatePurchaseOrderDto) {
     if (!dto.items || dto.items.length === 0) {
       throw new BusinessException('PO_ITEM_REQUIRED', '采购单至少需要 1 个行项', HttpStatus.BAD_REQUEST)
     }
+    let shopId = dto.shopId ?? null
+    let platformOrderNo = dto.platformOrderNo ?? null
+    let recipientName = dto.recipientName ?? null
+    if (dto.orderId) {
+      const order = await this.prisma.order.findFirst({
+        where: { id: dto.orderId, tenantId },
+        select: { id: true, shopId: true, platformOrderNo: true, recipient: true },
+      })
+      if (!order) {
+        throw new BusinessException('ORDER_NOT_FOUND', '关联的店铺订单不存在或无权限', HttpStatus.NOT_FOUND)
+      }
+      shopId = shopId ?? order.shopId ?? null
+      platformOrderNo = platformOrderNo ?? order.platformOrderNo ?? null
+      recipientName =
+        recipientName ?? ((order.recipient as { name?: string } | null)?.name ?? null)
+    }
     return this.prisma.purchaseOrder.create({
       data: {
         tenantId,
-        shopId: dto.shopId ?? null,
+        shopId,
         orderId: dto.orderId ?? null,
         trackingNo: dto.trackingNo,
         carrier: dto.carrier,
-        platformOrderNo: dto.platformOrderNo ?? null,
-        recipientName: dto.recipientName ?? null,
+        platformOrderNo,
+        recipientName,
         purchaseUrl: dto.purchaseUrl ?? null,
         productImages: (dto.productImages ?? []) as unknown as Prisma.InputJsonValue,
         remark: dto.remark ?? null,

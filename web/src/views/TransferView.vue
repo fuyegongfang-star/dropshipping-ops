@@ -94,9 +94,13 @@
                   <span v-if="row.order.recipientName" class="muted">· {{ row.order.recipientName }}</span>
                 </div>
                 <span v-else class="muted">未关联</span>
+                <div v-if="row.remark" class="po-remark-line" :title="row.remark">
+                  <AppIcon name="info" :size="12" />
+                  <span class="po-remark-txt">{{ row.remark }}</span>
+                </div>
               </template>
             </el-table-column>
-            <el-table-column label="产品" min-width="160">
+            <el-table-column label="产品" min-width="140">
               <template #default="{ row }">
                 <span class="muted">{{ itemSummary(row) }}</span>
               </template>
@@ -128,10 +132,14 @@
             <div class="muted sm">{{ orderStatusLabel(row.order?.status ?? '') }}</div>
           </template>
         </el-table-column>
-        <el-table-column label="聚合采购单" min-width="230">
+        <el-table-column label="聚合采购单 / 作业备注" min-width="250">
           <template #default="{ row }">
             <div class="po-chips">
               <span v-for="p in row.purchaseOrders" :key="p.id" class="po-chip mono">{{ p.trackingNo }}</span>
+            </div>
+            <div v-for="r in poRemarks(row)" :key="'r' + r.id" class="po-remark-line">
+              <AppIcon name="info" :size="12" />
+              <span class="po-remark-txt">{{ r.remark }}</span>
             </div>
           </template>
         </el-table-column>
@@ -175,7 +183,11 @@
           </el-table-column>
           <el-table-column label="聚合采购单" min-width="220">
             <template #default="{ row }">
-              <span v-for="p in row.purchaseOrders" :key="p.id" class="po-chip mono">{{ p.trackingNo }}</span>
+              <span v-for="p in row.purchaseOrders" :key="p.id" class="po-chip mono" :title="p.remark || ''">{{ p.trackingNo }}</span>
+              <div v-for="r in poRemarks(row)" :key="'r' + r.id" class="po-remark-line">
+                <AppIcon name="info" :size="12" />
+                <span class="po-remark-txt">{{ r.remark }}</span>
+              </div>
             </template>
           </el-table-column>
             <el-table-column label="渠道" width="120">
@@ -266,6 +278,14 @@
           </span>
           <span v-if="scanResult.purchaseOrder.orderId" class="mono muted">关联订单 {{ scanResult.purchaseOrder.orderId }}</span>
         </div>
+        <!-- 扫码即见采购备注：货代分拣 / 打包 / 贴单注意事项 -->
+        <div v-if="scanResult.purchaseOrder.remark" class="scan-remark">
+          <AppIcon name="info" :size="14" class="sr-ico" />
+          <div>
+            <span class="scan-remark-k">分拣 / 打包注意事项</span>
+            <p class="scan-remark-v">{{ scanResult.purchaseOrder.remark }}</p>
+          </div>
+        </div>
       </div>
 
       <template #footer>
@@ -293,6 +313,15 @@
 
         <el-alert v-if="checkItem.summary.hasDifference" type="warning" :closable="false" show-icon title="存在差异，请人工复核后再打包" />
         <el-alert v-else type="success" :closable="false" show-icon title="核对一致，可直接打包" />
+
+        <!-- 作业备注（采购录入时填写）：分拣 / 打包 / 贴单注意事项 -->
+        <div v-if="checkRemarks.length" class="check-remarks">
+          <div class="cr-head"><AppIcon name="info" :size="14" class="cr-ico" />分拣装货注意事项</div>
+          <div v-for="r in checkRemarks" :key="r.id" class="cr-item">
+            <span class="mono cr-no">{{ r.trackingNo }}</span>
+            <span class="cr-txt">{{ r.remark }}</span>
+          </div>
+        </div>
 
         <el-table :data="checkItem.diffs" row-key="skuId" class="check-table">
           <el-table-column label="商品 / SKU" min-width="200">
@@ -592,6 +621,22 @@ const queueItems = computed<PackQueueItem[]>(() => queue.value?.items ?? [])
 const diffCount = computed(
   () => queueItems.value.filter((it) => it.summary.hasDifference).length,
 )
+/** 核对弹窗里的「分拣装货注意事项」（来自采购单录入备注，任务 6.10） */
+const checkRemarks = computed<{ id: string; trackingNo: string; remark: string }[]>(() =>
+  (checkItem.value?.purchaseOrders ?? [])
+    .filter((p) => !!p.remark)
+    .map((p) => ({ id: p.id, trackingNo: p.trackingNo, remark: p.remark as string })),
+)
+
+/** 取一条记录里所有采购单备注（分拣/打包/贴单注意事项，任务 6.10） */
+function poRemarks(row: { purchaseOrders?: { id: string; remark: string | null }[] } | null): {
+  id: string
+  remark: string
+}[] {
+  return (row?.purchaseOrders ?? [])
+    .filter((p) => !!p.remark)
+    .map((p) => ({ id: p.id, remark: p.remark as string }))
+}
 
 function taskStatusLabel(s: string): string {
   return s === 'packed' ? '已打包' : s === 'pending' ? '待打包' : s
@@ -1137,4 +1182,75 @@ onMounted(() => {
   align-items: center;
   gap: 6px;
 }
+
+/* ===== 采购备注（分拣/打包/贴单注意事项，任务 6.10）===== */
+.po-remark {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #b45309;
+  background: rgba(245, 158, 11, 0.14);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.po-remark-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #b45309;
+}
+.po-remark-txt {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+.check-remarks {
+  margin: 10px 0 2px;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px dashed rgba(245, 158, 11, 0.45);
+}
+.cr-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #b45309;
+  margin-bottom: 6px;
+}
+.cr-ico { color: #b45309; }
+.cr-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 3px 0;
+  border-top: 1px dashed rgba(245, 158, 11, 0.28);
+}
+.cr-item:first-of-type { border-top: none; }
+.cr-no { font-size: 12px; color: var(--ink-600); flex: none; }
+.cr-txt { font-size: 13px; line-height: 1.6; color: var(--ink-800); white-space: pre-wrap; word-break: break-word; }
+.scan-remark {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px dashed rgba(245, 158, 11, 0.5);
+}
+.scan-remark-k { font-size: 12px; font-weight: 700; color: #b45309; }
+.scan-remark-v { margin: 3px 0 0; font-size: 13px; line-height: 1.6; color: var(--ink-800); white-space: pre-wrap; word-break: break-word; }
 </style>
