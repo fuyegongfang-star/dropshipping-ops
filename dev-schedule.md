@@ -86,7 +86,7 @@
 | 6.10 | 阶段6 | 采购单录入即关联 + 作业备注贯通 | 录入弹窗内直接选店铺订单（平台单号/收件人远程搜索、自动带出单号与收件人、按订单行项预填、提示「已有 N 张采购单」防重复）；备注透传到中转仓看板/打包队列/打包任务/核对弹窗/扫码结果，供货代分拣装货 | 6.3/6.4/6.5/6.7 | 0.5d | ✅ |
 | 6.11 | 阶段6 | 仓库/货架补齐 + 采购产品图 | ①新建仓库加「中转仓（货代）」类型，创建后自动进中转仓看板；②新增「货架/库位」页签：库位编码（区-架-层）+库区+占用(SKU/数量)+建/删(空库位) ；库存/占用一律显示人类可读编码而非内部 ID；③OrderItem 增 imageUrl，采购单关联订单即自动拉取商品主图；④产品图支持本地上传（多图、等比压缩、可填地址） | 6.5/6.10 | 0.5d | ✅ |
 | 6.12 | 阶段6 | 扫码枪/PDA 设备无关接入 | ①新增扫码输入层 useScannerInput：全局键盘钩子识别 HID 键盘模拟扫码枪（击键间隔判定，与人工打字区分），结束符/自动提交/前后缀剥离/提示音可配；②新增条码规则引擎 scan-rules.ts：按号段判定快递单号/商品条码/采购单号，扫描 API 支持 scanType=auto（查询优先+号段兜底）；③修复 6.6 条码分支误用 skuId(cuid) 导致扫码必然落空的 bug，改走 Sku.barcode；④采购单新增可扫业务单号 purchaseNo（CGyyyymmdd-nnnn，自动生成）；⑤中转仓扫码弹窗升级为连续扫作业台：扫即提交、流水逐条追加、成功/失败音与统计 | 6.6 | 0.5d | ✅ |
-| 7.1 | 阶段7 | SKU/商品 条码录入 + 扫码建档 | Sku.barcode 录入入口（SKU 编辑可填可「扫一下」录入、多码管理、列表条码列 + 扫条码反查定位、批量连扫建档）；后端条码查重/反查接口；演示侧条码改动持久化 | 1.7/6.12 | 1d | ⬜ |
+| 7.1 | 阶段7 | SKU/商品 条码录入 + 扫码建档 | Sku.barcode 录入入口（SKU 编辑可填可「扫一下」录入、多码管理、列表条码列 + 扫条码反查定位、批量连扫建档）；后端条码查重/反查接口；演示侧条码改动持久化 | 1.7/6.12 | 1d | ✅ |
 | 7.2 | 阶段7 | 采购单收货标签打印（Code128） | 标签数据接口 + 零依赖 Code128B 编码器 + A4 三列拼版/热敏 100×100 打印页（供应商贴箱 → 中转仓一枪到货）；顺带修正 CG 号段正则漏了连字符导致 `CG20261028-0001` 识别为未识别号段的 bug | 6.2/6.12 | 1d | ⬜ |
 | 7.3 | 阶段7 | PDA 原生壳（Android WebView + DataWedge） | `pda-shell/` Android 源码工程：全屏 WebView + DataWedge/Honeywell Intent 收码 + 蜂鸣震动 + 常亮 + 侧键触发 + 离线队列补扫；页面侧暴露 `window.__onScan` 桥接；设备接入指引落中转仓「扫码设备设置」弹窗 | 6.12 | 1.5d | ⬜ |
 
@@ -702,3 +702,11 @@
 - **验收**：`npm run progress:gen` 后 /progress 页可见 7.3 条目（route → /transfer）；网页模式在缺少原生桥接时不报错。
 
 ---
+
+### 进度更新 · 2026-10-28（夜间自动化 23:10 启动 · 阶段7 条码介质与终端接入）
+
+#### 7.1 SKU/商品 条码录入 + 扫码建档（✅ 完成并验证）
+- **后端**：`SkuBarcode` 多码模型（Prisma generate 通过）；`common/barcode/barcode.util.ts` 校验位算法（EAN-13/UPC-A，warn 不拦截）；`CatalogService` 新增 `lookupByBarcode` / `listBarcodes` / `addBarcode`（主码与多码互斥去重，冲突抛 `SKU_BARCODE_DUPLICATE`）/ `deleteBarcode` / `setMainBarcode`（事务：旧主码降级为 alt + 回写 `Sku.barcode`）；`CatalogController` 5 个 REST 端点；`SkuResponseDto` 增 `barcodeCheckWarning`。单测 12 例全绿。
+- **前端**：`CatalogView` 重写——SKU 列表「商品条码」列（`+N` 多码徽章）、「扫码定位」工具栏按钮（复用 `useScannerInput`）、「条码」操作按钮开编辑对话框（主码输入 + 「扫一下」+ EAN-13/UPC-A 校验位提示 + 「批量扫码建档」连续扫 + 多码表格「设为主码/删除」）；`catalog.ts` 增类型与接口；`mock-data.ts` 同口径内存实现且条码变更落 `localStorage` 覆盖层（`dso.sku-barcodes-v1`），刷新后仍在；`AppIcon` 增 `scan` 图标。演示/正式双路通。
+- **质量门禁**：server tsc✅ / eslint --max-warnings 0✅ / jest **350 passed / 50 suites**；web vue-tsc✅ / eslint✅ / vite build✅。
+- **下一步**：7.2 采购单收货标签打印（Code128）+ 修 scan-rules CG 号段正则 bug。

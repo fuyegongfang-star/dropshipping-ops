@@ -170,3 +170,189 @@ describe('CatalogService 三段映射（§1 / §21）', () => {
     expect(prisma.supplierSku.create).not.toHaveBeenCalled()
   })
 })
+
+describe('CatalogService 条码 / 多码管理（任务 7.1）', () => {
+  /** 含 skuBarcode / $transaction 的桩 */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  function makeBarcodePrisma(overrides: Record<string, unknown> = {}): any {
+    const skuBarcode = {
+      findFirst: jest.fn().mockResolvedValue(null),
+      findMany: jest.fn().mockResolvedValue([]),
+      create: jest.fn().mockResolvedValue({ id: 'sb1', tenantId: 't1', skuId: 'sku1', code: 'CODE-X', kind: 'ean13', createdAt: new Date() }),
+      delete: jest.fn().mockResolvedValue({}),
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const base: any = makePrisma({
+      sku: {
+        create: jest.fn().mockResolvedValue({ id: 'p1', tenantId: 't1', title: 'T', spu: null, createdAt: new Date(), skus: [] }),
+        update: jest.fn().mockResolvedValue(makeSkuRow()),
+        findMany: jest.fn().mockResolvedValue([]),
+        findUnique: jest.fn().mockResolvedValue({ tenantId: 't1' }),
+        findUniqueOrThrow: jest.fn().mockResolvedValue(makeSkuRow()),
+        findFirst: jest.fn().mockResolvedValue(makeSkuRow()),
+      },
+      skuBarcode,
+      ...overrides,
+    })
+    // 事务桩：传入的 tx 复用 base 上最终生效的 sku / skuBarcode 实例，保证断言命中对同一 fn
+    base.$transaction = jest.fn((fn: (tx: unknown) => Promise<unknown>) =>
+      fn({ sku: base.sku, skuBarcode: base.skuBarcode }),
+    )
+    return base
+  }
+
+  it('lookupByBarcode：命中主码返回 matchedBy=main', async () => {
+    const prisma = makeBarcodePrisma({
+      sku: { findFirst: jest.fn().mockResolvedValue({ id: 'sku1', productId: 'p1' }), findUnique: jest.fn().mockResolvedValue({ tenantId: 't1' }) },
+      product: { findUnique: jest.fn().mockResolvedValue({ tenantId: 't1', title: '耳机' }) },
+    })
+    const svc = new CatalogService(prisma as never, new AppLogger())
+    const r = await svc.lookupByBarcode('t1', '690000000001')
+    expect(r?.matchedBy).toBe('main')
+    expect(r?.skuId).toBe('sku1')
+    expect(r?.productName).toBe('耳机')
+  })
+
+  it('lookupByBarcode：命中多码返回 matchedBy=alt', async () => {
+    const prisma = makeBarcodePrisma({
+      sku: { findFirst: jest.fn().mockResolvedValue(null), findUnique: jest.fn().mockResolvedValue({ tenantId: 't1', productId: 'p1' }) },
+      skuBarcode: { findFirst: jest.fn().mockResolvedValue({ skuId: 'sku1', kind: 'ean13' }) },
+      product: { findUnique: jest.fn().mockResolvedValue({ tenantId: 't1', title: '耳机' }) },
+    })
+    const svc = new CatalogService(prisma as never, new AppLogger())
+    const r = await svc.lookupByBarcode('t1', '6901111111116')
+    expect(r?.matchedBy).toBe('alt')
+    expect(r?.kind).toBe('ean13')
+  })
+
+  it('lookupByBarcode：未命中返回 null', async () => {
+    const prisma = makeBarcodePrisma({
+      sku: { findFirst: jest.fn().mockResolvedValue(null) },
+      skuBarcode: { findFirst: jest.fn().mockResolvedValue(null) },
+    })
+    const svc = new CatalogService(prisma as never, new AppLogger())
+    expect(await svc.lookupByBarcode('t1', '999')).toBeNull()
+  })
+
+  it('listBarcodes：越权 SKU 抛异常', async () => {
+    const prisma = makeBarcodePrisma({
+      sku: { findUnique: jest.fn().mockResolvedValue({ tenantId: 'other' }) },
+    })
+    const svc = new CatalogService(prisma as never, new AppLogger())
+    await expect(svc.listBarcodes('t1', 'sku1')).rejects.toBeInstanceOf(BusinessException)
+  })
+
+  it('addBarcode：与 Sku.barcode 冲突 → 重复异常', async () => {
+    const prisma = makeBarcodePrisma({
+      sku: {
+        findUnique: jest.fn().mockResolvedValue({ tenantId: 't1' }),
+        findFirst: jest.fn().mockResolvedValue({ id: 'sku1', code: 'CODE-A' }),
+      },
+    })
+    const svc = new CatalogService(prisma as never, new AppLogger())
+    await expect(svc.addBarcode('t1', 'sku1', { code: '690000000001' })).rejects.toMatchObject({
+      bizCode: 'SKU_BARCODE_DUPLICATE',
+    })
+  })
+
+  it('addBarcode：与既有多码冲突 → 重复异常', async () => {
+    const prisma = makeBarcodePrisma({
+      sku: {
+        findUnique: jest.fn().mockResolvedValue({ tenantId: 't1' }),
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
+      skuBarcode: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'sb1', skuId: 'sku2' }),
+        create: jest.fn(),
+      },
+    })
+    const svc = new CatalogService(prisma as never, new AppLogger())
+    await expect(svc.addBarcode('t1', 'sku1', { code: '6901111111116' })).rejects.toMatchObject({
+      bizCode: 'SKU_BARCODE_DUPLICATE',
+    })
+  })
+
+  it('addBarcode：正常新增返回多码', async () => {
+    const prisma = makeBarcodePrisma({
+      sku: {
+        findUnique: jest.fn().mockResolvedValue({ tenantId: 't1' }),
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
+      skuBarcode: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockImplementation((d: { data: { code: string; kind?: string } }) => ({
+          id: 'sb1',
+          tenantId: 't1',
+          skuId: 'sku1',
+          code: d.data.code,
+          kind: d.data.kind ?? 'other',
+          createdAt: new Date(),
+        })),
+      },
+    })
+    const svc = new CatalogService(prisma as never, new AppLogger())
+    const r = await svc.addBarcode('t1', 'sku1', { code: '6901111111116', kind: 'ean13' })
+    expect(r.code).toBe('6901111111116')
+    expect(r.kind).toBe('ean13')
+  })
+
+  it('deleteBarcode：越权 → 未找到异常', async () => {
+    const prisma = makeBarcodePrisma({
+      skuBarcode: { findUnique: jest.fn().mockResolvedValue({ tenantId: 'other' }) },
+    })
+    const svc = new CatalogService(prisma as never, new AppLogger())
+    await expect(svc.deleteBarcode('t1', 'sb1')).rejects.toMatchObject({
+      bizCode: 'SKU_BARCODE_NOT_FOUND',
+    })
+  })
+
+  it('setMainBarcode：多码提升为主码，原主码降级为多码（事务）', async () => {
+    // 第一调用来自 assertSkuOwned（tenantId 校验），第二调用来自原主码读取（应仍为 OLD-MAIN 以触发事务），故两处都返回 OLD-MAIN。
+    const skuFindUnique = jest.fn().mockResolvedValue({ tenantId: 't1', barcode: 'OLD-MAIN' })
+    const prisma = makeBarcodePrisma({
+      sku: { findUnique: skuFindUnique, findUniqueOrThrow: jest.fn().mockResolvedValue(makeSkuRow({ barcode: 'NEW-MAIN' })), findFirst: jest.fn(), update: jest.fn() },
+      skuBarcode: {
+        findUnique: jest.fn().mockResolvedValue({ tenantId: 't1', skuId: 'sku1', code: 'NEW-MAIN' }),
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn(),
+        delete: jest.fn(),
+      },
+    })
+    const svc = new CatalogService(prisma as never, new AppLogger())
+    const r = await svc.setMainBarcode('t1', 'sku1', 'sb9')
+    expect(prisma.skuBarcode.create).toHaveBeenCalledWith({
+      data: { tenantId: 't1', skuId: 'sku1', code: 'OLD-MAIN', kind: 'internal' },
+    })
+    expect(prisma.sku.update).toHaveBeenCalledWith({ where: { id: 'sku1' }, data: { barcode: 'NEW-MAIN' } })
+    expect(prisma.skuBarcode.delete).toHaveBeenCalledWith({ where: { id: 'sb9' } })
+    expect(r.barcode).toBe('NEW-MAIN')
+  })
+
+  it('createSku：EAN-13 校验位不符仅提示不拦截（barcodeCheckWarning 非空）', async () => {
+    const prisma = makeBarcodePrisma({
+      sku: { create: jest.fn().mockResolvedValue(makeSkuRow({ barcode: '4006381333932' })) },
+    })
+    const svc = new CatalogService(prisma as never, new AppLogger())
+    const r = await svc.createSku('t1', { productId: 'p1', code: 'CODE-A', weightG: 100, barcode: '4006381333932' })
+    expect(r.barcodeCheckWarning).toBeTruthy()
+  })
+
+  it('createSku：EAN-13 校验位正确 → 无提示', async () => {
+    const prisma = makeBarcodePrisma({
+      sku: { create: jest.fn().mockResolvedValue(makeSkuRow({ barcode: '4006381333931' })) },
+    })
+    const svc = new CatalogService(prisma as never, new AppLogger())
+    const r = await svc.createSku('t1', { productId: 'p1', code: 'CODE-A', weightG: 100, barcode: '4006381333931' })
+    expect(r.barcodeCheckWarning).toBeFalsy()
+  })
+
+  it('lookupByBarcode：跨租户隔离（仅他租户存在的码对 t1 不可见）', async () => {
+    // 模拟该码只存在于 t2：t1 的 findFirst 应因 tenantId 过滤落空
+    const prisma = makeBarcodePrisma({
+      sku: { findFirst: jest.fn().mockResolvedValue(null) },
+      skuBarcode: { findFirst: jest.fn().mockResolvedValue(null) },
+    })
+    const svc = new CatalogService(prisma as never, new AppLogger())
+    expect(await svc.lookupByBarcode('t1', '690000000001')).toBeNull()
+  })
+})

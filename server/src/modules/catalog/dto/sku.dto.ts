@@ -113,4 +113,36 @@ export class SkuResponseDto {
   volumetricWeightG!: number // 体积重（克）
   chargeableWeightG!: number // 计费重（克）= max(实重, 体积重)
   createdAt!: Date
+  /** 条码校验位提示：仅当命中 EAN-13/UPC-A 标准且校验位不符时给出建议（不拦截录入） */
+  barcodeCheckWarning?: string | null
+}
+
+/** SKU 多码（阶段7，任务 7.1） */
+export class SkuBarcodeDto {
+  id!: string
+  tenantId!: string
+  skuId!: string
+  code!: string
+  kind!: string // supplier | internal | ean13 | other
+  createdAt!: Date
+}
+
+/** 新增 SKU 多码入参 */
+export class AddSkuBarcodeDto {
+  @IsString()
+  code!: string // 条码明文
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(16)
+  kind?: string // 不传默认 other
+}
+
+/** 条码反查结果（扫码枪定位 SKU / 后续 PDA 复用） */
+export class BarcodeLookupDto {
+  skuId!: string
+  code!: string
+  productName!: string
+  matchedBy!: 'main' | 'alt' // main=命中 Sku.barcode；alt=命中 SkuBarcode 多码
+  kind?: string | null
 }

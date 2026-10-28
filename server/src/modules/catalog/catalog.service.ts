@@ -12,12 +12,17 @@ import { HttpStatus, Injectable } from '@nestjs/common'
 import { Prisma, PrismaClient } from '@prisma/client'
 import { BusinessException } from '../../common/response/business.exception'
 import { AppLogger } from '../../common/logger/app.logger'
+import { checkBarcodeDigit } from '../../common/barcode/barcode.util'
 import { DEFAULT_VOLUMETRIC_DIVISOR } from './catalog.constants'
+import { CreateProductDto, ProductResponseDto } from './dto/product.dto'
 import {
-  CreateProductDto,
-  ProductResponseDto,
-} from './dto/product.dto'
-import { CreateSkuDto, SkuResponseDto, UpdateSkuDto } from './dto/sku.dto'
+  AddSkuBarcodeDto,
+  BarcodeLookupDto,
+  CreateSkuDto,
+  SkuBarcodeDto,
+  SkuResponseDto,
+  UpdateSkuDto,
+} from './dto/sku.dto'
 import { LinkSupplierSkuDto } from './dto/supplier-sku.dto'
 
 /** SKU 列表过滤条件 */
@@ -96,7 +101,7 @@ export class CatalogService {
           code: dto.code,
           platformSku: dto.platformSku ?? null,
           supplierSku: dto.supplierSku ?? null,
-          barcode: dto.barcode ?? null,
+          barcode: this.normalizeBarcode(dto.barcode),
           weightG: dto.weightG,
           lengthCm: dto.lengthCm ?? null,
           widthCm: dto.widthCm ?? null,
@@ -122,7 +127,7 @@ export class CatalogService {
     if (dto.code !== undefined) data.code = dto.code
     if (dto.platformSku !== undefined) data.platformSku = dto.platformSku
     if (dto.supplierSku !== undefined) data.supplierSku = dto.supplierSku
-    if (dto.barcode !== undefined) data.barcode = dto.barcode
+    if (dto.barcode !== undefined) data.barcode = this.normalizeBarcode(dto.barcode)
     if (dto.weightG !== undefined) data.weightG = dto.weightG
     if (dto.lengthCm !== undefined) data.lengthCm = dto.lengthCm
     if (dto.widthCm !== undefined) data.widthCm = dto.widthCm
@@ -146,6 +151,190 @@ export class CatalogService {
     if (filter.supplierSku) where.supplierSku = filter.supplierSku
     const rows = await this.prisma.sku.findMany({ where, orderBy: { createdAt: 'desc' } })
     return rows.map((r) => this.toSkuResponse(r))
+  }
+
+  // ===================== 条码 / 多码管理（任务 7.1）=====================
+
+  /**
+   * 条码反查 SKU：先查主码 Sku.barcode，再查多码表 SkuBarcode（同租户隔离）。
+   * 用于「扫条码定位 SKU」与后续 PDA 扫码建档。未命中返回 null。
+   */
+  async lookupByBarcode(
+    tenantId: string,
+    code: string,
+  ): Promise<BarcodeLookupDto | null> {
+    const normalized = (code ?? '').trim()
+    if (!normalized) return null
+    const sku = await this.prisma.sku.findFirst({
+      where: { tenantId, barcode: normalized },
+      select: { id: true, productId: true },
+    })
+    if (sku) {
+      const productName = await this.productTitle(tenantId, sku.productId)
+      return {
+        skuId: sku.id,
+        code: normalized,
+        productName,
+        matchedBy: 'main',
+        kind: null,
+      }
+    }
+    const alt = await this.prisma.skuBarcode.findFirst({
+      where: { tenantId, code: normalized },
+      select: { skuId: true, kind: true },
+    })
+    if (alt) {
+      const productName = await this.skuProductTitle(tenantId, alt.skuId)
+      return {
+        skuId: alt.skuId,
+        code: normalized,
+        productName,
+        matchedBy: 'alt',
+        kind: alt.kind,
+      }
+    }
+    return null
+  }
+
+  /** 取商品标题（按商品 id，跨租户隔离由调用方保证） */
+  private async productTitle(tenantId: string, productId?: string | null): Promise<string> {
+    if (!productId) return ''
+    const p = await this.prisma.product.findUnique({
+      where: { id: productId },
+      select: { tenantId: true, title: true },
+    })
+    return p && p.tenantId === tenantId ? p.title : ''
+  }
+
+  /** 取 SKU 所属商品标题 */
+  private async skuProductTitle(tenantId: string, skuId: string): Promise<string> {
+    const sku = await this.prisma.sku.findUnique({
+      where: { id: skuId },
+      select: { tenantId: true, productId: true },
+    })
+    if (!sku || sku.tenantId !== tenantId) return ''
+    return this.productTitle(tenantId, sku.productId)
+  }
+
+  /** 列出某 SKU 的全部多码（不含主码） */
+  async listBarcodes(tenantId: string, skuId: string): Promise<SkuBarcodeDto[]> {
+    await this.assertSkuOwned(tenantId, skuId)
+    const rows = await this.prisma.skuBarcode.findMany({
+      where: { tenantId, skuId },
+      orderBy: { createdAt: 'asc' },
+    })
+    return rows.map((r) => ({
+      id: r.id,
+      tenantId: r.tenantId,
+      skuId: r.skuId,
+      code: r.code,
+      kind: r.kind,
+      createdAt: r.createdAt,
+    }))
+  }
+
+  /**
+   * 新增多码：与 Sku.barcode 以及 SkuBarcode 同租户内互斥去重，重复抛 SKU_BARCODE_DUPLICATE。
+   */
+  async addBarcode(
+    tenantId: string,
+    skuId: string,
+    dto: AddSkuBarcodeDto,
+  ): Promise<SkuBarcodeDto> {
+    await this.assertSkuOwned(tenantId, skuId)
+    const code = (dto.code ?? '').trim()
+    if (!code) {
+      throw new BusinessException('SKU_BARCODE_EMPTY', '条码不能为空', HttpStatus.BAD_REQUEST)
+    }
+    // 互斥去重：主码 + 多码任一存在即冲突
+    const mainHit = await this.prisma.sku.findFirst({
+      where: { tenantId, barcode: code },
+      select: { id: true, code: true },
+    })
+    if (mainHit) {
+      throw new BusinessException(
+        'SKU_BARCODE_DUPLICATE',
+        `条码 ${code} 已作为主码存在于 SKU ${mainHit.code}`,
+        HttpStatus.BAD_REQUEST,
+      )
+    }
+    const altHit = await this.prisma.skuBarcode.findFirst({
+      where: { tenantId, code },
+      select: { id: true, skuId: true },
+    })
+    if (altHit) {
+      const sku = await this.prisma.sku.findUnique({
+        where: { id: altHit.skuId },
+        select: { code: true },
+      })
+      throw new BusinessException(
+        'SKU_BARCODE_DUPLICATE',
+        `条码 ${code} 已作为多码存在于 SKU ${sku?.code ?? altHit.skuId}`,
+        HttpStatus.BAD_REQUEST,
+      )
+    }
+    const created = await this.prisma.skuBarcode.create({
+      data: {
+        tenantId,
+        skuId,
+        code,
+        kind: dto.kind && dto.kind.length ? dto.kind : 'other',
+      },
+    })
+    return {
+      id: created.id,
+      tenantId: created.tenantId,
+      skuId: created.skuId,
+      code: created.code,
+      kind: created.kind,
+      createdAt: created.createdAt,
+    }
+  }
+
+  /** 删除多码（按 id，租户隔离） */
+  async deleteBarcode(tenantId: string, barcodeId: string): Promise<void> {
+    const found = await this.prisma.skuBarcode.findUnique({
+      where: { id: barcodeId },
+      select: { tenantId: true },
+    })
+    if (!found || found.tenantId !== tenantId) {
+      throw new BusinessException('SKU_BARCODE_NOT_FOUND', '多码不存在或越权', HttpStatus.NOT_FOUND)
+    }
+    await this.prisma.skuBarcode.delete({ where: { id: barcodeId } })
+  }
+
+  /**
+   * 设为主码：将某多码提升为 Sku.barcode，原主码降级为多码（保持总码数不丢）。
+   * 幂等：主码已是目标则直接返回。
+   */
+  async setMainBarcode(tenantId: string, skuId: string, barcodeId: string): Promise<SkuResponseDto> {
+    await this.assertSkuOwned(tenantId, skuId)
+    const target = await this.prisma.skuBarcode.findUnique({
+      where: { id: barcodeId },
+      select: { tenantId: true, skuId: true, code: true },
+    })
+    if (!target || target.tenantId !== tenantId || target.skuId !== skuId) {
+      throw new BusinessException('SKU_BARCODE_NOT_FOUND', '多码不存在或越权', HttpStatus.NOT_FOUND)
+    }
+    const sku = await this.prisma.sku.findUnique({ where: { id: skuId }, select: { barcode: true } })
+    if (sku?.barcode === target.code) return this.toSkuResponse(await this.prisma.sku.findUniqueOrThrow({ where: { id: skuId } }) as SkuRow)
+
+    // 事务：原主码降级为多码（若非 null 且未被其它多码占用），新码写入 Sku.barcode
+    await this.prisma.$transaction(async (tx) => {
+      if (sku?.barcode) {
+        const occupied = await tx.skuBarcode.findFirst({
+          where: { tenantId, code: sku.barcode },
+          select: { id: true },
+        })
+        if (!occupied) {
+          await tx.skuBarcode.create({ data: { tenantId, skuId, code: sku.barcode, kind: 'internal' } })
+        }
+      }
+      await tx.sku.update({ where: { id: skuId }, data: { barcode: target.code } })
+      await tx.skuBarcode.delete({ where: { id: barcodeId } })
+    })
+    const updated = await this.prisma.sku.findUniqueOrThrow({ where: { id: skuId } })
+    return this.toSkuResponse(updated as SkuRow)
   }
 
   // ===================== 三段映射 =====================
@@ -230,6 +419,12 @@ export class CatalogService {
 
   // ===================== 私有工具 =====================
 
+  /** 条码归一：去首尾空白，空串归为 null（便于"清空主码"） */
+  private normalizeBarcode(v?: string | null): string | null {
+    const t = (v ?? '').trim()
+    return t.length ? t : null
+  }
+
   /** 校验商品归属当前租户（越权访问抛异常） */
   private async assertProductOwned(tenantId: string, productId: string): Promise<void> {
     const found = await this.prisma.product.findUnique({
@@ -286,6 +481,8 @@ export class CatalogService {
       row.widthCm,
       row.heightCm,
     )
+    // 条码校验位提示：命中 EAN-13/UPC-A 但校验位不符时给出建议（不拦截录入）。
+    const barcodeCheckWarning = this.buildBarcodeWarning(row.barcode)
     return {
       id: row.id,
       tenantId: row.tenantId,
@@ -301,7 +498,18 @@ export class CatalogService {
       volumetricWeightG,
       chargeableWeightG,
       createdAt: row.createdAt,
+      barcodeCheckWarning,
     }
+  }
+
+  /** 生成条码校验位提示文案（仅在命中标准且不符时非空） */
+  private buildBarcodeWarning(barcode: string | null): string | null {
+    if (!barcode) return null
+    const res = checkBarcodeDigit(barcode)
+    if (res.matched && !res.valid && res.standard && res.expectedCheckDigit) {
+      return `${res.standard} 校验位不符，应为 ${res.expectedCheckDigit}（仅提示，已正常保存）`
+    }
+    return null
   }
 
   /**

@@ -6,14 +6,14 @@
  * 负责人：自动开发引擎 ｜ 最后修订：2026-10-10
  */
 
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common'
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common'
 import { ApiResponse, ok } from '../../common/response/api-response'
 import { BusinessException } from '../../common/response/business.exception'
 import { HttpStatus } from '@nestjs/common'
 import { TenantId } from '../../common/tenant/tenant.decorator'
 import { CatalogService } from './catalog.service'
 import { CreateProductDto, ProductResponseDto } from './dto/product.dto'
-import { CreateSkuDto, SkuResponseDto, UpdateSkuDto } from './dto/sku.dto'
+import { AddSkuBarcodeDto, CreateSkuDto, SkuBarcodeDto, SkuResponseDto, UpdateSkuDto } from './dto/sku.dto'
 import { LinkSupplierSkuDto } from './dto/supplier-sku.dto'
 
 @Controller('catalog')
@@ -66,6 +66,59 @@ export class CatalogController {
   ): Promise<ApiResponse<SkuResponseDto | null>> {
     this.requireTenant(tenantId)
     return ok(await this.catalog.resolveByPlatformSku(tenantId, platformSku))
+  }
+
+  /** 条码反查 SKU（阶段7，任务 7.1）：扫商品码定位内部 SKU */
+  @Get('sku/barcode-lookup')
+  async barcodeLookup(
+    @TenantId() tenantId: string,
+    @Query('code') code?: string,
+  ): Promise<ApiResponse<import('./dto/sku.dto').BarcodeLookupDto | null>> {
+    this.requireTenant(tenantId)
+    return ok(await this.catalog.lookupByBarcode(tenantId, code ?? ''))
+  }
+
+  /** 列出某 SKU 的全部多码（阶段7，任务 7.1） */
+  @Get('sku/:skuId/barcodes')
+  async listBarcodes(
+    @TenantId() tenantId: string,
+    @Param('skuId') skuId: string,
+  ): Promise<ApiResponse<SkuBarcodeDto[]>> {
+    this.requireTenant(tenantId)
+    return ok(await this.catalog.listBarcodes(tenantId, skuId))
+  }
+
+  /** 新增多码（阶段7，任务 7.1）：与 Sku.barcode 互斥去重 */
+  @Post('sku/:skuId/barcodes')
+  async addBarcode(
+    @TenantId() tenantId: string,
+    @Param('skuId') skuId: string,
+    @Body() dto: AddSkuBarcodeDto,
+  ): Promise<ApiResponse<SkuBarcodeDto>> {
+    this.requireTenant(tenantId)
+    return ok(await this.catalog.addBarcode(tenantId, skuId, dto))
+  }
+
+  /** 删除多码（阶段7，任务 7.1） */
+  @Delete('sku/barcodes/:id')
+  async deleteBarcode(
+    @TenantId() tenantId: string,
+    @Param('id') id: string,
+  ): Promise<ApiResponse<null>> {
+    this.requireTenant(tenantId)
+    await this.catalog.deleteBarcode(tenantId, id)
+    return ok(null)
+  }
+
+  /** 设为主码（阶段7，任务 7.1）：多码提升为主码，原主码降级为多码 */
+  @Patch('sku/:skuId/barcodes/main')
+  async setMainBarcode(
+    @TenantId() tenantId: string,
+    @Param('skuId') skuId: string,
+    @Body('barcodeId') barcodeId: string,
+  ): Promise<ApiResponse<SkuResponseDto>> {
+    this.requireTenant(tenantId)
+    return ok(await this.catalog.setMainBarcode(tenantId, skuId, barcodeId))
   }
 
   /** 部分更新内部 SKU */

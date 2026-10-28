@@ -30,6 +30,7 @@ import type {
   AmazonReport,
   AmazonSettlementSummary,
 } from './amazon'
+import type { BarcodeLookupResult } from './catalog'
 
 export interface MockTenant {
   id: string
@@ -93,6 +94,15 @@ export interface MockSku {
   lengthCm: number | null
   widthCm: number | null
   heightCm: number | null
+  createdAt: string
+}
+/** SKU 多码（阶段7，任务 7.1）：主码之外的供应商码/内部码/EAN-13/其它 */
+export interface MockSkuBarcode {
+  id: string
+  tenantId: string
+  skuId: string
+  code: string
+  kind: string // supplier | internal | ean13 | other
   createdAt: string
 }
 export interface MockOrderItem {
@@ -322,6 +332,34 @@ const skus: MockSku[] = [
     createdAt: '2026-09-08T08:00:00.000Z',
   },
 ]
+
+// ===== SKU 多码（阶段7，任务 7.1）=====
+// 演示态内存状态，变更（新增/删除/设主码）持久化到 localStorage 覆盖层，
+// 否则演示模式刷新后条码全部丢失（与主码 skus 不同，多码不在种子里重建）。
+const SKU_BARCODES_KEY = 'dso.sku-barcodes-v1'
+let skuBarcodes: MockSkuBarcode[] = (() => {
+  try {
+    const raw = localStorage.getItem(SKU_BARCODES_KEY)
+    if (raw) return JSON.parse(raw) as MockSkuBarcode[]
+  } catch {
+    /* 忽略损坏的本地缓存 */
+  }
+  // 种子：给部分 SKU 预置多码，演示「+N」徽章与多码表
+  return [
+    { id: 'sb1', tenantId: TENANT_ID, skuId: 'sk1', code: '6901111111116', kind: 'ean13', createdAt: '2026-09-02T08:30:00.000Z' },
+    { id: 'sb2', tenantId: TENANT_ID, skuId: 'sk1', code: 'SUP-ES-BLK-A', kind: 'supplier', createdAt: '2026-09-03T09:10:00.000Z' },
+    { id: 'sb3', tenantId: TENANT_ID, skuId: 'sk2', code: '6902222222215', kind: 'ean13', createdAt: '2026-09-04T10:00:00.000Z' },
+    { id: 'sb4', tenantId: TENANT_ID, skuId: 'sk3', code: '8801111199990', kind: 'ean13', createdAt: '2026-09-05T11:20:00.000Z' },
+  ]
+})()
+
+function persistSkuBarcodes(): void {
+  try {
+    localStorage.setItem(SKU_BARCODES_KEY, JSON.stringify(skuBarcodes))
+  } catch {
+    /* 存储不可用时静默降级，不影响内存态 */
+  }
+}
 
 // 演示商品主图：内联 SVG（data URL），无外网也能渲染，便于验证「关联订单自动拉取主图」。
 function demoImg(text: string, bg: string): string {
@@ -687,6 +725,92 @@ function doCompose(body: unknown): ComposeLegsResult {
 
 const reject = (msg: string) => Promise.reject(new Error(msg))
 let seq = 100
+
+// ===== 条码 / 多码管理（阶段7，任务 7.1）=====
+// 演示态与后端 catalog 模块同口径：主码 Sku.barcode + 多码表 SkuBarcode，互斥去重，
+// 变更持久化到 localStorage（dso.sku-barcodes-v1），刷新不丢。
+function skuProductTitle(skuId: string): string {
+  const sku = skus.find((s) => s.id === skuId && s.tenantId === TENANT_ID)
+  if (!sku) return ''
+  const p = products.find((x) => x.id === sku.productId)
+  return p?.title ?? ''
+}
+
+export function doBarcodeLookup(code: string): BarcodeLookupResult | null {
+  const normalized = (code ?? '').trim()
+  if (!normalized) return null
+  const main = skus.find((s) => s.tenantId === TENANT_ID && s.barcode === normalized)
+  if (main) {
+    return { skuId: main.id, code: normalized, productName: skuProductTitle(main.id), matchedBy: 'main', kind: null }
+  }
+  const alt = skuBarcodes.find((b) => b.tenantId === TENANT_ID && b.code === normalized)
+  if (alt) {
+    return { skuId: alt.skuId, code: normalized, productName: skuProductTitle(alt.skuId), matchedBy: 'alt', kind: alt.kind }
+  }
+  return null
+}
+
+export function doListBarcodes(skuId: string): MockSkuBarcode[] {
+  return skuBarcodes.filter((b) => b.tenantId === TENANT_ID && b.skuId === skuId).map((b) => ({ ...b }))
+}
+
+let barcodeSeq = 5000
+export function doAddBarcode(skuId: string, body: { code?: string; kind?: string }): MockSkuBarcode {
+  const sku = skus.find((s) => s.id === skuId && s.tenantId === TENANT_ID)
+  if (!sku) throw new Error('SKU 不存在或越权')
+  const code = (body.code ?? '').trim()
+  if (!code) throw new Error('条码不能为空')
+  // 互斥去重：主码 + 多码任一存在即冲突（与后端 SKU_BARCODE_DUPLICATE 同口径）
+  if (skus.some((s) => s.tenantId === TENANT_ID && s.barcode === code)) {
+    throw new Error(`条码 ${code} 已作为主码存在于 SKU ${sku.code}`)
+  }
+  const hit = skuBarcodes.find((b) => b.tenantId === TENANT_ID && b.code === code)
+  if (hit) {
+    const owner = skus.find((s) => s.id === hit.skuId)
+    throw new Error(`条码 ${code} 已作为多码存在于 SKU ${owner?.code ?? hit.skuId}`)
+  }
+  const created: MockSkuBarcode = {
+    id: `sb_${++barcodeSeq}`,
+    tenantId: TENANT_ID,
+    skuId,
+    code,
+    kind: body.kind && body.kind.length ? body.kind : 'other',
+    createdAt: new Date().toISOString(),
+  }
+  skuBarcodes.push(created)
+  persistSkuBarcodes()
+  return { ...created }
+}
+
+export function doDeleteBarcode(id: string): void {
+  const idx = skuBarcodes.findIndex((b) => b.id === id && b.tenantId === TENANT_ID)
+  if (idx < 0) throw new Error('多码不存在或越权')
+  skuBarcodes.splice(idx, 1)
+  persistSkuBarcodes()
+}
+
+export function doSetMainBarcode(skuId: string, barcodeId: string): MockSku {
+  const sku = skus.find((s) => s.id === skuId && s.tenantId === TENANT_ID)
+  if (!sku) throw new Error('SKU 不存在或越权')
+  const target = skuBarcodes.find((b) => b.id === barcodeId && b.tenantId === TENANT_ID && b.skuId === skuId)
+  if (!target) throw new Error('多码不存在或越权')
+  if (sku.barcode === target.code) return { ...sku }
+  // 原主码降级为多码（非 null 且未被占用时），新码写入 Sku.barcode，移除该多码
+  if (sku.barcode && !skuBarcodes.some((b) => b.code === sku.barcode)) {
+    skuBarcodes.push({
+      id: `sb_${++barcodeSeq}`,
+      tenantId: TENANT_ID,
+      skuId,
+      code: sku.barcode,
+      kind: 'internal',
+      createdAt: new Date().toISOString(),
+    })
+  }
+  sku.barcode = target.code
+  skuBarcodes = skuBarcodes.filter((b) => b.id !== barcodeId)
+  persistSkuBarcodes()
+  return { ...sku }
+}
 
 // ===== 面单渲染（任务 3.9，方案 §3/§11）=====
 // 演示态 PDF 占位（最小可用 PDF，由 pdf-lib 生成后 base64，仅作展示，非真实承运商面单）。
@@ -3201,6 +3325,13 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     if (url === '/channels/platforms') return delay().then(() => ['shopify', 'amazon', 'taobao', 'douyin', 'mock'])
     if (url === '/catalog/products') return delay().then(() => products)
     if (url.startsWith('/catalog/skus')) return delay().then(() => filterSkus(url))
+    // 条码 / 多码管理（阶段7，任务 7.1）
+    if (url.startsWith('/catalog/sku/barcode-lookup')) {
+      const code = (new URL(url, 'http://mock').searchParams.get('code') ?? '')
+      return delay().then(() => doBarcodeLookup(code))
+    }
+    const barcodesList = url.match(/^\/catalog\/sku\/([^/]+)\/barcodes$/)
+    if (barcodesList) return delay().then(() => doListBarcodes(barcodesList[1]))
     if (url === '/orders') return delay().then(() => orders)
     if (url.startsWith('/orders?')) return delay().then(() => filterOrders(url))
     if (url === '/carriers') return delay().then(() => carriers)
@@ -3301,6 +3432,14 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     if (amzSettle) return delay(200).then(() => doAmazonSettlement(amzSettle[1], amzSettle[2]))
     return delay().then(() => reject('演示模式暂未实现该接口：' + url))
   }
+
+  // 条码 / 多码管理（阶段7，任务 7.1）：新增 / 删除 / 设主码（非 GET，须在 GET 块外处理避免 method 收窄）
+  const barcodeAdd = url.match(/^\/catalog\/sku\/([^/]+)\/barcodes$/)
+  if (method === 'POST' && barcodeAdd) return delay().then(() => doAddBarcode(barcodeAdd[1], (body ?? {}) as { code?: string; kind?: string }))
+  const barcodeDel = url.match(/^\/catalog\/sku\/barcodes\/([^/]+)$/)
+  if (method === 'DELETE' && barcodeDel) return delay().then(() => { doDeleteBarcode(barcodeDel[1]); return null })
+  const mainSet = url.match(/^\/catalog\/sku\/([^/]+)\/barcodes\/main$/)
+  if (method === 'PATCH' && mainSet) return delay().then(() => doSetMainBarcode(mainSet[1], ((body ?? {}) as { barcodeId?: string }).barcodeId ?? ''))
 
   // POST 集合
   if (method === 'POST') {

@@ -46,6 +46,7 @@ function makeFakePrisma() {
 
   return {
     purchaseOrder: {
+      count: jest.fn().mockResolvedValue(0),
       findMany: jest.fn(({ where, include }: any) =>
         purchaseOrder
           .filter((p) => !where?.tenantId || p.tenantId === where.tenantId)

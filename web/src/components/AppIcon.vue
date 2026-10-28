@@ -101,6 +101,8 @@ const ICONS: Record<string, string> = {
     '<path d="M13.5 4.5c3.5-1 6-0.5 6-0.5s.5 2.5-.5 6c-.8 2.8-2.6 5-5.5 6.5L9 12.5C10.5 9.6 12.7 7.3 13.5 4.5z"/><path d="M9 12.5 6.5 15 5 19l4-1.5 2.5-2.5"/><circle cx="15" cy="9" r="1.4"/>',
   grid:
     '<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>',
+  scan:
+    '<path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M4 12h16"/>',
   print:
     '<path d="M7 8V3h10v5"/><path d="M5 8h14a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><path d="M7 14h10v7H7z"/><path d="M9 11h6"/>',
   settings:

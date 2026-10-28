@@ -29,6 +29,7 @@ function makeFakePrisma() {
       ),
     },
     purchaseOrder: {
+      count: jest.fn().mockResolvedValue(0),
       findMany: jest.fn(({ where, include }: any) =>
         purchaseOrders
           .filter((p) => (!where?.tenantId || p.tenantId === where.tenantId))
@@ -99,6 +100,12 @@ describe('TransferService (6.6 扫码到货入库)', () => {
     return {
       warehouse: {
         findFirst: jest.fn(({ where }: any) => warehouses.find((w) => w.id === where.id && w.tenantId === where.tenantId) || null),
+      },
+      sku: {
+        // 仅支撑「商品条码 → SKU → 采购单」反查分支：扫出的条码对应 skuId='sk9'
+        findFirst: jest.fn(({ where }: any) =>
+          where?.barcode === 'sk9' ? { id: 'sk9' } : null,
+        ),
       },
       purchaseOrder: {
         findFirst: jest.fn(({ where }: any) =>

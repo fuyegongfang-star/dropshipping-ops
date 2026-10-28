@@ -110,6 +110,20 @@ model Sku {
   @@index([tenantId, barcode])
 }
 
+// 商品多码（阶段7，任务 7.1）：除主条码 Sku.barcode 外，承载供应商码/内部码/EAN-13/其它。
+// 与主条码互斥去重（同一租户内同一 code 不得同时出现在 Sku.barcode 与 SkuBarcode）。
+model SkuBarcode {
+  id        String   @id @default(cuid())
+  tenantId  String
+  skuId     String
+  code      String // 条码明文（供应商乱贴码是常态，校验位不符仅提示不拦截）
+  kind      String   @default("other") // supplier | internal | ean13 | other
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, code])
+  @@index([tenantId, skuId])
+}
+
 // ---- 订单与状态机（§13）----------------------------------------------------
 model Order {
   id              String   @id @default(cuid())
