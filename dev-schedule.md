@@ -89,6 +89,7 @@
 | 7.1 | 阶段7 | SKU/商品 条码录入 + 扫码建档 | Sku.barcode 录入入口（SKU 编辑可填可「扫一下」录入、多码管理、列表条码列 + 扫条码反查定位、批量连扫建档）；后端条码查重/反查接口；演示侧条码改动持久化 | 1.7/6.12 | 1d | ✅ |
 | 7.2 | 阶段7 | 采购单收货标签打印（Code128） | 标签数据接口 + 零依赖 Code128B 编码器 + A4 三列拼版/热敏 100×100 打印页（供应商贴箱 → 中转仓一枪到货）；顺带修正 CG 号段正则漏了连字符导致 `CG20261028-0001` 识别为未识别号段的 bug | 6.2/6.12 | 1d | ✅ |
 | 7.3 | 阶段7 | PDA 原生壳（Android WebView + DataWedge） | `pda-shell/` Android 源码工程：全屏 WebView + DataWedge/Honeywell Intent 收码 + 蜂鸣震动 + 常亮 + 侧键触发 + 离线队列补扫；页面侧暴露 `window.__onScan` 桥接；设备接入指引落中转仓「扫码设备设置」弹窗 | 6.12 | 1.5d | ✅ |
+| 8.1 | 阶段8 | 平台凭证工厂化接入（基础） | 统一凭证契约（淘宝TOP/抖音开放平台/云途/DHL/4PX/燕文）+ 加密落库(§17.2 AES-256-GCM，不存明文) + 端口/适配器存储（内存实现，Prisma 持久化 TODO）+ 平台→适配器工厂（真实 API 联调 TODO）；新增 `platform-credentials` 模块，9 单测全绿，纯后端基础（UI 待 8.2） | 2.1/3.2 | 1d | ✅ |
 
 > 阶段7 执行顺序建议：**7.1 → 7.2 → 7.3**。7.1 是数据地基（没条码，②贴出去的箱码与 Sku.barcode 之间没有可用映射），7.2 把条码落到物理介质（仓库才有东西可扫），7.3 是终端形态升级且依赖外部工具链（Android Gradle），放最后。
 
@@ -727,3 +728,17 @@
 - **质量门禁**：server tsc✅ / eslint --max-warnings 0✅ / jest **363 passed / 51 suites**；web vue-tsc✅ / eslint✅ / vite build✅。
 - **验收口径**：阶段7（M7）全部完成——商品条码可录入（含枪扫建档）、采购单可打印 Code128 收货标签供供应商贴箱、场站端可用 PDA 原生壳接管扫码输入，仓库「一枪到底」。
 - **下一步**：方案 v1.5 主线任务已全部收口（M0–M7）；剩余为真实平台凭证工厂化接入（淘宝 TOP/抖音开放平台/云途·DHL·4PX·燕文 联调，标注 TODO）+ 本机 PG 端到端验证 + §31 收尾文档。
+
+### 进度更新 · 2026-10-29 夜间续跑（主线收口后增强 · 平台凭证工厂化 NEXT-1）
+
+#### 8.1 平台凭证工厂化接入（基础）（✅ 完成并验证）
+- **背景**：v1.5 主线（M0–M7）已于本批前全部收口。续跑从 `state.json` 的 `next_focus` 取首项「真实平台凭证工厂化接入」开工，先落地**可测试、可扩展的基础层**，真实 API 联调留作 8.2（明确标注 TODO，不伪造已联调）。
+- **统一契约** `platform-credentials.constants.ts`：平台枚举 `PlatformKind`（淘宝/抖音/云途/DHL/4PX/燕文/Mock）+ 鉴权方式 `PlatformAuthType` + 各平台结构化凭证接口（如 `TaobaoTopCredentials`/`DhlCredentials`/`FourPxCredentials`）+ `PLATFORM_META` 元信息表（必填字段/能力/默认网关/承运商侧标记），新增平台只需在此登记一处。
+- **加密落库** `platform-credential.service.ts`：写入时校验必填 → JSON 序列化 → 经既有 `SecretEncryptionService`（§17.2 AES-256-GCM）加密存储，**明文绝不入库**；读取解密还原；缺凭证抛 `PLATFORM_CREDENTIAL_MISSING`、必填缺失抛 `PLATFORM_CREDENTIAL_INCOMPLETE`；列表/删除按租户隔离。
+- **端口/适配器存储** `credential-store.port.ts`：定义 `CredentialStorePort`（介质无关）与 `InMemoryCredentialStore`（演示/单测用，进程级）；真实 Prisma 持久化实现为 TODO（实现同一端口即可替换，上层零改动）。
+- **平台→适配器工厂** `platform-adapter.factory.ts`：`describe`（元信息）/ `createClientConfig`（补全默认网关）/ `resolveAdapter`（产 `scaffold-todo` 描述符，真实适配器经承运商/渠道注册表桥接为 TODO）。诚实原则：当前只产出配置/描述符，不直接发起真实 HTTP 调用。
+- **装配**：新增 `platform-credentials.module.ts` 并注册进 `AppModule`；纯新增模块，**不改动任何既有模块/测试**，保证既有 363 单测不受影响。
+- **质量门禁（本批实测）**：server `tsc --noEmit`✅ / `eslint --max-warnings 0`✅ / **jest 372 passed / 52 suites**（新增 9 例全绿：加密不存明文、解密还原、缺失抛错、必填校验、列表/删除、工厂描述符与客户端配置补全网关）；web `eslint`✅ / `vue-tsc`✅ / `vite build`✅。另对整仓做 **§31 回归**：v1.5 全量门禁全绿，交付物可次日网页查看。
+- **进度生成**：`scripts/gen-progress.cjs` 适配「显式 null 路由」（纯后端能力不在 /progress 错链到无关页面）；`EXPLICIT_ROUTES` 补 `8.1→null`，`npm run progress:gen` 后 /progress 可见 8.1（无 UI 直达入口，标注纯后端基础）。
+- **诚实备注**：① 凭证存储当前为内存实现（进程级），生产前必须补 Prisma 持久化（8.2 或独立任务）；② 各平台真实 API 联调（TOP session 换取、抖音 OAuth2、云途 HMAC、4PX/燕文 MD5）均标注 TODO，未发起真实请求；③ 本机 PG 端到端验证仍需用户按 README 起库（沙箱无 Docker）。
+- **下一步**：8.2 平台凭证管理 UI（凭证录入/查看/轮转页 + 菜单/路由 + 演示/正式双路）+ 真实 API 联调桥接承运商/渠道注册表（TODO 落地）；或先补 Prisma 持久化。

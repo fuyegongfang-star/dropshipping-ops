@@ -25,6 +25,7 @@ import { SuppliersModule } from './modules/suppliers/suppliers.module'
 import { WmsModule } from './modules/wms/wms.module'
 import { PurchaseOrderModule } from './modules/purchase-orders/purchase-order.module'
 import { TransferModule } from './modules/transfer/transfer.module'
+import { PlatformCredentialsModule } from './modules/platform-credentials/platform-credentials.module'
 
 /**
  * 根模块：装配全局配置、数据库、鉴权、健康检查与业务模块（方案 §0/§11）。
@@ -56,6 +57,7 @@ import { TransferModule } from './modules/transfer/transfer.module'
     WmsModule,
     PurchaseOrderModule,
     TransferModule,
+    PlatformCredentialsModule,
   ],
 })
 export class AppModule implements NestModule {

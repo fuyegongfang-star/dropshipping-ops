@@ -68,6 +68,8 @@ const EXPLICIT_ROUTES = {
   '7.1': '/catalog',
   '7.2': '/purchase-orders',
   '7.3': '/transfer',
+  // 值为 null 表示纯后端能力、暂无前端界面（route 显式置空，不推断到无关页面）
+  '8.1': null,
 };
 
 /** 关键词 → 路由（兜底推断，命中即用）。 */
@@ -86,7 +88,8 @@ const KEYWORD_ROUTES = [
 ];
 
 function inferRoute(id, name, deliverable) {
-  if (EXPLICIT_ROUTES[id]) return EXPLICIT_ROUTES[id];
+  // 显式路由优先（含 null：纯后端能力，不做关键词推断）
+  if (Object.prototype.hasOwnProperty.call(EXPLICIT_ROUTES, id)) return EXPLICIT_ROUTES[id];
   const text = `${name} ${deliverable}`;
   for (const [keywords, route] of KEYWORD_ROUTES) {
     if (keywords.some((k) => text.includes(k))) return route;

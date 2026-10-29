@@ -5,10 +5,10 @@
   "schedule_path": "D:/Workbuddy/2026-10-10-17-18-35/dropshipping-ops/dev-schedule.md",
   "log_path": "D:/Workbuddy/2026-10-10-17-18-35/dropshipping-ops/progress-log.md",
   "error_log": "D:/Workbuddy/2026-10-10-17-18-35/dropshipping-ops/.dev/errors.log",
-  "current_phase": "阶段7(全部完成)/收尾",
-  "task_index": 55,
-  "last_completed_task": "7.3",
-  "next_task": "done",
+  "current_phase": "阶段8(平台凭证工厂化接入)",
+  "task_index": 56,
+  "last_completed_task": "8.1",
+  "next_task": "8.2",
   "last_commit": "7ab0a94",
   "last_run": "2026-10-28T23:10:00+08:00",
   "blocked_tasks": [],
@@ -37,6 +37,7 @@
   "phase7_plan": "阶段7（7.1-7.3）条码介质与终端接入：①7.1 SKU/商品 条码录入+扫码建档（SkuBarcode 多码模型 + /sku/barcode-lookup + CatalogView 条码列/扫一下录入/扫码定位/批量建档，mock 侧 localStorage 持久化）；②7.2 采购单收货标签打印（零依赖 Code128B 编码器 web/src/utils/code128.ts + A4三列/热敏100×100 打印 + PurchaseOrder.boxCount，供应商贴箱→仓库一枪到货；顺带修 scan-rules.ts 的 CG 号段正则漏连字符导致 CG20261028-0001 判为未识别的 bug）；③7.3 PDA 原生壳源码工程 pda-shell/（Android WebView + Zebra DataWedge/Honeywell Intent → window.__onScan 桥接 + 蜂鸣震动常亮侧键 + 离线队列补扫，本机无 Android SDK 不出 APK）。执行顺序 7.1→7.2→7.3，详见 dev-schedule.md 阶段7 详细设计。真库需 prisma db push（新增 SkuBarcode、PurchaseOrder.boxCount）。",
   "batch_2026_10_28": "2026-10-28 夜间批次(23:10 启动)完成 7.1 SKU/商品 条码录入+扫码建档（阶段7 详细设计）：后端 SkuBarcode 多码模型(prisma generate)+common/barcode/barcode.util.ts 校验位算法(EAN-13/UPC-A·warn不拦截)；CatalogService 增 lookupByBarcode/listBarcodes/addBarcode(主码与多码互斥去重→SKU_BARCODE_DUPLICATE)/deleteBarcode/setMainBarcode(事务:旧主码降级为alt+回写Sku.barcode)；CatalogController 5 端点；SkuResponseDto 增 barcodeCheckWarning；单测 12 例。前端 CatalogView 重写(SKU列表条码列+扫码定位+条码编辑对话框:主码输入/扫一下/EAN-13·UPC-A校验提示/批量连扫建档/多码表格设主码·删除)、catalog.ts 增类型接口、mock-data 同口径+localStorage 覆盖层(dso.sku-barcodes-v1)、AppIcon 增 scan 图标；演示/正式双路通。质量门禁 server tsc✅/eslint --max-warnings 0✅/jest 350 passed/50 suites；web vue-tsc✅/eslint✅/vite build✅。下一步 7.2 采购单收货标签打印(Code128)+修 scan-rules CG 号段正则 bug。",
   "batch_2026_10_29": "2026-10-29 夜间批次(23:10 启动)完成 7.2 采购单收货标签打印(Code128) + 7.3 PDA 原生壳，阶段7(M7 条码介质与终端接入)全部收口，方案 v1.5 主线任务全部完成(60 任务/59 完成/1 跳过1.8 superseded/98.3%)。7.2：零依赖 Code128B 编码器 web/src/utils/code128.ts(临时断言脚本 scripts/verify-code128.mts 全绿)+GET /purchase-orders/:id/label-data+PATCH boxCount+scan-rules 补/^CG\\d{8}-\\d{3,6}$/i+PurchaseOrderView 收货标签对话框(A4三列/热敏100x100,window.print 隐藏框架)；7.3：pda-shell/ Android 源码工程(MainActivity.kt+ScanReceiver.kt+Gradle+README,本机无 Android SDK 不出 APK)+TransferView 暴露 window.__onScan 桥接+「PDA/数据终端接入」区块+AppIcon copy 图标。质量门禁:server tsc✅/eslint✅/jest 378/52 suites;web vue-tsc✅/eslint✅/vite build✅;progress:gen 60任务/59完成。下一步(方案主线收口后):真实平台凭证工厂化接入(淘宝TOP/抖音开放平台/云途·DHL·4PX·燕文联调,标注TODO)+本机PG端到端验证+§31收尾文档。",
-  "next_focus": "方案v1.5主线任务已全部收口(M0-M7)。剩余三项非计划表任务：①真实平台凭证工厂化接入（淘宝TOP/抖音开放平台/云途·DHL·4PX·燕文 联调，标注TODO）；②本机PG端到端验证（沙箱无Docker，需用户按README起库）；③§31收尾文档与回归。",
-  "updated_at": "2026-10-29T23:50:00Z"
+  "batch_2026_10_29_b": "2026-10-29 夜间续跑(主线收口后增强)完成 8.1 平台凭证工厂化接入（基础）：统一凭证契约(淘宝TOP/抖音开放平台/云途/DHL/4PX/燕文)+加密落库(§17.2 AES-256-GCM 不存明文)+端口/适配器存储(InMemory，Prisma持久化TODO)+平台→适配器工厂(真实API联调TODO)；新增 platform-credentials 模块并注册 AppModule；9 单测全绿；全仓 jest 372/52。另做 §31 回归：server tsc/eslint/jest + web eslint/vue-tsc/vite build 全绿。progress:gen 61任务/60完成/1跳过(1.8)。下一步 8.2 平台凭证管理 UI + 真实API联调桥接。",
+  "next_focus": "主线(v1.5)已收口(M0-M7)。剩余：①8.2 平台凭证管理 UI(录入/查看/轮转+菜单路由+演示正式双路)+真实API联调桥接承运商/渠道注册表(TODO落地)；②本机PG端到端验证(沙箱无Docker，需用户按README起库)；③§31收尾文档(§31 回归已做，文档更新持续)。",
+  "updated_at": "2026-10-30T00:05:00Z"
 }

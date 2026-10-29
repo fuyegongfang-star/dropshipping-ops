@@ -526,3 +526,27 @@
 - 「开发进度」页与仪表盘「最近交付能力」卡片可见 7.1/7.2/7.3 三条目。
 
 **下一步（方案主线已收口，剩余三项非计划表任务）**：① 真实平台凭证工厂化接入（淘宝 TOP / 抖音开放平台 / 云途·DHL·4PX·燕文 联调，标注 TODO）；② 本机 PG 端到端验证（沙箱无 Docker，需用户按 README 起库）；③ §31 收尾文档与回归。次日若启动将从此三项中推进。
+
+---
+
+## 2026-10-29 夜间续跑（主线收口后增强 · 平台凭证工厂化 NEXT-1）
+
+**完成（✅）**：
+- **8.1 平台凭证工厂化接入（基础）**：从 `state.json` 的 `next_focus` 取首项「真实平台凭证工厂化接入」开工，先落地可测试、可扩展的基础层（真实 API 联调明确标注 TODO，不伪造已联调）。
+  - 统一凭证契约 `web`? 不——`server/src/modules/platform-credentials/platform-credentials.constants.ts`：平台枚举（淘宝/抖音/云途/DHL/4PX/燕文/Mock）+ 鉴权方式 + 各平台结构化凭证接口 + `PLATFORM_META` 元信息表。
+  - 加密落库 `platform-credential.service.ts`：必填校验 → JSON 序列化 → 经既有 `SecretEncryptionService`（§17.2 AES-256-GCM）加密存储，**明文绝不入库**；缺凭证抛 `PLATFORM_CREDENTIAL_MISSING`、必填缺失抛 `PLATFORM_CREDENTIAL_INCOMPLETE`。
+  - 端口/适配器存储 `credential-store.port.ts`：定义 `CredentialStorePort`（介质无关）+ `InMemoryCredentialStore`（演示/单测用）；真实 Prisma 持久化 TODO。
+  - 平台→适配器工厂 `platform-adapter.factory.ts`：`describe` / `createClientConfig`（补全默认网关）/ `resolveAdapter`（产 `scaffold-todo` 描述符，真实适配器桥接 TODO）。
+  - 装配：新增 `platform-credentials.module.ts` 并注册 `AppModule`；纯新增模块，不改动既有模块/测试。
+- **§31 回归认证**：对整仓重跑质量门禁，v1.5 全量交付物全绿（server tsc/eslint/jest + web eslint/vue-tsc/vite build）。
+- `scripts/gen-progress.cjs` 适配「显式 null 路由」（纯后端能力不在 /progress 错链到无关页面），`EXPLICIT_ROUTES` 补 `8.1→null`。
+
+**质量门禁**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**372 passed / 52 suites**，新增 9 例全绿）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅ ｜ `progress:gen` 61 任务 / 60 完成 / 1 跳过（1.8 superseded）。
+
+**诚实备注**：① 凭证存储当前为内存实现（进程级），生产前必须补 Prisma 持久化；② 各平台真实 API 联调均标注 TODO，未发起真实请求；③ 本机 PG 端到端验证仍需用户按 README 起库（沙箱无 Docker）；④ 前序批次摘要误报 jest 为 378/52，实测为 363/51，本次以重跑实测 372/52（含 8.1 新增 9 例）为准。
+
+**明天打开网页能看到什么（开发进度 /progress）**：
+- 「开发进度」页任务总数 61、完成 60（98.4%），最近交付能力卡片可见 7.1/7.2/7.3/8.1；8.1 为纯后端基础（route=null，标注「无 UI 直达入口，真实 API 联调待 8.2」）。
+- 业务侧无新增页面（8.1 为后端基础层），7.2/7.3 的可视化载体（采购单收货标签打印、PDA 桥接区块）仍是本次睡前可见的主要新界面。
+
+**下一步**：8.2 平台凭证管理 UI（凭证录入/查看/轮转页 + 菜单/路由 + 演示/正式双路）+ 真实 API 联调桥接承运商/渠道注册表（TODO 落地）；或先补 Prisma 持久化。

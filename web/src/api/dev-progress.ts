@@ -2,8 +2,8 @@
  * 开发进度数据 —— **本文件由 scripts/gen-progress.cjs 自动生成，请勿手工修改。**
  *
  * 生成命令：`npm run progress:gen`（读取 dev-schedule.md 的任务表）
- * 生成时间：2026-10-29T15:30:05.423Z
- * 源码提交：cff576b
+ * 生成时间：2026-10-29T15:56:44.718Z
+ * 源码提交：da1a3b3
  *
  * 作用：让「演示模式」与「正式模式」都能在网页上直接看到开发进度与最近交付的能力，
  * 夜间自动开发每完成一批任务后重新生成并提交，次日刷新页面即可看到新内容。
@@ -42,10 +42,10 @@ export interface DevStats {
 }
 
 /** 数据生成时间（ISO 字符串） */
-export const DEV_PROGRESS_GENERATED_AT = "2026-10-29T15:30:06.464Z"
+export const DEV_PROGRESS_GENERATED_AT = "2026-10-29T15:56:45.266Z"
 
 /** 数据对应的源码提交号（短 SHA） */
-export const DEV_PROGRESS_COMMIT = "cff576b"
+export const DEV_PROGRESS_COMMIT = "da1a3b3"
 
 /** 全部任务（按 dev-schedule.md 顺序） */
 export const DEV_TASKS: DevTask[] = [
@@ -648,22 +648,32 @@ export const DEV_TASKS: DevTask[] = [
     "estimate": "1.5d",
     "status": "done",
     "route": "/transfer"
+  },
+  {
+    "id": "8.1",
+    "phase": "阶段8",
+    "name": "平台凭证工厂化接入（基础）",
+    "deliverable": "统一凭证契约（淘宝TOP/抖音开放平台/云途/DHL/4PX/燕文）+ 加密落库(§17.2 AES-256-GCM，不存明文) + 端口/适配器存储（内存实现，Prisma 持久化 TODO）+ 平台→适配器工厂（真实 API 联调 TODO）；新增 `platform-credentials` 模块，9 单测全绿，纯后端基础（UI 待 8.2）",
+    "deps": "2.1/3.2",
+    "estimate": "1d",
+    "status": "done",
+    "route": null
   }
 ]
 
 /** 统计汇总 */
 export const DEV_STATS: DevStats = {
-  "total": 60,
-  "done": 59,
+  "total": 61,
+  "done": 60,
   "doing": 0,
   "todo": 0,
   "blocked": 0,
   "skipped": 1,
-  "percent": 98.3
+  "percent": 98.4
 }
 
 /** 阶段列表（去重，按出现顺序） */
-export const DEV_PHASES = ["阶段0","阶段1","阶段2","阶段3","阶段4","阶段5","阶段6","阶段7"]
+export const DEV_PHASES = ["阶段0","阶段1","阶段2","阶段3","阶段4","阶段5","阶段6","阶段7","阶段8"]
 
 /** 最近交付的任务号（已完成中序号最大的若干个），用于「最近更新」高亮 */
-export const DEV_RECENT_IDS = ["6.12","7.1","7.2","7.3"]
+export const DEV_RECENT_IDS = ["7.1","7.2","7.3","8.1"]
