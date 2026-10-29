@@ -28,6 +28,8 @@ export interface PurchaseOrder {
   purchaseUrl?: string | null
   productImages: string[]
   remark?: string | null
+  /** 收货标签箱数（7.2 供应商贴箱 → 中转仓一枪到货；A4/热敏打印拼版用） */
+  boxCount: number
   status: PurchaseOrderStatus
   createdAt: string
   updatedAt: string
@@ -64,6 +66,20 @@ export interface CreatePurchaseOrderPayload {
   items: PurchaseOrderItemInput[]
 }
 
+/** 收货标签数据（7.2 供应商贴箱 → 中转仓一枪到货） */
+export interface PurchaseOrderLabelData {
+  purchaseNo: string
+  carrier?: string
+  trackingNo?: string
+  /** 采购链接（作为溯源/供应商信息展示） */
+  supplier?: string | null
+  items: { skuCode: string; productName: string; quantity: number }[]
+  remark?: string | null
+  boxCount: number
+  /** 打印时间（ISO 字符串），由服务端生成 */
+  printedAt: string
+}
+
 export const purchaseOrderApi = {
   list: (params?: { status?: string; shopId?: string; orderId?: string }) => {
     const q = new URLSearchParams()
@@ -76,6 +92,11 @@ export const purchaseOrderApi = {
   create: (payload: CreatePurchaseOrderPayload) => http.post<PurchaseOrder>('/purchase-orders', payload),
   updateStatus: (id: string, status: PurchaseOrderStatus) =>
     http.patch<PurchaseOrder>(`/purchase-orders/${id}/status`, { status }),
+  // 7.2 收货标签：标签数据 + 更新箱数
+  getLabelData: (id: string) =>
+    http.get<PurchaseOrderLabelData>(`/purchase-orders/${id}/label-data`),
+  updateBoxCount: (id: string, boxCount: number) =>
+    http.patch<PurchaseOrder>(`/purchase-orders/${id}`, { boxCount }),
   // 6.4 匹配 / 关联
   candidates: (id: string) =>
     http.get<PurchaseOrderCandidate[]>(`/purchase-orders/${id}/candidates`),

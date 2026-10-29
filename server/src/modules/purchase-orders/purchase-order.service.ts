@@ -258,4 +258,47 @@ export class PurchaseOrderService {
       include: { items: true },
     })
   }
+
+  // ===== 7.2 收货标签打印 =====
+
+  /**
+   * 收货标签数据：供应商贴箱 → 中转仓扫码到货（6.6）所需全部信息。
+   * - 行项 skuCode 优先取内部 SKU 编码（Sku.code），缺 skuId 时回退内部 id，再回退 '-'；
+   * - supplier 取采购链接（purchaseUrl）作为溯源信息，可能为空；
+   * - printedAt 为服务端当前时间（ISO），供前端打印时间展示。
+   */
+  async getLabelData(tenantId: string, id: string) {
+    const po = await this.getById(tenantId, id)
+    const skuIds = po.items.map((i) => i.skuId).filter(Boolean) as string[]
+    const skuMap = skuIds.length
+      ? new Map(
+          (await this.prisma.sku.findMany({ where: { id: { in: skuIds } } })).map((s) => [s.id, s.code]),
+        )
+      : new Map<string, string>()
+    const items = po.items.map((it) => ({
+      skuCode: (it.skuId && skuMap.get(it.skuId)) || it.skuId || '-',
+      productName: it.productName,
+      quantity: it.quantity,
+    }))
+    return {
+      purchaseNo: po.purchaseNo ?? '',
+      carrier: po.carrier,
+      trackingNo: po.trackingNo,
+      supplier: po.purchaseUrl ?? null,
+      items,
+      remark: po.remark ?? null,
+      boxCount: po.boxCount,
+      printedAt: new Date().toISOString(),
+    }
+  }
+
+  /** 更新收货标签箱数（仅此字段，租户隔离校验后落库）。 */
+  async updateBoxCount(tenantId: string, id: string, boxCount: number) {
+    await this.getById(tenantId, id) // 租户隔离校验（跨租户/缺失抛 404）
+    return this.prisma.purchaseOrder.update({
+      where: { id },
+      data: { boxCount },
+      include: { items: true },
+    })
+  }
 }

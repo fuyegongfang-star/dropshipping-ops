@@ -22,7 +22,10 @@ interface ScanRule {
 /** 采购单号：内部单号（po_/PO-）或业务前缀（CG=采购） */
 const PURCHASE_NO_RULES: ScanRule[] = [
   { kind: 'purchaseNo', label: '内部采购单号', test: /^po[_-]/i },
-  { kind: 'purchaseNo', label: '采购单号', test: /^CG\d{6,}$/i },
+  // 7.2 修复：实际生成格式为 CG + 年月日(8) + 连字符 + 当日流水(3-6)，如 CG20261028-0001
+  { kind: 'purchaseNo', label: '采购单号', test: /^CG\d{8}-\d{3,6}$/i },
+  // 兜底：保留旧号段规则（仅纯数字后缀，无连字符），覆盖历史/特殊录入
+  { kind: 'purchaseNo', label: '采购单号(旧号段)', test: /^CG\d{6,}$/i },
 ]
 
 /** 快递单号：字母前缀优先（顺丰/圆通/中通/申通/韵达/EMS/京东 …） */

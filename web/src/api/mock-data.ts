@@ -70,6 +70,8 @@ export interface MockPurchaseOrder {
   purchaseUrl: string | null
   productImages: string[]
   remark: string | null
+  /** 收货标签箱数（7.2 供应商贴箱 → 中转仓一枪到货） */
+  boxCount: number
   status: string
   createdAt: string
   updatedAt: string
@@ -179,7 +181,7 @@ const purchaseOrders: MockPurchaseOrder[] = [
   {
     id: 'po_demo_1', tenantId: TENANT_ID, shopId: 's_shopify', orderId: null, trackingNo: 'SF1234567890', purchaseNo: 'CG20261023-0001',
     carrier: '顺丰速运', platformOrderNo: 'SO-10001', recipientName: 'John Doe', purchaseUrl: 'https://item.demo.com/p/earbud',
-    productImages: ['https://img.demo.com/earbud.jpg'], remark: '首批蓝牙耳机采购（与 SO-10001 自动命中）', status: 'pending',
+    productImages: ['https://img.demo.com/earbud.jpg'], remark: '首批蓝牙耳机采购（与 SO-10001 自动命中）', boxCount: 2, status: 'pending',
     createdAt: '2026-10-23T09:00:00.000Z', updatedAt: '2026-10-23T09:00:00.000Z',
     items: [
       { id: 'poi_1', purchaseOrderId: 'po_demo_1', skuId: 'sk1', productName: '无线蓝牙耳机 Pro', quantity: 30, imageUrl: 'https://img.demo.com/earbud.jpg', unitPrice: 68, createdAt: '2026-10-23T09:00:00.000Z' },
@@ -188,7 +190,7 @@ const purchaseOrders: MockPurchaseOrder[] = [
   {
     id: 'po_demo_2', tenantId: TENANT_ID, shopId: 's_amazon', orderId: null, trackingNo: 'YT9876543210', purchaseNo: 'CG20261023-0002',
     carrier: '圆通速递', platformOrderNo: null, recipientName: null, purchaseUrl: 'https://item.demo.com/p/case',
-    productImages: ['https://img.demo.com/case.jpg'], remark: null, status: 'arrived',
+    productImages: ['https://img.demo.com/case.jpg'], remark: null, boxCount: 1, status: 'arrived',
     createdAt: '2026-10-23T10:30:00.000Z', updatedAt: '2026-10-24T08:00:00.000Z',
     items: [
       { id: 'poi_2', purchaseOrderId: 'po_demo_2', skuId: null, productName: '手机壳', quantity: 100, imageUrl: 'https://img.demo.com/case.jpg', unitPrice: 5, createdAt: '2026-10-23T10:30:00.000Z' },
@@ -198,7 +200,7 @@ const purchaseOrders: MockPurchaseOrder[] = [
   {
     id: 'po_pack_1', tenantId: TENANT_ID, shopId: 's_shopify', orderId: 'o1', trackingNo: 'PACK-SF001', purchaseNo: 'CG20261025-0001',
     carrier: '顺丰速运', platformOrderNo: 'SO-10001', recipientName: 'John Doe', purchaseUrl: 'https://item.demo.com/p/earbud',
-    productImages: ['https://img.demo.com/earbud.jpg'], remark: '蓝牙耳机到仓，已匹配 SO-10001', status: 'matched',
+    productImages: ['https://img.demo.com/earbud.jpg'], remark: '蓝牙耳机到仓，已匹配 SO-10001', boxCount: 1, status: 'matched',
     createdAt: '2026-10-25T09:00:00.000Z', updatedAt: '2026-10-25T09:00:00.000Z',
     items: [
       { id: 'poi_p1', purchaseOrderId: 'po_pack_1', skuId: 'sk1', productName: '无线蓝牙耳机 Pro', quantity: 2, imageUrl: 'https://img.demo.com/earbud.jpg', unitPrice: 68, createdAt: '2026-10-25T09:00:00.000Z' },
@@ -207,7 +209,7 @@ const purchaseOrders: MockPurchaseOrder[] = [
   {
     id: 'po_pack_2', tenantId: TENANT_ID, shopId: 's_shopify', orderId: 'o2', trackingNo: 'PACK-YT002', purchaseNo: 'CG20261025-0002',
     carrier: '圆通速递', platformOrderNo: 'SO-10002', recipientName: 'Jane Smith', purchaseUrl: 'https://item.demo.com/p/power',
-    productImages: ['https://img.demo.com/power.jpg'], remark: '充电宝到仓，已匹配 SO-10002（数量不符演示）', status: 'matched',
+    productImages: ['https://img.demo.com/power.jpg'], remark: '充电宝到仓，已匹配 SO-10002（数量不符演示）', boxCount: 3, status: 'matched',
     createdAt: '2026-10-25T10:00:00.000Z', updatedAt: '2026-10-25T10:00:00.000Z',
     items: [
       { id: 'poi_p2', purchaseOrderId: 'po_pack_2', skuId: 'sk2', productName: '便携充电宝 20000mAh', quantity: 3, imageUrl: 'https://img.demo.com/power.jpg', unitPrice: 99, createdAt: '2026-10-25T10:00:00.000Z' },
@@ -2413,6 +2415,7 @@ export function doCreatePurchaseOrder(body: {
     purchaseUrl: body.purchaseUrl ?? null,
     productImages: body.productImages ?? [],
     remark: body.remark ?? null,
+    boxCount: 1, // 7.2 收货标签默认 1 箱，打印前可在标签对话框调整
     status: 'pending',
     createdAt: now,
     updatedAt: now,
@@ -2518,6 +2521,49 @@ export function doUnlink(id: string): MockPurchaseOrder {
   const po = getPo(id)
   if (!po) throw new Error('采购单不存在')
   po.orderId = null
+  po.updatedAt = NOW()
+  return { ...po, items: po.items.map((i) => ({ ...i })) }
+}
+
+// ===== 7.2 收货标签打印 =====
+
+/** 收货标签数据（演示态：与后端 getLabelData 同口径）。 */
+export function doGetLabelData(id: string): {
+  purchaseNo: string
+  carrier?: string
+  trackingNo?: string
+  supplier?: string | null
+  items: { skuCode: string; productName: string; quantity: number }[]
+  remark?: string | null
+  boxCount: number
+  printedAt: string
+} {
+  const po = getPo(id)
+  if (!po) throw new Error('采购单不存在')
+  // 行项 skuCode 优先取内部 SKU 编码（skus.code），缺 skuId 时回退内部 id，再回退 '-'
+  const skuMap = new Map(skus.filter((s) => po.items.some((i) => i.skuId === s.id)).map((s) => [s.id, s.code]))
+  const items = po.items.map((it) => ({
+    skuCode: (it.skuId && skuMap.get(it.skuId)) || it.skuId || '-',
+    productName: it.productName,
+    quantity: it.quantity,
+  }))
+  return {
+    purchaseNo: po.purchaseNo ?? '',
+    carrier: po.carrier,
+    trackingNo: po.trackingNo,
+    supplier: po.purchaseUrl ?? null,
+    items,
+    remark: po.remark ?? null,
+    boxCount: po.boxCount,
+    printedAt: NOW(),
+  }
+}
+
+/** 更新收货标签箱数（演示态：落内存，A4/热敏拼版用）。 */
+export function doUpdateBoxCount(id: string, boxCount: number): MockPurchaseOrder {
+  const po = getPo(id)
+  if (!po) throw new Error('采购单不存在')
+  po.boxCount = boxCount
   po.updatedAt = NOW()
   return { ...po, items: po.items.map((i) => ({ ...i })) }
 }

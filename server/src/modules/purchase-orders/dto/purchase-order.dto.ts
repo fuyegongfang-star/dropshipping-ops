@@ -14,6 +14,7 @@ import {
   IsString,
   IsUrl,
   MaxLength,
+  Max,
   Min,
   ValidateNested,
 } from 'class-validator'
@@ -103,6 +104,14 @@ export class CreatePurchaseOrderDto {
   @ValidateNested({ each: true })
   @Type(() => PurchaseOrderItemDto)
   items: PurchaseOrderItemDto[] // 至少 1 行（由服务层校验）
+}
+
+/** 更新收货标签箱数（7.2 供应商贴箱 → 中转仓一枪到货） */
+export class UpdatePurchaseOrderBoxCountDto {
+  @IsInt()
+  @Min(1)
+  @Max(9999)
+  boxCount: number // 收货标签箱数（≥1，≤9999，防异常值）
 }
 
 /** 更新采购单状态请求体 */

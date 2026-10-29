@@ -28,10 +28,13 @@ function makeFakePrisma() {
     // 6.4 匹配测试数据：平台单号 P001 + SKU sku_a 命中 o_1
     {
       id: 'po_3', tenantId: 't_demo', shopId: 's_1', orderId: null, trackingNo: 'JD777',
-      carrier: '京东', platformOrderNo: 'P001', recipientName: '张三', purchaseUrl: null, productImages: [], remark: null,
-      status: 'pending', createdAt: new Date('2026-10-24T02:00:00Z'), updatedAt: new Date('2026-10-24T02:00:00Z'),
+      carrier: '京东', platformOrderNo: 'P001', recipientName: '张三', purchaseUrl: 'https://supplier.example/x', productImages: [], remark: '易碎请轻放',
+      status: 'pending', boxCount: 3, createdAt: new Date('2026-10-24T02:00:00Z'), updatedAt: new Date('2026-10-24T02:00:00Z'),
       items: [{ id: 'pi_3', purchaseOrderId: 'po_3', skuId: 'sku_a', productName: '数据线', quantity: 1, imageUrl: null, unitPrice: '5.00', createdAt: new Date() }],
     },
+  ]
+  const sku: any[] = [
+    { id: 'sku_a', tenantId: 't_demo', code: 'SKU-A', productId: 'p_1' },
   ]
   const order: any[] = [
     {
@@ -94,6 +97,12 @@ function makeFakePrisma() {
           return items.filter((it: any) => ids.includes(it.orderId))
         }
         return items
+      }),
+    },
+    sku: {
+      findMany: jest.fn(({ where }: any) => {
+        const ids = Array.isArray(where?.id?.in) ? where.id.in : []
+        return sku.filter((s) => ids.includes(s.id))
       }),
     },
   }
@@ -217,5 +226,40 @@ describe('PurchaseOrderService (6.4 匹配/关联)', () => {
     const list = await svc.listByOrder('t_demo', 'o_1')
     expect(list.length).toBe(1)
     expect(list[0].id).toBe('po_1')
+  })
+})
+
+describe('PurchaseOrderService (7.2 收货标签打印)', () => {
+  let svc: PurchaseOrderService
+
+  beforeEach(() => {
+    svc = new PurchaseOrderService(makeFakePrisma() as any)
+  })
+
+  it('getLabelData 返回标签所需全部字段并解析 SKU 编码', async () => {
+    const data = await svc.getLabelData('t_demo', 'po_3')
+    expect(data.purchaseNo).toBe('') // 种子 po_3 无业务单号
+    expect(data.carrier).toBe('京东')
+    expect(data.trackingNo).toBe('JD777')
+    expect(data.supplier).toBe('https://supplier.example/x')
+    expect(data.remark).toBe('易碎请轻放')
+    expect(data.boxCount).toBe(3)
+    expect(typeof data.printedAt).toBe('string')
+    expect(data.items.length).toBe(1)
+    // skuId=sku_a 应解析为内部 SKU 编码 SKU-A
+    expect(data.items[0]).toEqual({ skuCode: 'SKU-A', productName: '数据线', quantity: 1 })
+  })
+
+  it('getLabelData 跨租户 → 404 越权', async () => {
+    await expect(svc.getLabelData('t_acme', 'po_3')).rejects.toThrow(BusinessException)
+  })
+
+  it('updateBoxCount 落库箱数', async () => {
+    const r = await svc.updateBoxCount('t_demo', 'po_3', 5)
+    expect(r.boxCount).toBe(5)
+  })
+
+  it('updateBoxCount 跨租户 → 404 越权', async () => {
+    await expect(svc.updateBoxCount('t_acme', 'po_3', 5)).rejects.toThrow(BusinessException)
   })
 })

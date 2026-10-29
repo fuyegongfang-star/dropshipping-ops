@@ -14,6 +14,7 @@ import { PurchaseOrderService } from './purchase-order.service'
 import {
   CreatePurchaseOrderDto,
   LinkPurchaseOrderDto,
+  UpdatePurchaseOrderBoxCountDto,
   UpdatePurchaseOrderStatusDto,
 } from './dto/purchase-order.dto'
 
@@ -57,6 +58,18 @@ export class PurchaseOrderController {
       throw new BusinessException('TENANT_REQUIRED', '缺少租户上下文', HttpStatus.BAD_REQUEST)
     }
     return ok(await this.svc.getById(tenantId, id))
+  }
+
+  /** 7.2 收货标签数据：供应商贴箱 → 中转仓一枪到货（含箱数、行项 SKU/品名/数量） */
+  @Get(':id/label-data')
+  async labelData(
+    @TenantId() tenantId: string,
+    @Param('id') id: string,
+  ): Promise<ApiResponse<unknown>> {
+    if (!tenantId) {
+      throw new BusinessException('TENANT_REQUIRED', '缺少租户上下文', HttpStatus.BAD_REQUEST)
+    }
+    return ok(await this.svc.getLabelData(tenantId, id))
   }
 
   /** 新增采购单（含行项，租户隔离） */
@@ -119,5 +132,18 @@ export class PurchaseOrderController {
       throw new BusinessException('TENANT_REQUIRED', '缺少租户上下文', HttpStatus.BAD_REQUEST)
     }
     return ok(await this.svc.updateStatus(tenantId, id, dto), '采购单状态已更新')
+  }
+
+  /** 7.2 更新收货标签箱数（供应商贴箱数，A4/热敏拼版用） */
+  @Patch(':id')
+  async updateBoxCount(
+    @TenantId() tenantId: string,
+    @Param('id') id: string,
+    @Body() dto: UpdatePurchaseOrderBoxCountDto,
+  ): Promise<ApiResponse<unknown>> {
+    if (!tenantId) {
+      throw new BusinessException('TENANT_REQUIRED', '缺少租户上下文', HttpStatus.BAD_REQUEST)
+    }
+    return ok(await this.svc.updateBoxCount(tenantId, id, dto.boxCount), '收货标签箱数已更新')
   }
 }

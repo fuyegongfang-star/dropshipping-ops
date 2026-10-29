@@ -87,7 +87,7 @@
 | 6.11 | 阶段6 | 仓库/货架补齐 + 采购产品图 | ①新建仓库加「中转仓（货代）」类型，创建后自动进中转仓看板；②新增「货架/库位」页签：库位编码（区-架-层）+库区+占用(SKU/数量)+建/删(空库位) ；库存/占用一律显示人类可读编码而非内部 ID；③OrderItem 增 imageUrl，采购单关联订单即自动拉取商品主图；④产品图支持本地上传（多图、等比压缩、可填地址） | 6.5/6.10 | 0.5d | ✅ |
 | 6.12 | 阶段6 | 扫码枪/PDA 设备无关接入 | ①新增扫码输入层 useScannerInput：全局键盘钩子识别 HID 键盘模拟扫码枪（击键间隔判定，与人工打字区分），结束符/自动提交/前后缀剥离/提示音可配；②新增条码规则引擎 scan-rules.ts：按号段判定快递单号/商品条码/采购单号，扫描 API 支持 scanType=auto（查询优先+号段兜底）；③修复 6.6 条码分支误用 skuId(cuid) 导致扫码必然落空的 bug，改走 Sku.barcode；④采购单新增可扫业务单号 purchaseNo（CGyyyymmdd-nnnn，自动生成）；⑤中转仓扫码弹窗升级为连续扫作业台：扫即提交、流水逐条追加、成功/失败音与统计 | 6.6 | 0.5d | ✅ |
 | 7.1 | 阶段7 | SKU/商品 条码录入 + 扫码建档 | Sku.barcode 录入入口（SKU 编辑可填可「扫一下」录入、多码管理、列表条码列 + 扫条码反查定位、批量连扫建档）；后端条码查重/反查接口；演示侧条码改动持久化 | 1.7/6.12 | 1d | ✅ |
-| 7.2 | 阶段7 | 采购单收货标签打印（Code128） | 标签数据接口 + 零依赖 Code128B 编码器 + A4 三列拼版/热敏 100×100 打印页（供应商贴箱 → 中转仓一枪到货）；顺带修正 CG 号段正则漏了连字符导致 `CG20261028-0001` 识别为未识别号段的 bug | 6.2/6.12 | 1d | ⬜ |
+| 7.2 | 阶段7 | 采购单收货标签打印（Code128） | 标签数据接口 + 零依赖 Code128B 编码器 + A4 三列拼版/热敏 100×100 打印页（供应商贴箱 → 中转仓一枪到货）；顺带修正 CG 号段正则漏了连字符导致 `CG20261028-0001` 识别为未识别号段的 bug | 6.2/6.12 | 1d | ✅ |
 | 7.3 | 阶段7 | PDA 原生壳（Android WebView + DataWedge） | `pda-shell/` Android 源码工程：全屏 WebView + DataWedge/Honeywell Intent 收码 + 蜂鸣震动 + 常亮 + 侧键触发 + 离线队列补扫；页面侧暴露 `window.__onScan` 桥接；设备接入指引落中转仓「扫码设备设置」弹窗 | 6.12 | 1.5d | ⬜ |
 
 > 阶段7 执行顺序建议：**7.1 → 7.2 → 7.3**。7.1 是数据地基（没条码，②贴出去的箱码与 Sku.barcode 之间没有可用映射），7.2 把条码落到物理介质（仓库才有东西可扫），7.3 是终端形态升级且依赖外部工具链（Android Gradle），放最后。
@@ -710,3 +710,12 @@
 - **前端**：`CatalogView` 重写——SKU 列表「商品条码」列（`+N` 多码徽章）、「扫码定位」工具栏按钮（复用 `useScannerInput`）、「条码」操作按钮开编辑对话框（主码输入 + 「扫一下」+ EAN-13/UPC-A 校验位提示 + 「批量扫码建档」连续扫 + 多码表格「设为主码/删除」）；`catalog.ts` 增类型与接口；`mock-data.ts` 同口径内存实现且条码变更落 `localStorage` 覆盖层（`dso.sku-barcodes-v1`），刷新后仍在；`AppIcon` 增 `scan` 图标。演示/正式双路通。
 - **质量门禁**：server tsc✅ / eslint --max-warnings 0✅ / jest **350 passed / 50 suites**；web vue-tsc✅ / eslint✅ / vite build✅。
 - **下一步**：7.2 采购单收货标签打印（Code128）+ 修 scan-rules CG 号段正则 bug。
+
+#### 7.2 采购单收货标签打印（Code128）（✅ 完成并验证）
+- **后端**：`PurchaseOrder` 增 `boxCount Int @default(1)`（schema 已落地，prisma client 已 generate）；`PurchaseOrderService.getLabelData`（行项 skuCode 优先取 Sku.code、备 purchaseUrl 作为供应商溯源、含 printedAt 服务端时间）/ `updateBoxCount`（仅改箱数 + 租户隔离）；`PurchaseOrderController` 新增 `GET /purchase-orders/:id/label-data` 与 `PATCH /purchase-orders/:id`（改 boxCount）；`UpdatePurchaseOrderBoxCountDto` 校验 1–9999。
+- **Code128B 零依赖编码器**：新增 `web/src/utils/code128.ts`（`code128Values`/`code128Bars`/`code128SvgRects`，StartB=104、加权校验位 mod103、Stop=106 + 2 模块终止条、PATTERNS 标准图案表）；临时断言脚本 `scripts/verify-code128.mts` 验证：① `CODE128` 码值序列与标准一致、② 校验位算法正确、③ 中文/不可打印字符抛明确错误 —— **全部断言通过**。
+- **scan-rules CG 号段修复**：`server/src/modules/transfer/scan-rules.ts` 补 `/^CG\d{8}-\d{3,6}$/i`（覆盖实际 `CG20261028-0001` 格式）+ 旧号段兜底；`scan-rules.spec.ts` 7 例全绿（含新格式/5 位流水/归一化/兜底）。
+- **前端 `PurchaseOrderView`（业务运营 → 采购单管理）**：行操作新增「收货标签」按钮 → 标签预览对话框：纸型切换（A4 三列拼版 / 热敏 100×100mm）、箱数输入（改即落库 `updateBoxCount`）、目的中转仓下拉（本租户 `type=transfer` 仓库，默认首个）、Code128 条码 + 明文 + 供应商 + 行项（>6 折叠「等 N 项」）+ 备注摘要（>40 截断）+ 箱号 `x/N` + 打印时间；`window.print()` + `@media print` 仅保留标签容器（隐藏框架/侧栏/按钮）。`purchase-order.ts` 增 `getLabelData`/`updateBoxCount`，`mock-data.ts` 同口径 `doGetLabelData`/`doUpdateBoxCount`（演示+正式双路通）。
+- **质量门禁**：server tsc✅ / eslint --max-warnings 0✅ / jest **378 passed / 52 suites**（scan-rules 7 + purchase-order 全量）；web vue-tsc✅ / eslint✅ / vite build✅。
+- **真库提醒**：`boxCount` 字段需在本机 PG 执行 `prisma db push`（演示模式走 mock 不受影响）。
+- **下一步**：7.3 PDA 原生壳（Android WebView + DataWedge）。

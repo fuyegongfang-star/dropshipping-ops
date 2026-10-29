@@ -109,11 +109,16 @@
             <span v-else class="muted">—</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="120">
+        <el-table-column label="操作" width="210">
           <template #default="{ row }">
-            <el-button size="small" type="primary" plain :disabled="!nextStatus(row.status)" @click="advance(row)">
-              推进：{{ nextStatus(row.status) ? statusLabel(nextStatus(row.status)!) : '已终态' }}
-            </el-button>
+            <div class="ops">
+              <el-button size="small" type="primary" plain :disabled="!nextStatus(row.status)" @click="advance(row)">
+                推进：{{ nextStatus(row.status) ? statusLabel(nextStatus(row.status)!) : '已终态' }}
+              </el-button>
+              <el-button size="small" @click="openLabel(row)">
+                <AppIcon name="print" :size="14" class="btn-ico" />收货标签
+              </el-button>
+            </div>
           </template>
         </el-table-column>
 
@@ -281,15 +286,80 @@
         <el-button type="success" :disabled="!linkOrderId" @click="manualLink">关联所选订单</el-button>
       </template>
     </el-dialog>
+
+    <!-- 7.2 收货标签打印（Code128 · 供应商贴箱 → 中转仓一枪到货） -->
+    <el-dialog v-model="labelVisible" title="采购单收货标签" width="880px" @closed="onLabelClosed">
+      <div v-loading="labelLoading" class="label-config">
+        <div class="label-config-row">
+          <span class="cfg-label">纸型</span>
+          <el-radio-group v-model="paperType">
+            <el-radio-button value="a4">A4 三列拼版（普通打印机）</el-radio-button>
+            <el-radio-button value="thermal">热敏 100×100mm（标签机）</el-radio-button>
+          </el-radio-group>
+        </div>
+        <div class="label-config-row">
+          <span class="cfg-label">箱数</span>
+          <el-input-number v-model="boxCount" :min="1" :max="999" @change="persistBoxCount" />
+          <span class="cfg-hint">供应商按箱贴标，仓库按箱扫码到货（6.6 扫码入库）</span>
+        </div>
+        <div class="label-config-row">
+          <span class="cfg-label">目的中转仓</span>
+          <el-select v-model="targetWarehouseId" placeholder="选择中转仓" style="width: 280px">
+            <el-option v-for="w in transferWarehouses" :key="w.id" :label="w.name" :value="w.id" />
+          </el-select>
+          <span v-if="!transferWarehouses.length" class="cfg-hint">本租户暂无 type=transfer 仓库</span>
+        </div>
+      </div>
+
+      <!-- 预览即打印区：屏幕预览与打印共用同一容器（@media print 只保留本区域） -->
+      <div class="label-preview" :class="paperType === 'a4' ? 'paper-a4' : 'paper-thermal'">
+        <div v-if="labelData" class="label-print-area">
+          <div v-for="i in boxCount" :key="i" class="label">
+            <div class="label-head">采购收货标签</div>
+            <!-- eslint-disable-next-line vue/no-v-html -->
+            <div class="label-barcode" v-html="barCode(labelData.purchaseNo)" />
+            <div class="label-pno mono">{{ labelData.purchaseNo }}</div>
+            <div class="label-meta">
+              <div class="label-line"><span class="k">供应商</span><span class="v">{{ labelData.supplier || '—' }}</span></div>
+              <div class="label-line"><span class="k">中转仓</span><span class="v">{{ warehouseName }}</span></div>
+            </div>
+            <div class="label-items">
+              <div v-for="(it, idx) in visibleItems" :key="idx" class="label-item">
+                <span class="mono sku">{{ it.skuCode }}</span>
+                <span class="nm">{{ it.productName }}</span>
+                <span class="qty">×{{ it.quantity }}</span>
+              </div>
+              <div v-if="labelData.items.length > 6" class="label-more">等 {{ labelData.items.length - 6 }} 项…</div>
+            </div>
+            <div v-if="remarkShort" class="label-remark">{{ remarkShort }}</div>
+            <div class="label-foot">
+              <span>箱号 {{ i }} / {{ boxCount }}</span>
+              <span>{{ printTime }}</span>
+            </div>
+          </div>
+        </div>
+        <div v-else class="label-empty">加载标签数据中…</div>
+      </div>
+
+      <template #footer>
+        <span class="footer-note">打印仅输出标签，自动隐藏后台框架</span>
+        <el-button @click="labelVisible = false">关闭</el-button>
+        <el-button type="primary" :disabled="!labelData" @click="printLabels">
+          <AppIcon name="print" :size="14" class="btn-ico" />打印标签
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { purchaseOrderApi, type PurchaseOrder, type PurchaseOrderStatus, type PurchaseOrderCandidate } from '@/api/purchase-order'
+import { purchaseOrderApi, type PurchaseOrder, type PurchaseOrderStatus, type PurchaseOrderCandidate, type PurchaseOrderLabelData } from '@/api/purchase-order'
 import { catalogApi, type Sku } from '@/api/catalog'
 import { ordersApi, ORDER_STATUS_LABELS, type Order } from '@/api/orders'
+import { wmsApi, type WarehouseDto } from '@/api/wms'
+import { code128SvgRects } from '@/utils/code128'
 import { money } from '@/locales'
 import PageHeader from '@/components/PageHeader.vue'
 import AppIcon from '@/components/AppIcon.vue'
@@ -648,6 +718,82 @@ async function unlink(): Promise<void> {
   }
 }
 
+// ===== 7.2 收货标签打印（Code128 · 供应商贴箱 → 中转仓一枪到货）=====
+const labelVisible = ref(false)
+const labelLoading = ref(false)
+const labelTarget = ref<PurchaseOrder | null>(null)
+const labelData = ref<PurchaseOrderLabelData | null>(null)
+const paperType = ref<'a4' | 'thermal'>('a4')
+const boxCount = ref(1)
+const targetWarehouseId = ref('')
+const warehouses = ref<WarehouseDto[]>([])
+
+// 本租户 type=transfer 仓库（目的中转仓下拉）
+const transferWarehouses = computed(() => warehouses.value.filter((w) => w.type === 'transfer'))
+const warehouseName = computed(
+  () => transferWarehouses.value.find((w) => w.id === targetWarehouseId.value)?.name || '—',
+)
+// 行项只展示前 6 行，超出折叠为「等 N 项」
+const visibleItems = computed(() => (labelData.value?.items ?? []).slice(0, 6))
+// 作业备注摘要：超 40 字截断
+const remarkShort = computed(() => {
+  const r = labelData.value?.remark
+  if (!r) return ''
+  return r.length > 40 ? r.slice(0, 40) + '…' : r
+})
+const printTime = computed(() => {
+  const t = labelData.value?.printedAt
+  return t ? new Date(t).toLocaleString('zh-CN', { hour12: false }) : ''
+})
+
+/** Code128B 条码 SVG（零依赖自研编码器） */
+function barCode(text: string): string {
+  return code128SvgRects(text, { moduleWidth: 2, height: 54, fontSize: 12, quietZone: 8 })
+}
+
+async function openLabel(row: PurchaseOrder): Promise<void> {
+  labelTarget.value = row
+  labelVisible.value = true
+  labelLoading.value = true
+  labelData.value = null
+  try {
+    const [data, whs] = await Promise.all([
+      purchaseOrderApi.getLabelData(row.id),
+      wmsApi.listWarehouses().catch(() => [] as WarehouseDto[]),
+    ])
+    labelData.value = data
+    boxCount.value = data.boxCount || 1
+    warehouses.value = whs
+    targetWarehouseId.value = whs.find((w) => w.type === 'transfer')?.id ?? ''
+  } catch (e) {
+    ElMessage.error('加载收货标签失败：' + (e as Error).message)
+  } finally {
+    labelLoading.value = false
+  }
+}
+
+/** 箱数变更：落库（演示态写内存 / 正式态 PATCH /purchase-orders/:id），并同步列表行 */
+async function persistBoxCount(): Promise<void> {
+  if (!labelTarget.value) return
+  const n = boxCount.value
+  try {
+    await purchaseOrderApi.updateBoxCount(labelTarget.value.id, n)
+    labelTarget.value.boxCount = n
+  } catch (e) {
+    ElMessage.error('更新箱数失败：' + (e as Error).message)
+  }
+}
+
+function printLabels(): void {
+  if (!labelData.value) return
+  window.print()
+}
+
+function onLabelClosed(): void {
+  labelTarget.value = null
+  labelData.value = null
+}
+
 onMounted(load)
 </script>
 
@@ -708,4 +854,57 @@ onMounted(load)
 .remark-ico { margin-top: 2px; color: #b45309; flex: none; }
 .remark-k { font-size: 12px; font-weight: 600; color: #b45309; }
 .remark-v { margin: 3px 0 0; font-size: 13px; line-height: 1.6; color: var(--ink-800); white-space: pre-wrap; }
+
+/* 7.2 收货标签打印 */
+.ops { display: flex; gap: 6px; flex-wrap: wrap; }
+.label-config { padding: 2px 2px 12px; border-bottom: 1px dashed var(--line); margin-bottom: 14px; }
+.label-config-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.cfg-label { width: 76px; flex: none; font-size: 13px; color: var(--ink-700); font-weight: 500; }
+.cfg-hint { font-size: 12px; color: var(--ink-500); }
+.label-preview { max-height: 460px; overflow: auto; padding: 10px; background: #f3f4f6; border-radius: var(--r-md); }
+
+/* A4 三列拼版 */
+.paper-a4 .label-print-area { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+/* 热敏 100×100mm：每箱独立一页 */
+.paper-thermal .label-print-area { display: flex; flex-direction: column; gap: 0; }
+
+.label {
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 8px 10px;
+  box-sizing: border-box;
+  font-size: 11px;
+  color: #111;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.paper-thermal .label { width: 100mm; height: 100mm; margin: 0 auto 8px; page-break-after: always; }
+.label-head { font-size: 12px; font-weight: 700; text-align: center; letter-spacing: 2px; color: #111; }
+.label-barcode { text-align: center; }
+.label-barcode :deep(svg) { display: inline-block; max-width: 100%; height: auto; }
+.label-pno { text-align: center; font-size: 12px; font-weight: 600; word-break: break-all; color: #111; }
+.label-meta { font-size: 11px; color: #111; }
+.label-line { display: flex; gap: 6px; line-height: 1.5; }
+.label-line .k { color: #6b7280; flex: none; }
+.label-line .v { word-break: break-all; }
+.label-items { display: flex; flex-direction: column; gap: 2px; }
+.label-item { display: flex; gap: 6px; font-size: 11px; line-height: 1.4; }
+.label-item .sku { color: #1d4ed8; }
+.label-item .nm { color: #111; }
+.label-item .qty { margin-left: auto; font-weight: 600; }
+.label-more { color: #6b7280; font-size: 11px; }
+.label-remark { background: #fffbeb; border: 1px dashed #fcd34d; border-radius: 4px; padding: 4px 6px; font-size: 11px; color: #92400e; line-height: 1.5; }
+.label-foot { display: flex; justify-content: space-between; margin-top: auto; font-size: 11px; color: #374151; border-top: 1px dashed #e5e7eb; padding-top: 4px; }
+.label-empty { text-align: center; color: var(--ink-500); padding: 40px 0; }
+.footer-note { font-size: 12px; color: var(--ink-500); margin-right: auto; }
+
+/* 打印：仅输出标签容器，隐藏后台框架 / 侧栏 / 对话框装饰 */
+@media print {
+  body * { visibility: hidden !important; }
+  .label-print-area,
+  .label-print-area * { visibility: visible !important; }
+  .label-print-area { position: absolute !important; left: 0; top: 0; width: 100%; background: #fff; }
+}
 </style>
