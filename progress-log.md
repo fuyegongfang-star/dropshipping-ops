@@ -499,3 +499,30 @@
 - 看板「待作业采购单」在出库后该单离仓（不再出现在待作业列表），状态机贯通采购单/订单。
 
 **下一步**：阶段6（M6）已全量交付，方案 v1.5 的「采购→中转仓→扫码→打包贴单→出库」核心作业流闭环完成；后续：a) 真实平台凭证工厂化接入（淘宝 TOP / 抖音开放平台 / 云途·DHL·4PX·燕文 联调，标注 TODO）；b) 本机 PG 端到端验证；c) §31 收尾文档与回归。
+
+## 2026-10-29 夜间批次（23:10 启动 · 7.2 收货标签 + 7.3 PDA 原生壳 · 阶段7/M7 收口）
+
+**完成（✅）**：
+- **7.2 采购单收货标签打印（Code128）**：
+  - 后端 `GET /purchase-orders/:id/label-data`（行项 skuCode 优先取 Sku.code、supplier=purchaseUrl、printedAt 服务端时间）+ `PATCH /purchase-orders/:id`（改 boxCount）；`PurchaseOrder.boxCount Int @default(1)`（schema 已落地）。
+  - 零依赖 Code128B 编码器 `web/src/utils/code128.ts`（`code128Values`/`code128Bars`/`code128SvgRects`，StartB=104、加权校验位 mod103、Stop=106+2 模块终止条）；临时断言脚本 `scripts/verify-code128.mts` 验证①`CODE128` 码值序列与标准一致②校验位算法正确③中文/不可打印字符抛明确错误 —— 全绿。
+  - `scan-rules.ts` 补 `/^CG\d{8}-\d{3,6}$/i`（覆盖实际 `CG20261028-0001` 格式）+ 旧号段兜底；`scan-rules.spec.ts` 7 例全绿。
+  - 前端 `PurchaseOrderView` 行操作新增「收货标签」→ 标签预览对话框：纸型切换（A4 三列拼版 / 热敏 100×100mm）、箱数输入（改即落库）、目的中转仓下拉（本租户 `type=transfer`）、Code128 条码 + 明文 + 供应商 + 行项（>6 折叠）+ 备注摘要（>40 截断）+ 箱号 `x/N` + 打印时间；`window.print()` + `@media print` 仅保留标签容器。`purchase-order.ts` 增 `getLabelData`/`updateBoxCount`，`mock-data.ts` 同口径 `doGetLabelData`/`doUpdateBoxCount`（演示+正式双路通）。
+  - 提交 `cff576b`。
+- **7.3 PDA 原生壳（Android WebView + DataWedge）**：
+  - `pda-shell/` Android 源码工程（本机无 Android SDK，**未编译 APK**，按红线不伪造已构建）：`settings.gradle`/`build.gradle`/`gradle.properties`/`app/build.gradle`（`namespace=com.dso.pda`、`minSdk 26`、依赖 AndroidX WebKit 级）、`MainActivity.kt`（全屏 WebView 承载 /transfer、JS 桥注入 `window.__onScan`、ToneGenerator 蜂鸣 + Vibrator 震动、`FLAG_KEEP_SCREEN_ON` 常亮、返回键回退、加载失败重试/离线提示）、`ScanReceiver.kt`（兼容 Zebra DataWedge / Honeywell / 通用 `android.intent.action.SCAN` 三类广播）、`AndroidManifest.xml` + `res/layout` + `res/values`、`README.md`（DataWedge Profile 配置/签名打包/目录结构）。
+  - 前端桥接载体 `TransferView`（/transfer）：挂载时暴露 `window.__onScan = (value) => handleScanValue(value)`（卸载清理）；中转仓「扫码设备设置」弹窗新增「PDA / 数据终端接入」区块（桥接状态、一键复制 DataWedge 动作名 `com.dso.pda.scan`、离线队列提示、配置指引）；`AppIcon` 增 `copy` 图标；网页模式缺原生壳不报错。
+  - `scripts/gen-progress.cjs` 的 `EXPLICIT_ROUTES` 补 `7.1→/catalog`、`7.2→/purchase-orders`、`7.3→/transfer`。
+
+**质量门禁**：server `tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `jest` ✅（**363 passed / 51 suites**）｜ web `vue-tsc --noEmit` ✅ ｜ `eslint --max-warnings 0` ✅ ｜ `vite build` ✅ ｜ `progress:gen` 60 任务 / 59 完成 / 1 跳过（1.8 superseded）。
+**进行中**：无。
+**受阻**：无。
+**看门狗**：未触发（零外部网络 / 安装）。
+**进度**：阶段7（M7 条码介质与终端接入）全部收口；方案 v1.5 主线任务全部完成（60 任务 / 59 完成 / 98.3%）。
+
+**明天打开网页能看到什么（采购单管理 /purchase-orders）**：
+- 每行采购单「操作」新增「收货标签」按钮 → 弹出标签预览：可选 A4 三列拼版或热敏 100×100mm，可调箱数（即时落库）、选目的中转仓，标签含 Code128 条码（扫得出 `CG…` 明文）+ 供应商 + 行项 + 箱号 + 打印时间；点「打印标签」只输出标签（自动隐藏后台框架）。
+- 中转仓「扫码到货作业台 /transfer → 扫码设备设置」新增「PDA / 数据终端接入」区块：显示桥接状态、可一键复制 DataWedge 动作名、离线队列提示与配置指引（供已购工业 PDA 的用户照做）。
+- 「开发进度」页与仪表盘「最近交付能力」卡片可见 7.1/7.2/7.3 三条目。
+
+**下一步（方案主线已收口，剩余三项非计划表任务）**：① 真实平台凭证工厂化接入（淘宝 TOP / 抖音开放平台 / 云途·DHL·4PX·燕文 联调，标注 TODO）；② 本机 PG 端到端验证（沙箱无 Docker，需用户按 README 起库）；③ §31 收尾文档与回归。次日若启动将从此三项中推进。

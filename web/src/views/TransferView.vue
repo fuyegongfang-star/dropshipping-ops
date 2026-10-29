@@ -273,6 +273,35 @@
             <span v-if="isScannerInput" class="ok"> · 已识别为扫码枪</span>
           </span>
         </div>
+
+        <!-- 7.3 PDA / 数据终端接入：原生壳桥接状态 + DataWedge 配置指引 -->
+        <el-divider content-position="left">PDA / 数据终端接入</el-divider>
+        <div class="pda-block">
+          <div class="dev-row">
+            <span class="dev-lb">原生壳桥接</span>
+            <el-tag :type="pdaConnected ? 'success' : 'info'" size="small" effect="light">
+              {{ pdaBridgeStatus }}
+            </el-tag>
+            <span class="dev-hint muted">安装 PDA 壳后，扫描头直出经 window.__onScan 桥接，无需键盘输出模式</span>
+          </div>
+          <div class="dev-row">
+            <span class="dev-lb">DataWedge 动作</span>
+            <code class="pda-action" @click="copyDatawedgeAction">{{ datawedgeAction }}</code>
+            <el-button size="small" text type="primary" @click="copyDatawedgeAction">
+              <AppIcon name="copy" :size="13" class="btn-ico" />复制
+            </el-button>
+          </div>
+          <div class="dev-row">
+            <span class="dev-lb">离线队列</span>
+            <span class="dev-hint">{{ offlineQueueHint }}</span>
+          </div>
+          <p class="pda-guide">
+            配置步骤：① PDA 壳内 DataWedge Profile <strong>关闭 Keystroke output</strong>、开启 <strong>Intent output</strong>，Intent action 设为上方动作名；
+            ② 扫描后由壳内 <code>ScanReceiver</code> 解析并调用 <code>window.__onScan(value)</code>；
+            ③ 无网络时扫码值落本地 SQLite 队列，恢复后按序补传 <code>/transfer/scan</code>（6.6 幂等）。
+            详见仓库 <code>pda-shell/README.md</code>。
+          </p>
+        </div>
       </el-card>
 
       <el-input
@@ -492,7 +521,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { transferApi, type TransferBoard, type TransferWarehouse, type TransferBoardPo, type ScanTransferDto, type ScanTransferResult, type ScanType, type PackQueue, type PackQueueItem, type PackTaskDto, type ShippingLabelDto, type OutboundResult } from '@/api/transfer'
 import {
@@ -716,6 +745,43 @@ const { lastSpeed, isScannerInput } = useScannerInput({
   onScan: (v) => void handleScanValue(v),
   active: () => scanVisible.value,
 })
+
+// ===== 7.3 PDA 原生壳桥接 =====
+// 安装 PDA 壳后，扫描头直出的扫码值经 window.__onScan 注入，复用既有 handleScanValue 作业台；
+// 网页模式（无原生壳）下该桥接始终未连接，离线队列亦不支持，给出明确提示。
+const pdaConnected = ref(false)
+/** DataWedge / 通用扫描 Intent action（与 pda-shell 内 ScanReceiver 约定一致，可一键复制配置） */
+const datawedgeAction = 'com.dso.pda.scan'
+/** 网页模式无本地 SQLite 离线队列能力，计数器恒为 0 */
+const offlineQueueCount = ref(0)
+
+const pdaBridgeStatus = computed(() =>
+  pdaConnected.value ? '已连接 __onScan' : '未检测到原生壳',
+)
+const offlineQueueHint = computed(() =>
+  pdaConnected.value
+    ? `待补传 ${offlineQueueCount.value} 条（网络恢复后按序回传 /transfer/scan）`
+    : '本模式不支持离线队列，请用键盘输出模式或安装 PDA 壳',
+)
+
+function copyDatawedgeAction(): void {
+  navigator.clipboard
+    ?.writeText(datawedgeAction)
+    .then(() => ElMessage.success('已复制 DataWedge 动作名'))
+    .catch(() => ElMessage.warning('复制失败，请手动选择文本复制'))
+}
+
+// 类型安全地挂/卸 window.__onScan（避免 any，规避 lint no-explicit-any）
+type WindowWithScan = Window & { __onScan?: (value: string) => void }
+function installPdaBridge(): void {
+  ;(window as WindowWithScan).__onScan = (value: string) => {
+    pdaConnected.value = true
+    void handleScanValue(value)
+  }
+}
+function uninstallPdaBridge(): void {
+  delete (window as WindowWithScan).__onScan
+}
 
 function fillDemo(type: ScanType): void {
   scanForm.value.scanType = 'auto' // 演示数据统一走自动识别，验证规则引擎
@@ -960,10 +1026,17 @@ function openOutbound(row: PackTaskDto): void {
 onMounted(() => {
   load()
   loadPack()
+  // 7.3：挂载 PDA 原生壳桥接（窗口级扫码入口）
+  installPdaBridge()
   transferApi
     .channels()
     .then((c) => (channels.value = c))
     .catch(() => undefined)
+})
+
+onBeforeUnmount(() => {
+  // 7.3：卸载清理桥接，避免内存泄漏 / 重复注入
+  uninstallPdaBridge()
 })
 </script>
 
@@ -1400,6 +1473,38 @@ onMounted(() => {
 .dev-row:last-child { margin-bottom: 0; }
 .dev-lb { font-size: 12px; color: var(--ink-500); white-space: nowrap; }
 .dev-hint { font-size: 12px; line-height: 1.6; }
+/* 7.3 PDA / 数据终端接入区块 */
+.pda-block { padding-top: 4px; }
+.pda-action {
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 12px;
+  color: var(--brand-600, #4f46e5);
+  background: rgba(79, 70, 229, 0.08);
+  border: 1px dashed rgba(79, 70, 229, 0.4);
+  border-radius: 6px;
+  padding: 2px 8px;
+  cursor: pointer;
+  user-select: all;
+}
+.pda-guide {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--ink-600);
+  background: var(--indigo-soft, #eef2ff);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+}
+.pda-guide code {
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 11.5px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0 5px;
+  color: var(--ink-800);
+}
+.pda-guide strong { color: var(--ink-900); }
 .scan-input { margin-bottom: 10px; }
 .scan-log { margin-top: 14px; border-top: 1px dashed var(--line, rgba(0, 0, 0, 0.12)); padding-top: 10px; }
 .sl-head { display: flex; align-items: center; justify-content: space-between; font-size: 13px; font-weight: 600; color: var(--ink-800); margin-bottom: 8px; }

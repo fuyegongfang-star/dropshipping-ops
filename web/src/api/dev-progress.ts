@@ -2,8 +2,8 @@
  * 开发进度数据 —— **本文件由 scripts/gen-progress.cjs 自动生成，请勿手工修改。**
  *
  * 生成命令：`npm run progress:gen`（读取 dev-schedule.md 的任务表）
- * 生成时间：2026-10-28T09:38:15.427Z
- * 源码提交：c7f0c18
+ * 生成时间：2026-10-29T15:30:05.423Z
+ * 源码提交：cff576b
  *
  * 作用：让「演示模式」与「正式模式」都能在网页上直接看到开发进度与最近交付的能力，
  * 夜间自动开发每完成一批任务后重新生成并提交，次日刷新页面即可看到新内容。
@@ -42,10 +42,10 @@ export interface DevStats {
 }
 
 /** 数据生成时间（ISO 字符串） */
-export const DEV_PROGRESS_GENERATED_AT = "2026-10-28T09:38:15.653Z"
+export const DEV_PROGRESS_GENERATED_AT = "2026-10-29T15:30:06.464Z"
 
 /** 数据对应的源码提交号（短 SHA） */
-export const DEV_PROGRESS_COMMIT = "c7f0c18"
+export const DEV_PROGRESS_COMMIT = "cff576b"
 
 /** 全部任务（按 dev-schedule.md 顺序） */
 export const DEV_TASKS: DevTask[] = [
@@ -626,7 +626,7 @@ export const DEV_TASKS: DevTask[] = [
     "deliverable": "Sku.barcode 录入入口（SKU 编辑可填可「扫一下」录入、多码管理、列表条码列 + 扫条码反查定位、批量连扫建档）；后端条码查重/反查接口；演示侧条码改动持久化",
     "deps": "1.7/6.12",
     "estimate": "1d",
-    "status": "todo",
+    "status": "done",
     "route": "/catalog"
   },
   {
@@ -636,8 +636,8 @@ export const DEV_TASKS: DevTask[] = [
     "deliverable": "标签数据接口 + 零依赖 Code128B 编码器 + A4 三列拼版/热敏 100×100 打印页（供应商贴箱 → 中转仓一枪到货）；顺带修正 CG 号段正则漏了连字符导致 `CG20261028-0001` 识别为未识别号段的 bug",
     "deps": "6.2/6.12",
     "estimate": "1d",
-    "status": "todo",
-    "route": null
+    "status": "done",
+    "route": "/purchase-orders"
   },
   {
     "id": "7.3",
@@ -646,24 +646,24 @@ export const DEV_TASKS: DevTask[] = [
     "deliverable": "`pda-shell/` Android 源码工程：全屏 WebView + DataWedge/Honeywell Intent 收码 + 蜂鸣震动 + 常亮 + 侧键触发 + 离线队列补扫；页面侧暴露 `window.__onScan` 桥接；设备接入指引落中转仓「扫码设备设置」弹窗",
     "deps": "6.12",
     "estimate": "1.5d",
-    "status": "todo",
-    "route": null
+    "status": "done",
+    "route": "/transfer"
   }
 ]
 
 /** 统计汇总 */
 export const DEV_STATS: DevStats = {
   "total": 60,
-  "done": 56,
+  "done": 59,
   "doing": 0,
-  "todo": 3,
+  "todo": 0,
   "blocked": 0,
   "skipped": 1,
-  "percent": 93.3
+  "percent": 98.3
 }
 
 /** 阶段列表（去重，按出现顺序） */
 export const DEV_PHASES = ["阶段0","阶段1","阶段2","阶段3","阶段4","阶段5","阶段6","阶段7"]
 
 /** 最近交付的任务号（已完成中序号最大的若干个），用于「最近更新」高亮 */
-export const DEV_RECENT_IDS = ["6.9","6.10","6.11","6.12"]
+export const DEV_RECENT_IDS = ["6.12","7.1","7.2","7.3"]

@@ -65,6 +65,9 @@ const EXPLICIT_ROUTES = {
   '6.7': '/transfer',
   '6.8': '/transfer',
   '6.9': '/transfer',
+  '7.1': '/catalog',
+  '7.2': '/purchase-orders',
+  '7.3': '/transfer',
 };
 
 /** 关键词 → 路由（兜底推断，命中即用）。 */
