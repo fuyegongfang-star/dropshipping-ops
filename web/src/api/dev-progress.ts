@@ -2,8 +2,8 @@
  * 开发进度数据 —— **本文件由 scripts/gen-progress.cjs 自动生成，请勿手工修改。**
  *
  * 生成命令：`npm run progress:gen`（读取 dev-schedule.md 的任务表）
- * 生成时间：2026-10-30T01:23:51.944Z
- * 源码提交：eccd8c4
+ * 生成时间：2026-10-30T01:40:22.462Z
+ * 源码提交：2b40c26
  *
  * 作用：让「演示模式」与「正式模式」都能在网页上直接看到开发进度与最近交付的能力，
  * 夜间自动开发每完成一批任务后重新生成并提交，次日刷新页面即可看到新内容。
@@ -42,10 +42,10 @@ export interface DevStats {
 }
 
 /** 数据生成时间（ISO 字符串） */
-export const DEV_PROGRESS_GENERATED_AT = "2026-10-30T01:23:52.264Z"
+export const DEV_PROGRESS_GENERATED_AT = "2026-10-30T01:40:23.637Z"
 
 /** 数据对应的源码提交号（短 SHA） */
-export const DEV_PROGRESS_COMMIT = "eccd8c4"
+export const DEV_PROGRESS_COMMIT = "2b40c26"
 
 /** 全部任务（按 dev-schedule.md 顺序） */
 export const DEV_TASKS: DevTask[] = [
@@ -660,6 +660,16 @@ export const DEV_TASKS: DevTask[] = [
     "route": null
   },
   {
+    "id": "8.2",
+    "phase": "阶段8",
+    "name": "平台凭证管理 UI + 真实联调桥接",
+    "deliverable": "前端 PlatformCredentialsView（/platform-credentials，super 专属）：凭证列表（平台/状态/更新时间）+ 新增/编辑对话框（按平台动态字段：淘宝 appKey/appSecret/session；抖音 appKey/appSecret/accessToken；云途 customerCode/apiKey/apiSecret；DHL clientId/clientSecret/DHL-API-Key；4PX 客户号/密钥；燕文 商户号/密钥）+ 查看/轮转/删除（解密展示需二次确认，明文仅驻留内存）+ 演示/正式双路（platform-credentials.ts + mock-data 同口径内存实现）；router + menuNodes（系统设置 钥匙图标）+ AppIcon key 图标 + locales 注册；进度生成器 EXPLICIT_ROUTES 补 8.2→/platform-credentials。后端 8.1 已就绪（platform-credentials 模块 + 加密落库），本任务纯前端接入；并把承运商/渠道注册表里「真实 API 联调 TODO」桥接到凭证工厂（暂不强制联网，联调留 TODO 标注）。验收：web vue-tsc✅/eslint✅/vite build✅；server 若有改动 tsc✅/eslint✅/jest✅。",
+    "deps": "8.1",
+    "estimate": "1d",
+    "status": "todo",
+    "route": "/carriers"
+  },
+  {
     "id": "9.1",
     "phase": "阶段9",
     "name": "全局 JWT 鉴权守卫（review A1）",
@@ -688,18 +698,68 @@ export const DEV_TASKS: DevTask[] = [
     "estimate": "0.5d",
     "status": "done",
     "route": null
+  },
+  {
+    "id": "9.4",
+    "phase": "阶段9",
+    "name": "租户隔离缺省拒绝（review A4）",
+    "deliverable": "引入租户作用域 Prisma 扩展 `TenantPrismaService`（基于 `PrismaService.$extends`）：对租户作用域模型（Order/PurchaseOrder/Asn/PackTask/ShippingLabel/Shipment/TrackingEvent/Warehouse/Bin/Inventory/Sku/SkuBarcode/Supplier/CarrierAccount/Billing*/Ledger*/Quote/Webhook 等）的查询自动注入 `tenantId` 到 `where`，缺失则开发态告警、生产态拒绝；提供「模型→租户字段」白名单。优先迁移高危读路径（orders/purchase-orders/transfer/wms/carriers/billing/finance）到作用域客户端并补全跨租户隔离测试（越权访问断言拒绝）。验收：jest 隔离测试全绿、不破坏既有 372 测试；tsc/eslint 绿；提交前 checkpoint。⚠️ 高风险：逐接口回归，禁止一次性硬改全局查询。",
+    "deps": "9.3",
+    "estimate": "1.5d",
+    "status": "todo",
+    "route": "/tenants"
+  },
+  {
+    "id": "9.5",
+    "phase": "阶段9",
+    "name": "开放平台客户端管理加守卫（review A6）",
+    "deliverable": "`openapi` 模块客户端管理端点（clients 增删/rotate）当前仅 `@TenantId()`，补 `OpenApiGuard` 或 `JwtAuthGuard+super` 守卫；源码写死种子密钥（`secret_demo_full_2026` 等）改为首次启动随机生成并持久化（或明确标注为演示种子且仅 dev 注入）；`getClientByCredentials` 的 `!==` 改为 `crypto.timingSafeEqual` 恒定时间比较。验收：tsc/eslint/jest 绿；守卫单测覆盖。",
+    "deps": "9.1",
+    "estimate": "1d",
+    "status": "todo",
+    "route": null
+  },
+  {
+    "id": "9.6",
+    "phase": "阶段9",
+    "name": "承运成本占位 0 改 null（review C1）",
+    "deliverable": "承运适配器 `createShipment` 的 `carrierCost:0` 占位改为 `null`（真实回传前成本未知）；利润/账单计算（BillingService/LedgerService/MarkupEngine 回显）对 `null` 成本做排除或标注「成本待回传」，避免系统性高估利润。验收：相关单测覆盖 null 分支；tsc/eslint/jest 绿。",
+    "deps": "8.1",
+    "estimate": "0.5d",
+    "status": "todo",
+    "route": null
+  },
+  {
+    "id": "9.7",
+    "phase": "阶段9",
+    "name": "演示/正式构建收敛（review B3）",
+    "deliverable": "`web` 生产构建（`vite build` + CI）硬性要求 `VITE_USE_MOCK=false`，缺省或 true 时构建失败并提示；README 明确「生产部署必须 NODE_ENV=production 且 VITE_USE_MOCK=false」；`server` 若残留 `USE_MOCK` 分支统一移除或文档化。验收：生产构建脚本可执行且不带 mock。",
+    "deps": "7.1",
+    "estimate": "0.5d",
+    "status": "todo",
+    "route": null
+  },
+  {
+    "id": "9.8",
+    "phase": "阶段9",
+    "name": "Web 登录页与令牌获取（上线前置）",
+    "deliverable": "非 mock 生产部署下全局守卫已要求 JWT，但 web 当前无登录页拿 token（既有缺口）。新增 `LoginView`（/login）：租户选择/输入 + 邮箱 + 密码 → POST /api/auth/login → 存 token 到 Pinia user store + localStorage → 重定向首页；`http.ts` 正式模式自动注入 `Authorization: Bearer`；路由加 `/login` 公开 + 未登录自动跳登录；演示模式（VITE_USE_MOCK）保持直返 mock、不弹登录。验收：web vue-tsc/eslint/vite build 绿；登录→拿 token→带鉴权请求链路在正式模式可走通（端到端需本机 PG，见 env_critical）。",
+    "deps": "9.1",
+    "estimate": "1d",
+    "status": "todo",
+    "route": "/tenants"
   }
 ]
 
 /** 统计汇总 */
 export const DEV_STATS: DevStats = {
-  "total": 64,
+  "total": 70,
   "done": 64,
   "doing": 0,
-  "todo": 0,
+  "todo": 6,
   "blocked": 0,
   "skipped": 0,
-  "percent": 100
+  "percent": 91.4
 }
 
 /** 阶段列表（去重，按出现顺序） */

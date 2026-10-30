@@ -90,15 +90,17 @@
 | 7.2 | 阶段7 | 采购单收货标签打印（Code128） | 标签数据接口 + 零依赖 Code128B 编码器 + A4 三列拼版/热敏 100×100 打印页（供应商贴箱 → 中转仓一枪到货）；顺带修正 CG 号段正则漏了连字符导致 `CG20261028-0001` 识别为未识别号段的 bug | 6.2/6.12 | 1d | ✅ |
 | 7.3 | 阶段7 | PDA 原生壳（Android WebView + DataWedge） | `pda-shell/` Android 源码工程：全屏 WebView + DataWedge/Honeywell Intent 收码 + 蜂鸣震动 + 常亮 + 侧键触发 + 离线队列补扫；页面侧暴露 `window.__onScan` 桥接；设备接入指引落中转仓「扫码设备设置」弹窗 | 6.12 | 1.5d | ✅ |
 | 8.1 | 阶段8 | 平台凭证工厂化接入（基础） | 统一凭证契约（淘宝TOP/抖音开放平台/云途/DHL/4PX/燕文）+ 加密落库(§17.2 AES-256-GCM，不存明文) + 端口/适配器存储（内存实现，Prisma 持久化 TODO）+ 平台→适配器工厂（真实 API 联调 TODO）；新增 `platform-credentials` 模块，9 单测全绿，纯后端基础（UI 待 8.2） | 2.1/3.2 | 1d | ✅ |
+| 8.2 | 阶段8 | 平台凭证管理 UI + 真实联调桥接 | 前端 PlatformCredentialsView（/platform-credentials，super 专属）：凭证列表（平台/状态/更新时间）+ 新增/编辑对话框（按平台动态字段：淘宝 appKey/appSecret/session；抖音 appKey/appSecret/accessToken；云途 customerCode/apiKey/apiSecret；DHL clientId/clientSecret/DHL-API-Key；4PX 客户号/密钥；燕文 商户号/密钥）+ 查看/轮转/删除（解密展示需二次确认，明文仅驻留内存）+ 演示/正式双路（platform-credentials.ts + mock-data 同口径内存实现）；router + menuNodes（系统设置 钥匙图标）+ AppIcon key 图标 + locales 注册；进度生成器 EXPLICIT_ROUTES 补 8.2→/platform-credentials。后端 8.1 已就绪（platform-credentials 模块 + 加密落库），本任务纯前端接入；并把承运商/渠道注册表里「真实 API 联调 TODO」桥接到凭证工厂（暂不强制联网，联调留 TODO 标注）。验收：web vue-tsc✅/eslint✅/vite build✅；server 若有改动 tsc✅/eslint✅/jest✅。 | 8.1 | 1d | ⬜ |
 | 9.1 | 阶段9 | 全局 JWT 鉴权守卫（review A1） | 全局挂载 `APP_GUARD=GlobalAuthGuard`（`app.module.ts` 注入）；新增 `Public()` 装饰器 + `GlobalAuthGuard`（继承 passport `jwt`，遇 `@Public()` 直接放行）；`auth/login`、`health`、`openapi/oauth/token` 及 OpenApiGuard 资源路由标公开；业务级 RBAC 仍由控制器 `@UseGuards(PermissionsGuard)` 负责。 | 8.1 | 0.5d | ✅ |
 | 9.2 | 阶段9 | 租户上下文改由 JWT 派生（review A2） | `tenant.middleware.ts` 改为「携带合法 JWT 时以令牌 tenantId 为准、忽略客户端自报 `x-tenant-id`；仅无 Bearer 令牌时回退到 `x-tenant-id`/子域名（可信网关场景）」，消除伪造请求头冒充租户的越权。 | 9.1 | 0.5d | ✅ |
 | 9.3 | 阶段9 | 生产密钥 fail-fast（review A3/A5） | `configuration.ts` 启动拦截：production 缺失 `JWT_SECRET` 或 `APP_MASTER_KEY`（或 `JWT_SECRET` 仍为占位值 `change-me-in-prod`）直接拒绝启动；dev/test 仅告警。消除默认密钥可伪造令牌 / 开发密钥静默加密凭证的隐患。 | 9.2 | 0.5d | ✅ |
+| 9.4 | 阶段9 | 租户隔离缺省拒绝（review A4） | 引入租户作用域 Prisma 扩展 `TenantPrismaService`（基于 `PrismaService.$extends`）：对租户作用域模型（Order/PurchaseOrder/Asn/PackTask/ShippingLabel/Shipment/TrackingEvent/Warehouse/Bin/Inventory/Sku/SkuBarcode/Supplier/CarrierAccount/Billing*/Ledger*/Quote/Webhook 等）的查询自动注入 `tenantId` 到 `where`，缺失则开发态告警、生产态拒绝；提供「模型→租户字段」白名单。优先迁移高危读路径（orders/purchase-orders/transfer/wms/carriers/billing/finance）到作用域客户端并补全跨租户隔离测试（越权访问断言拒绝）。验收：jest 隔离测试全绿、不破坏既有 372 测试；tsc/eslint 绿；提交前 checkpoint。⚠️ 高风险：逐接口回归，禁止一次性硬改全局查询。 | 9.3 | 1.5d | ⬜ |
+| 9.5 | 阶段9 | 开放平台客户端管理加守卫（review A6） | `openapi` 模块客户端管理端点（clients 增删/rotate）当前仅 `@TenantId()`，补 `OpenApiGuard` 或 `JwtAuthGuard+super` 守卫；源码写死种子密钥（`secret_demo_full_2026` 等）改为首次启动随机生成并持久化（或明确标注为演示种子且仅 dev 注入）；`getClientByCredentials` 的 `!==` 改为 `crypto.timingSafeEqual` 恒定时间比较。验收：tsc/eslint/jest 绿；守卫单测覆盖。 | 9.1 | 1d | ⬜ |
+| 9.6 | 阶段9 | 承运成本占位 0 改 null（review C1） | 承运适配器 `createShipment` 的 `carrierCost:0` 占位改为 `null`（真实回传前成本未知）；利润/账单计算（BillingService/LedgerService/MarkupEngine 回显）对 `null` 成本做排除或标注「成本待回传」，避免系统性高估利润。验收：相关单测覆盖 null 分支；tsc/eslint/jest 绿。 | 8.1 | 0.5d | ⬜ |
+| 9.7 | 阶段9 | 演示/正式构建收敛（review B3） | `web` 生产构建（`vite build` + CI）硬性要求 `VITE_USE_MOCK=false`，缺省或 true 时构建失败并提示；README 明确「生产部署必须 NODE_ENV=production 且 VITE_USE_MOCK=false」；`server` 若残留 `USE_MOCK` 分支统一移除或文档化。验收：生产构建脚本可执行且不带 mock。 | 7.1 | 0.5d | ⬜ |
+| 9.8 | 阶段9 | Web 登录页与令牌获取（上线前置） | 非 mock 生产部署下全局守卫已要求 JWT，但 web 当前无登录页拿 token（既有缺口）。新增 `LoginView`（/login）：租户选择/输入 + 邮箱 + 密码 → POST /api/auth/login → 存 token 到 Pinia user store + localStorage → 重定向首页；`http.ts` 正式模式自动注入 `Authorization: Bearer`；路由加 `/login` 公开 + 未登录自动跳登录；演示模式（VITE_USE_MOCK）保持直返 mock、不弹登录。验收：web vue-tsc/eslint/vite build 绿；登录→拿 token→带鉴权请求链路在正式模式可走通（端到端需本机 PG，见 env_critical）。 | 9.1 | 1d | ⬜ |
 
-> **阶段9 后续（9.4–9.7，review 中高/高风险项，标记为「待评审」而非 ⬜，夜间自动化不会自动执行，需人工确认后再由 nightly 续跑）**：
-> - **9.4（A4）** 租户隔离中间件缺省拒绝：读写 `where` 必须含 `tenantId`，缺省拒绝跨租户查询（当前 `tenant-isolation.ts` 仅拦显式冲突，`findUnique({where:{id}})` 无租户过滤）。⚠️ 改动面大，需逐接口回归，避免打断演示模式。
-> - **9.5（A6）** 开放平台客户端管理加守卫 + 种子密钥改为启动时随机生成 / 恒定时间比较（当前仅 `@TenantId()`，源码写死 `secret_demo_full_2026` 且 `!==` 非恒定时间比较）。
-> - **9.6（C1）** 承运成本 `carrierCost` 占位 `0` 改 `null` + 利润/账单计算排除（当前成本=0 会系统性高估利润）。
-> - **9.7（B3）** 演示/正式分裂收敛：`VITE_USE_MOCK=false` 的生产构建硬性要求（防误把 MOCK 构建上生产整站假数据）。
+> **阶段9 排期说明（2026-10-30 经用户确认）**：9.1–9.3 已落地（commit `2b40c26`）；9.4–9.7 由「待评审」提升为 ⬜ 正式排期，并新增 9.8（Web 登录页，上线前置缺口），统一交由夜间自动化（每日 23:10）按序续跑。详细设计见文末「阶段9 详细设计（安全加固续 · 9.4–9.8）」。
 
 > 阶段7 执行顺序建议：**7.1 → 7.2 → 7.3**。7.1 是数据地基（没条码，②贴出去的箱码与 Sku.barcode 之间没有可用映射），7.2 把条码落到物理介质（仓库才有东西可扫），7.3 是终端形态升级且依赖外部工具链（Android Gradle），放最后。
 
@@ -751,3 +753,71 @@
 - **进度生成**：`scripts/gen-progress.cjs` 适配「显式 null 路由」（纯后端能力不在 /progress 错链到无关页面）；`EXPLICIT_ROUTES` 补 `8.1→null`，`npm run progress:gen` 后 /progress 可见 8.1（无 UI 直达入口，标注纯后端基础）。
 - **诚实备注**：① 凭证存储当前为内存实现（进程级），生产前必须补 Prisma 持久化（8.2 或独立任务）；② 各平台真实 API 联调（TOP session 换取、抖音 OAuth2、云途 HMAC、4PX/燕文 MD5）均标注 TODO，未发起真实请求；③ 本机 PG 端到端验证仍需用户按 README 起库（沙箱无 Docker）。
 - **下一步**：8.2 平台凭证管理 UI（凭证录入/查看/轮转页 + 菜单/路由 + 演示/正式双路）+ 真实 API 联调桥接承运商/渠道注册表（TODO 落地）；或先补 Prisma 持久化。
+
+---
+
+## 阶段9 详细设计（安全加固续 · 9.4–9.8）
+
+> 接 9.1–9.3（全局守卫 / 租户 JWT 派生 / 生产密钥 fail-fast，已落地）。本段为 9.4–9.8 的自包含规格，夜间自动化按 `state.json.next_task` 顺序读取本段即可独立开工。所有任务统一要求：server `tsc --noEmit`✅ / `eslint --max-warnings 0`✅ / `jest`✅；web（若涉及）`vue-tsc`✅ / `eslint`✅ / `vite build`✅；提交前写 checkpoint 到 `.dev/state.json` 并 `npm run progress:gen`。
+
+### 9.4 租户隔离缺省拒绝（review A4 · ⚠️ 高风险）
+
+**问题**：`server/src/common/tenant/tenant-isolation.ts` 当前仅拦截「显式跨租户冲突」，对 `prisma.order.findUnique({ where: { id } })` 这类不带 `tenantId` 的查询全部放行 → 任何已认证用户可用资源 id 越权读他人数据（IDOR）。
+
+**方案（增量、非破坏性）**：
+1. 新增 `server/src/common/tenant/tenant-prisma.service.ts`：`PrismaService.$extends(...)` 包一层查询客户端。
+   - 维护白名单 `TENANT_SCOPED_MODELS: Record<model, tenantField>`（Order/PurchaseOrder/Asn/PackTask/ShippingLabel/Shipment/TrackingEvent/Warehouse/Bin/Inventory/Sku/SkuBarcode/Supplier/CarrierAccount/BillingInvoice/BillingLedger/Quote/Webhook 等，字段均为 `tenantId`）。
+   - 拦截 `findUnique / findFirst / findMany / update / updateMany / delete / deleteMany / count / aggregate`：`where` 不含租户字段时，自动注入当前上下文 `tenantId`（从 `TenantContext` 取，已在 9.2 改为 JWT 派生）；若上下文无 tenant（理论上已被全局守卫拦截，属防御层）则开发态 `warn`、生产态抛 `TenantScopeViolation`。
+2. 新建/改造 `TenantPrismaService` 注入点：在 `PrismaModule` 额外 provide 一个 `TENANT_PRISMA` token 的扩展客户端；**不替换**全局 `PrismaService`，避免一次性波及所有查询。优先把高危模块（orders / purchase-orders / transfer / wms / carriers / billing / finance）的 service 构造注入改为扩展客户端，逐模块迁移。
+3. 隔离测试 `tenant-prisma.spec.ts`：用内存/测试库构造两租户数据，断言（a）经扩展客户端按 id 查只能命中本租户、（b）直接拼 `where:{id}` 不被放大到跨租户、（c）缺 tenant 上下文在生产模拟下抛错。
+4. **禁止**一次性给全局 `PrismaService` 套扩展——先迁读路径、跑绿既有 372 测试再扩大。提交前务必全量 `jest` 不回归。
+
+**验收**：隔离单测 ≥3 例全绿；高危模块读路径迁移完成；全仓 jest 不回退；tsc/eslint 绿。
+
+### 9.5 开放平台客户端管理加守卫（review A6）
+
+**问题**：`openapi.controller.ts` 的 `clients` 增删改查仅用 `@TenantId()`（已认证即放行），未强制 `super`/开放平台管理员；源码写死种子密钥 `secret_demo_full_2026` 等且 `getClientByCredentials` 用 `!==` 非恒定时间比较（存在时序侧信道）。
+
+**方案**：
+1. `clients` 管理端点（POST `/clients`、DELETE `/clients/:id`、POST `/clients/:id/rotate`）叠 `@UseGuards(OpenApiGuard)` 或 `@UseGuards(JwtAuthGuard, PermissionsGuard)` 且要求 `super` 角色（与既有 rbac 一致）。注意这些端点已在 9.1 标 `@Public()` 让 OpenApiGuard 接管——保留 `@Public()` 但确保 `OpenApiGuard` 内部对管理类作用域做 `assertScope` 校验（现有 `assertScope('clients:manage')`）。
+2. 种子密钥：把写死的 `secret_demo_full_2026` 等改为首次启动随机生成并持久化（或明确标注 `// DEMO ONLY, dev injects`;production 不注入任何种子）。
+3. `getClientByCredentials` 比较改用 `crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b))`（长度不等先 `timingSafeEqual` 防短路）。
+4. 补 `openapi.controller.spec` 用例：未授权 401、超权 403、合法 200、密钥比较恒定时间（结构上验证）。
+
+**验收**：tsc/eslint/jest 绿；守卫单测覆盖管理端点。
+
+### 9.6 承运成本占位 0 改 null（review C1）
+
+**问题**：4 个承运适配器 `createShipment` 硬编码 `carrierCost: 0`，下游利润/账单若以之计算会系统性**高估利润**（成本=0、售价=加价）。
+
+**方案**：
+1. 各适配器 `createShipment` 返回 `carrierCost: null`（表示「成本待真实回传」），并在注释标注真实回传 TODO。
+2. 利润/账单计算点（`BillingService` 计费重→成本、`LedgerService` 记账、`MarkupEngineService` 回显 margin）对 `null` 成本做：不计入成本、界面/字段标注「成本待回传」、 margin 显示「—」而非虚高数字。
+3. 单测覆盖：`carrierCost=null` 时账单不把成本当 0、利润字段诚实呈现。
+
+**验收**：相关单测覆盖 null 分支；tsc/eslint/jest 绿；不得改变既有通过用例的断言语义。
+
+### 9.7 演示/正式构建收敛（review B3）
+
+**问题**：`web` 默认 `VITE_USE_MOCK=true`，若误把 MOCK 构建上生产，整站是假数据。
+
+**方案**：
+1. `web` 生产构建脚本（package.json `build` / CI）前置检查：非 `VITE_USE_MOCK=false` 则 `exit 1` 并提示「生产构建必须 VITE_USE_MOCK=false」；或在 `vite.config.ts` 的 `define`/构建插件里对 `mode==='production' && import.meta.env.VITE_USE_MOCK !== 'false'` 抛错。
+2. README 部署章节明确：`NODE_ENV=production` + `VITE_USE_MOCK=false` 为硬性前提。
+3. 清理 `server` 侧若残留的 `USE_MOCK` 分支（保留则文档化其仅用于本地联调）。
+
+**验收**：`VITE_USE_MOCK=true` 时 `vite build` 失败并给出明确提示；`false` 时正常产出。
+
+### 9.8 Web 登录页与令牌获取（上线前置 · 既有缺口）
+
+**背景**：9.1 已挂全局 JWT 守卫，但 `web` 在正式模式（`VITE_USE_MOCK=false`）下**没有登录页去拿 token**，全局守卫会上来就要求鉴权 → 正式部署无法进入。演示模式不受影响（mock 直返）。
+
+**方案**：
+1. 新增 `web/src/views/LoginView.vue`（路由 `/login`）：租户选择/输入 + 邮箱 + 密码 → `POST /api/auth/login` → 取 `token` 存入 `stores/user.ts`（Pinia）+ `localStorage` → 重定向到首页（携带 `?redirect`）。
+2. `web/src/utils/http.ts`：正式模式自动从 store/localStorage 注入 `Authorization: Bearer <token>`；401 响应自动跳 `/login`。
+3. 路由：`router` 增加 `/login`（公开，`meta.public=true`，绕过全局跳转）；`BasicLayout` 或全局导航守卫：非 mock 且未登录 → 跳 `/login`。
+4. 演示模式（`VITE_USE_MOCK=true`）：保持现有直返 mock、不弹登录，store 预置一个 demo 用户以便界面渲染。
+5. `platform-credentials`/`tenant` 选择器联动：登录后按 JWT 内 tenant 初始化上下文（复用 9.2 的 JWT 派生）。
+
+**验收**：web vue-tsc/eslint/vite build 绿；正式模式登录→拿 token→带鉴权请求链路结构正确（端到端需本机 PG，见 `env_critical`）。演示模式零回归。
+
