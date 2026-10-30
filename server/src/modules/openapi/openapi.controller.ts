@@ -13,6 +13,7 @@ import { JwtService } from '@nestjs/jwt'
 import { ConfigService } from '@nestjs/config'
 import { ok } from '../../common/response/api-response'
 import { TenantId } from '../../common/tenant/tenant.decorator'
+import { Public } from '../../common/auth/public.decorator'
 import { OpenApiGuard } from './openapi.guard'
 import { OpenApiClient } from './openapi-client.decorator'
 import { OpenApiService } from './openapi.service'
@@ -54,9 +55,10 @@ export class OpenApiController {
 
   // ===== 令牌端点（OAuth2 client_credentials）=====
 
-  /** 客户端凭 client_id/client_secret 换取 Bearer 令牌。 */
+  /** 客户端凭 client_id/client_secret 换取 Bearer 令牌（无需用户 JWT，必须公开）。 */
   @Post('oauth/token')
   @HttpCode(200)
+  @Public()
   issueToken(@Body() dto: TokenRequestDto): OAuthTokenResponse {
     if (dto.grant_type !== 'client_credentials') {
       throw new UnauthorizedException('UNSUPPORTED_GRANT_TYPE')
@@ -78,6 +80,7 @@ export class OpenApiController {
   /** 当前令牌对应的客户端画像（脱敏，不含密钥）。 */
   @Get('me')
   @UseGuards(OpenApiGuard)
+  @Public()
   me(@OpenApiClient() client: OpenApiClientContext) {
     return ok<  Omit<ApiClient, 'clientSecret'> | null>(
       this.openApi.getClientProfile(client.tenantId, client.clientId),
@@ -93,6 +96,7 @@ export class OpenApiController {
   /** 开放订单列表（作用域 orders）。 */
   @Get('orders')
   @UseGuards(OpenApiGuard)
+  @Public()
   listOrders(@OpenApiClient() client: OpenApiClientContext) {
     this.openApi.assertScope(client, 'orders')
     this.openApi.checkRateLimit(client.clientId, 120)
@@ -102,6 +106,7 @@ export class OpenApiController {
   /** 开放报价试算（作用域 quotes，查价）。 */
   @Post('quotes')
   @UseGuards(OpenApiGuard)
+  @Public()
   @HttpCode(200)
   quotes(@OpenApiClient() client: OpenApiClientContext, @Body() body: { weightKg?: number; destCountry?: string }) {
     this.openApi.assertScope(client, 'quotes')
@@ -114,6 +119,7 @@ export class OpenApiController {
   /** 开放账单列表（作用域 bills，查账单）。 */
   @Get('bills')
   @UseGuards(OpenApiGuard)
+  @Public()
   bills(@OpenApiClient() client: OpenApiClientContext) {
     this.openApi.assertScope(client, 'bills')
     this.openApi.checkRateLimit(client.clientId, 120)
@@ -123,6 +129,7 @@ export class OpenApiController {
   /** ERP 财务凭证（作用域 erp，自动生成应收应付，§28）。 */
   @Get('erp/gl')
   @UseGuards(OpenApiGuard)
+  @Public()
   gl(@OpenApiClient() client: OpenApiClientContext) {
     this.openApi.assertScope(client, 'erp')
     this.openApi.checkRateLimit(client.clientId, 120)
@@ -132,6 +139,7 @@ export class OpenApiController {
   /** Webhook 订阅列表（受开放令牌保护）。 */
   @Get('webhooks')
   @UseGuards(OpenApiGuard)
+  @Public()
   listWebhooks(@OpenApiClient() client: OpenApiClientContext) {
     return ok<WebhookSubscription[]>(this.openApi.listWebhooks(client.tenantId))
   }
@@ -139,6 +147,7 @@ export class OpenApiController {
   /** 新建 Webhook 订阅（受开放令牌保护）。 */
   @Post('webhooks')
   @UseGuards(OpenApiGuard)
+  @Public()
   createWebhook(@OpenApiClient() client: OpenApiClientContext, @Body() dto: CreateWebhookDto) {
     this.openApi.checkRateLimit(client.clientId, 120)
     return ok<WebhookSubscription>(this.openApi.createWebhook(client.tenantId, dto))

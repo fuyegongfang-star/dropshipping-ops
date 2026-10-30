@@ -2,8 +2,8 @@
  * 开发进度数据 —— **本文件由 scripts/gen-progress.cjs 自动生成，请勿手工修改。**
  *
  * 生成命令：`npm run progress:gen`（读取 dev-schedule.md 的任务表）
- * 生成时间：2026-10-30T00:19:51.459Z
- * 源码提交：1d1115f
+ * 生成时间：2026-10-30T01:23:51.944Z
+ * 源码提交：eccd8c4
  *
  * 作用：让「演示模式」与「正式模式」都能在网页上直接看到开发进度与最近交付的能力，
  * 夜间自动开发每完成一批任务后重新生成并提交，次日刷新页面即可看到新内容。
@@ -42,10 +42,10 @@ export interface DevStats {
 }
 
 /** 数据生成时间（ISO 字符串） */
-export const DEV_PROGRESS_GENERATED_AT = "2026-10-30T00:19:51.760Z"
+export const DEV_PROGRESS_GENERATED_AT = "2026-10-30T01:23:52.264Z"
 
 /** 数据对应的源码提交号（短 SHA） */
-export const DEV_PROGRESS_COMMIT = "1d1115f"
+export const DEV_PROGRESS_COMMIT = "eccd8c4"
 
 /** 全部任务（按 dev-schedule.md 顺序） */
 export const DEV_TASKS: DevTask[] = [
@@ -658,13 +658,43 @@ export const DEV_TASKS: DevTask[] = [
     "estimate": "1d",
     "status": "done",
     "route": null
+  },
+  {
+    "id": "9.1",
+    "phase": "阶段9",
+    "name": "全局 JWT 鉴权守卫（review A1）",
+    "deliverable": "全局挂载 `APP_GUARD=GlobalAuthGuard`（`app.module.ts` 注入）；新增 `Public()` 装饰器 + `GlobalAuthGuard`（继承 passport `jwt`，遇 `@Public()` 直接放行）；`auth/login`、`health`、`openapi/oauth/token` 及 OpenApiGuard 资源路由标公开；业务级 RBAC 仍由控制器 `@UseGuards(PermissionsGuard)` 负责。",
+    "deps": "8.1",
+    "estimate": "0.5d",
+    "status": "done",
+    "route": null
+  },
+  {
+    "id": "9.2",
+    "phase": "阶段9",
+    "name": "租户上下文改由 JWT 派生（review A2）",
+    "deliverable": "`tenant.middleware.ts` 改为「携带合法 JWT 时以令牌 tenantId 为准、忽略客户端自报 `x-tenant-id`；仅无 Bearer 令牌时回退到 `x-tenant-id`/子域名（可信网关场景）」，消除伪造请求头冒充租户的越权。",
+    "deps": "9.1",
+    "estimate": "0.5d",
+    "status": "done",
+    "route": "/tenants"
+  },
+  {
+    "id": "9.3",
+    "phase": "阶段9",
+    "name": "生产密钥 fail-fast（review A3/A5）",
+    "deliverable": "`configuration.ts` 启动拦截：production 缺失 `JWT_SECRET` 或 `APP_MASTER_KEY`（或 `JWT_SECRET` 仍为占位值 `change-me-in-prod`）直接拒绝启动；dev/test 仅告警。消除默认密钥可伪造令牌 / 开发密钥静默加密凭证的隐患。",
+    "deps": "9.2",
+    "estimate": "0.5d",
+    "status": "done",
+    "route": null
   }
 ]
 
 /** 统计汇总 */
 export const DEV_STATS: DevStats = {
-  "total": 61,
-  "done": 61,
+  "total": 64,
+  "done": 64,
   "doing": 0,
   "todo": 0,
   "blocked": 0,
@@ -673,7 +703,7 @@ export const DEV_STATS: DevStats = {
 }
 
 /** 阶段列表（去重，按出现顺序） */
-export const DEV_PHASES = ["阶段0","阶段1","阶段2","阶段3","阶段4","阶段5","阶段6","阶段7","阶段8"]
+export const DEV_PHASES = ["阶段0","阶段1","阶段2","阶段3","阶段4","阶段5","阶段6","阶段7","阶段8","阶段9"]
 
 /** 最近交付的任务号（已完成中序号最大的若干个），用于「最近更新」高亮 */
-export const DEV_RECENT_IDS = ["7.1","7.2","7.3","8.1"]
+export const DEV_RECENT_IDS = ["8.1","9.1","9.2","9.3"]

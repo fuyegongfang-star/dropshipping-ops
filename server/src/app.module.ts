@@ -1,8 +1,10 @@
 import { Module, MiddlewareConsumer, NestModule, RequestMethod } from '@nestjs/common'
+import { APP_GUARD } from '@nestjs/core'
 import { ConfigModule } from '@nestjs/config'
 import configuration from './config/configuration'
 import { PrismaModule } from './database/prisma.module'
 import { AuthModule } from './common/auth/auth.module'
+import { GlobalAuthGuard } from './common/auth/guards/global-auth.guard'
 import { HealthModule } from './modules/health/health.module'
 import { TenantsModule } from './modules/tenants/tenants.module'
 import { TenantMiddleware } from './common/tenant/tenant.middleware'
@@ -59,6 +61,8 @@ import { PlatformCredentialsModule } from './modules/platform-credentials/platfo
     TransferModule,
     PlatformCredentialsModule,
   ],
+  // 全局鉴权守卫：默认要求合法 JWT，@Public() 路由除外（§17.1，review A1）
+  providers: [{ provide: APP_GUARD, useClass: GlobalAuthGuard }],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {

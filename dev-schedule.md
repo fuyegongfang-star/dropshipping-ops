@@ -90,6 +90,15 @@
 | 7.2 | 阶段7 | 采购单收货标签打印（Code128） | 标签数据接口 + 零依赖 Code128B 编码器 + A4 三列拼版/热敏 100×100 打印页（供应商贴箱 → 中转仓一枪到货）；顺带修正 CG 号段正则漏了连字符导致 `CG20261028-0001` 识别为未识别号段的 bug | 6.2/6.12 | 1d | ✅ |
 | 7.3 | 阶段7 | PDA 原生壳（Android WebView + DataWedge） | `pda-shell/` Android 源码工程：全屏 WebView + DataWedge/Honeywell Intent 收码 + 蜂鸣震动 + 常亮 + 侧键触发 + 离线队列补扫；页面侧暴露 `window.__onScan` 桥接；设备接入指引落中转仓「扫码设备设置」弹窗 | 6.12 | 1.5d | ✅ |
 | 8.1 | 阶段8 | 平台凭证工厂化接入（基础） | 统一凭证契约（淘宝TOP/抖音开放平台/云途/DHL/4PX/燕文）+ 加密落库(§17.2 AES-256-GCM，不存明文) + 端口/适配器存储（内存实现，Prisma 持久化 TODO）+ 平台→适配器工厂（真实 API 联调 TODO）；新增 `platform-credentials` 模块，9 单测全绿，纯后端基础（UI 待 8.2） | 2.1/3.2 | 1d | ✅ |
+| 9.1 | 阶段9 | 全局 JWT 鉴权守卫（review A1） | 全局挂载 `APP_GUARD=GlobalAuthGuard`（`app.module.ts` 注入）；新增 `Public()` 装饰器 + `GlobalAuthGuard`（继承 passport `jwt`，遇 `@Public()` 直接放行）；`auth/login`、`health`、`openapi/oauth/token` 及 OpenApiGuard 资源路由标公开；业务级 RBAC 仍由控制器 `@UseGuards(PermissionsGuard)` 负责。 | 8.1 | 0.5d | ✅ |
+| 9.2 | 阶段9 | 租户上下文改由 JWT 派生（review A2） | `tenant.middleware.ts` 改为「携带合法 JWT 时以令牌 tenantId 为准、忽略客户端自报 `x-tenant-id`；仅无 Bearer 令牌时回退到 `x-tenant-id`/子域名（可信网关场景）」，消除伪造请求头冒充租户的越权。 | 9.1 | 0.5d | ✅ |
+| 9.3 | 阶段9 | 生产密钥 fail-fast（review A3/A5） | `configuration.ts` 启动拦截：production 缺失 `JWT_SECRET` 或 `APP_MASTER_KEY`（或 `JWT_SECRET` 仍为占位值 `change-me-in-prod`）直接拒绝启动；dev/test 仅告警。消除默认密钥可伪造令牌 / 开发密钥静默加密凭证的隐患。 | 9.2 | 0.5d | ✅ |
+
+> **阶段9 后续（9.4–9.7，review 中高/高风险项，标记为「待评审」而非 ⬜，夜间自动化不会自动执行，需人工确认后再由 nightly 续跑）**：
+> - **9.4（A4）** 租户隔离中间件缺省拒绝：读写 `where` 必须含 `tenantId`，缺省拒绝跨租户查询（当前 `tenant-isolation.ts` 仅拦显式冲突，`findUnique({where:{id}})` 无租户过滤）。⚠️ 改动面大，需逐接口回归，避免打断演示模式。
+> - **9.5（A6）** 开放平台客户端管理加守卫 + 种子密钥改为启动时随机生成 / 恒定时间比较（当前仅 `@TenantId()`，源码写死 `secret_demo_full_2026` 且 `!==` 非恒定时间比较）。
+> - **9.6（C1）** 承运成本 `carrierCost` 占位 `0` 改 `null` + 利润/账单计算排除（当前成本=0 会系统性高估利润）。
+> - **9.7（B3）** 演示/正式分裂收敛：`VITE_USE_MOCK=false` 的生产构建硬性要求（防误把 MOCK 构建上生产整站假数据）。
 
 > 阶段7 执行顺序建议：**7.1 → 7.2 → 7.3**。7.1 是数据地基（没条码，②贴出去的箱码与 Sku.barcode 之间没有可用映射），7.2 把条码落到物理介质（仓库才有东西可扫），7.3 是终端形态升级且依赖外部工具链（Android Gradle），放最后。
 
