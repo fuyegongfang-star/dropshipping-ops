@@ -2,8 +2,8 @@
  * 开发进度数据 —— **本文件由 scripts/gen-progress.cjs 自动生成，请勿手工修改。**
  *
  * 生成命令：`npm run progress:gen`（读取 dev-schedule.md 的任务表）
- * 生成时间：2026-10-29T15:56:44.718Z
- * 源码提交：da1a3b3
+ * 生成时间：2026-10-30T00:19:51.459Z
+ * 源码提交：1d1115f
  *
  * 作用：让「演示模式」与「正式模式」都能在网页上直接看到开发进度与最近交付的能力，
  * 夜间自动开发每完成一批任务后重新生成并提交，次日刷新页面即可看到新内容。
@@ -42,10 +42,10 @@ export interface DevStats {
 }
 
 /** 数据生成时间（ISO 字符串） */
-export const DEV_PROGRESS_GENERATED_AT = "2026-10-29T15:56:45.266Z"
+export const DEV_PROGRESS_GENERATED_AT = "2026-10-30T00:19:51.760Z"
 
 /** 数据对应的源码提交号（短 SHA） */
-export const DEV_PROGRESS_COMMIT = "da1a3b3"
+export const DEV_PROGRESS_COMMIT = "1d1115f"
 
 /** 全部任务（按 dev-schedule.md 顺序） */
 export const DEV_TASKS: DevTask[] = [
@@ -186,7 +186,7 @@ export const DEV_TASKS: DevTask[] = [
     "deliverable": "重量/体积→计费重→选渠道（§4）",
     "deps": "1.1",
     "estimate": "1.5d",
-    "status": "skipped",
+    "status": "done",
     "route": "/quotes"
   },
   {
@@ -664,12 +664,12 @@ export const DEV_TASKS: DevTask[] = [
 /** 统计汇总 */
 export const DEV_STATS: DevStats = {
   "total": 61,
-  "done": 60,
+  "done": 61,
   "doing": 0,
   "todo": 0,
   "blocked": 0,
-  "skipped": 1,
-  "percent": 98.4
+  "skipped": 0,
+  "percent": 100
 }
 
 /** 阶段列表（去重，按出现顺序） */

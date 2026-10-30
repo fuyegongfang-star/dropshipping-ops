@@ -42,7 +42,7 @@
 | 1.5 | 阶段1 | 履约路由（模式A 自动） | 系统自动选渠道（§4/§5） | 1.1 | 1d | ✅ |
 | 1.6 | 阶段1 | 物流回传 + 轨迹(基础) | 回写运单/基础轨迹（§3） | 1.2 | 1d | ✅ |
 | 1.7 | 阶段1 | 商品/SKU 中心 | 平台↔内部↔供应商映射（§1） | 0.2 | 1.5d | ✅ |
-| 1.8 | 阶段1 | 运费试算最小版 | 重量/体积→计费重→选渠道（§4） | 1.1 | 1.5d | ⏭️ |
+| 1.8 | 阶段1 | 运费试算最小版 | 重量/体积→计费重→选渠道（§4） | 1.1 | 1.5d | ✅(3.5/3.7 覆盖) |
 | 1.9 | 阶段1 | 供应商代发链路(基础) | 推单→回传→转平台运单（§21） | 1.1 | 1d | ✅ |
 | 1.10 | 阶段1 | Amazon SP-API 评估 | FBA/FBM/LWA 可行性（§29） | 1.1 | 0.5d | ✅ |
 | 2.1 | 阶段2 | 国内渠道(淘宝/抖音) | 验证多平台适配（§3） | 1.2 | 1.5d | ✅ |
@@ -519,7 +519,7 @@
 
 - **完成（✅）**：
   - **1.9 供应商代发链路(基础)（§21）** —— SuppliersModule（后端）：`SuppliersService`（供应商档案 + 代发单推单，租户隔离）、`SuppliersController`（`/suppliers`、`/suppliers/orders`、`/suppliers/orders/:id/advance`）、`SupplierDto`/`SupplierOrderDto`（状态机 pushed→accepted→shipped→done）、单测 8 例全绿；前端 `SuppliersView`（/suppliers-dropship，双 Tab 档案+代发单，演示+正式双路通）、`suppliers.ts` 接口、`mock-data` 同口径内存实现、`BasicLayout.menuNodes` + `locales` + `AppIcon(supplier)` 注册。
-  - **1.8 运费试算最小版**：标记 ⏭️ superseded（已被 3.5/3.7 运费试算门户完整覆盖，QuotesView /quotes 已落地）。
+  - **1.8 运费试算最小版**：原标记 ⏭️ superseded（已被 3.5/3.7 运费试算门户完整覆盖，QuotesView /quotes 已落地）；2026-10-30 复核口径，主任务表状态改为 `✅(3.5/3.7 覆盖)`，不再计入「跳过项」。
   - **2.1 国内渠道(淘宝/抖音)（§3）** —— `TaobaoAdapter`/`DouyinAdapter` 继承 `AbstractChannelAdapter`，实现拉单/确认/回传/查单/撤单/轨迹六能力（无状态演示适配器，真实凭证工厂接入待 2026-11 联调，已注释 TODO）；注册进 `ChannelRegistryService`（GET /channels/platforms 自动露出）；单测 `domestic-adapters.spec.ts` 2 例；前端 `ChannelsView` 平台标签补 taobao(粉)/douyin(青) 配色 + `mock-data` 平台列表纳入 taobao/douyin。
   - **2.2/2.3 WMS 入库/库存/拣货 + 海外仓模型（§15）** —— `WmsModule`（后端）：`WmsService`（仓库 domestic/overseas、ASN pending→received→closed、上架按 仓+SKU+库位 累加库存、库存调整出库不得为负、拣货波次→任务 done、全租户隔离）、`WmsController`（`/wms/warehouses|asns|inventory|picks` 及 receive/putaway/adjust/wave/complete）、`WmsDto`/`WmsService` 单测 6 例全绿；前端 `WarehouseView`（/warehouse，四 Tab 仓库/入库/库存/拣货，演示+正式双路通）、`wms.ts` 接口、`mock-data` 同口径内存实现、`menuNodes` + `locales` + `AppIcon(warehouse)` 注册；进度生成器 EXPLICIT_ROUTES 补 2.2/2.3→/warehouse。
 - **修复（本批）**：`WarehouseService` 库存 `upsert` 复合唯一键类型问题改用 `findFirst`+`update`/`create`；`SuppliersView` 补 `reactive` 导入并改用类型安全标签助手（vue-tsc 通过）；WMS 单测 fake Prisma 去除重复键并补 `inventory.findFirst`/`create`/`update`。
