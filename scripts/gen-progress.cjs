@@ -70,6 +70,7 @@ const EXPLICIT_ROUTES = {
   '7.3': '/transfer',
   // 值为 null 表示纯后端能力、暂无前端界面（route 显式置空，不推断到无关页面）
   '8.1': null,
+  '8.2': '/platform-credentials',
 };
 
 /** 关键词 → 路由（兜底推断，命中即用）。 */

@@ -1976,6 +1976,86 @@ function randStr(len: number): string {
   return s
 }
 
+// ===== 平台凭证管理（§17.2 凭证工厂化接入，任务 8.2）：演示态同口径内存实现 =====
+// 与后端 platform-credentials 模块同口径：列表脱敏、查看解密、保存加密（演示态仅内存，不落明文）、删除。
+// 真实联调（经承运商/渠道注册表桥接适配器）为 TODO，绑定描述符返回 scaffold-todo。
+import type {
+  CredentialListItem,
+  CredentialDetail,
+  CredentialSaveResult,
+  PlatformCode,
+} from './platform-credentials'
+import { PLATFORM_DEFINITIONS, getPlatformDef } from './platform-credentials'
+
+/** 演示态内存凭证库：platform → { 字段明文（仅驻留内存）, 更新时间 }。真实后端为加密落库。 */
+const platformCredentials: Record<string, { fields: Record<string, string>; updatedAt: string }> = {
+  // 预置一个示例（云途），便于演示「已配置」态与查看/删除操作；真实场景凭据由用户录入。
+  yunexpress: {
+    fields: { appId: 'demo_app_2026', appKey: 'demo_key_2026', secret: 'demo_secret_2026' },
+    updatedAt: '2026-10-29T10:00:00.000Z',
+  },
+}
+
+/** 列表：遍历全部平台，返回脱敏项（不泄露明文，仅给配置状态/更新时间）。 */
+function doListPlatformCredentials(): CredentialListItem[] {
+  return PLATFORM_DEFINITIONS.map((def) => {
+    const stored = platformCredentials[def.code]
+    return {
+      platform: def.code,
+      label: def.label,
+      authType: def.authType,
+      carrierSide: def.carrierSide,
+      capabilities: def.capabilities,
+      status: stored ? 'configured' : 'empty',
+      updatedAt: stored?.updatedAt,
+    }
+  })
+}
+
+/** 查看明文：返回某平台已存字段（演示态直读内存；正式态由后端解密返回）。 */
+function doGetPlatformCredential(platform: string): CredentialDetail {
+  const stored = platformCredentials[platform]
+  if (!stored) return reject('平台凭证不存在') as unknown as CredentialDetail
+  return { platform: platform as PlatformCode, fields: { ...stored.fields } }
+}
+
+/** 保存：校验必填后写入内存，返回含桥接描述符的回执（真实适配器经注册表桥接为 TODO）。 */
+function doSavePlatformCredential(body: {
+  platform: string
+  fields: Record<string, string>
+}): CredentialSaveResult {
+  const def = getPlatformDef(body.platform)
+  if (!def) return reject('未知平台：' + body.platform) as unknown as CredentialSaveResult
+  const missing = def.required.filter((f) => !body.fields?.[f.key]?.trim())
+  if (missing.length) return reject('缺少必填字段：' + missing.map((f) => f.label).join('、')) as unknown as CredentialSaveResult
+  platformCredentials[body.platform] = {
+    fields: { ...body.fields },
+    updatedAt: NOW(),
+  }
+  return {
+    platform: body.platform as PlatformCode,
+    status: 'configured',
+    binding: {
+      platform: body.platform as PlatformCode,
+      label: def.label,
+      carrierSide: def.carrierSide,
+      capabilities: def.capabilities,
+      status: 'scaffold-todo',
+      note:
+        '凭证已就绪；真实适配器经' +
+        (def.carrierSide ? '承运商' : '渠道') +
+        '注册表桥接（TODO 联调）',
+    },
+  }
+}
+
+/** 删除：从内存移除该平台凭证。 */
+function doDeletePlatformCredential(platform: string): { deleted: boolean } {
+  if (!platformCredentials[platform]) return reject('平台凭证不存在') as unknown as { deleted: boolean }
+  delete platformCredentials[platform]
+  return { deleted: true }
+}
+
 // ===== 路由分发 =====
 /** mock 模式下 http.ts 的唯一入口：按 method + url 返回对应数据或执行状态变更。
  *  body 仅在 POST/PUT 时由 http.ts 透传（用于比价试算等带参请求）。 */
@@ -3420,6 +3500,10 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     if (url === '/openapi/summary') return delay().then(() => doGetOpenSummary())
     if (url === '/openapi/clients') return delay().then(() => doListOpenClients())
     if (url === '/openapi/webhooks') return delay().then(() => doListOpenWebhooks())
+    // 平台凭证管理（§17.2，任务 8.2）：列表脱敏 / 查看明文（演示态同口径）
+    if (url === '/platform-credentials') return delay().then(() => doListPlatformCredentials())
+    const pcGet = url.match(/^\/platform-credentials\/([^/]+)$/)
+    if (pcGet) return delay(120).then(() => doGetPlatformCredential(pcGet[1]))
     const billId = url.match(/^\/billing\/bills\/([^/]+)$/)
     if (billId) {
       const b = billingBills.find((x) => x.id === billId[1])
@@ -3615,6 +3699,11 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     // 开放平台（§28）：客户端 / Webhook 新建
     if (url === '/openapi/clients') return delay(160).then(() => doCreateOpenClient(body))
     if (url === '/openapi/webhooks') return delay(160).then(() => doCreateOpenWebhook(body))
+    // 平台凭证管理（§17.2，任务 8.2）：保存（明文入参 → 演示态内存加密存储，不落明文）
+    if (url === '/platform-credentials')
+      return delay(160).then(() =>
+        doSavePlatformCredential((body ?? {}) as { platform: string; fields: Record<string, string> }),
+      )
     const openRotate = url.match(/^\/openapi\/clients\/([^/]+)\/rotate$/)
     if (openRotate) return delay(160).then(() => doRotateOpenSecret(openRotate[1]))
     // Amazon SP-API 对接（§29）：FBA 入库计划 / FBA 建仓 / FBM 买运单 / 报表请求（演示态同口径）
@@ -3680,6 +3769,9 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     // 开放平台（§28）：客户端移除
     const openClientDel = url.match(/^\/openapi\/clients\/([^/]+)$/)
     if (openClientDel) return delay().then(() => doDeleteOpenClient(openClientDel[1]))
+    // 平台凭证管理（§17.2，任务 8.2）：删除凭证
+    const pcDel = url.match(/^\/platform-credentials\/([^/]+)$/)
+    if (pcDel) return delay(140).then(() => doDeletePlatformCredential(pcDel[1]))
     // 渠道店铺解绑（任务 6.1）：演示态从内存数组移除（§3）。
     const shopDel = url.match(/^\/shops\/([^/]+)$/)
     if (shopDel) return delay(120).then(() => doDeleteShop(shopDel[1]))

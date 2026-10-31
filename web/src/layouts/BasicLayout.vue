@@ -260,6 +260,7 @@ const menuNodes: MenuNode[] = [
       { path: '/capacity', title: 'menu.capacity', icon: 'bolt', roles: ['super'] },
       { path: '/rbac', title: 'menu.rbac', icon: 'key', roles: ['super'] },
       { path: '/open-platform', title: 'menu.openPlatform', icon: 'api', roles: ['super'] },
+      { path: '/platform-credentials', title: 'menu.platformCredentials', icon: 'key', roles: ['super'] },
     ],
   },
 ]

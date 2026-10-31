@@ -32,6 +32,7 @@ import SuppliersView from '@/views/SuppliersView.vue'
 import WarehouseView from '@/views/WarehouseView.vue'
 import PurchaseOrderView from '@/views/PurchaseOrderView.vue'
 import TransferView from '@/views/TransferView.vue'
+import PlatformCredentialsView from '@/views/PlatformCredentialsView.vue'
 
 // 前端路由（方案 §11）：基础布局 + 业务模块页面（订单/商品SKU/渠道/承运商/定价/开发进度/租户）。
 // 菜单按「业务运营 / 物流履约 / 财务中心 / 系统设置」分组（见 BasicLayout.vue 的 menuNodes），
@@ -79,6 +80,7 @@ const router = createRouter({
         { path: 'capacity', name: 'capacity', component: CapacityView, meta: { title: '容量与灾备', roles: ['super'] } },
         { path: 'rbac', name: 'rbac', component: RbacView, meta: { title: '权限管理', roles: ['super'] } },
         { path: 'open-platform', name: 'openPlatform', component: OpenPlatformView, meta: { title: '开放平台', roles: ['super'] } },
+        { path: 'platform-credentials', name: 'platformCredentials', component: PlatformCredentialsView, meta: { title: '平台凭证', roles: ['super'] } },
         { path: 'localization', name: 'localization', component: LocalizationView, meta: { title: '本地化设置' } },
       ],
     },

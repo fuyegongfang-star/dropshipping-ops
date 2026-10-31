@@ -67,6 +67,11 @@ export class PlatformCredentialService {
     return this.store.get(tenantId, platform) !== undefined
   }
 
+  /** 读取凭证元信息（不解密，仅返回更新时间，供列表展示） */
+  getUpdatedAt(tenantId: string, platform: PlatformKind): string | undefined {
+    return this.store.get(tenantId, platform)?.updatedAt
+  }
+
   /** 列出租户已配置的平台 */
   listPlatforms(tenantId: string): PlatformKind[] {
     return this.store.list(tenantId).map((v) => v.platform)

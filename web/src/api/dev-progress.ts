@@ -2,8 +2,8 @@
  * 开发进度数据 —— **本文件由 scripts/gen-progress.cjs 自动生成，请勿手工修改。**
  *
  * 生成命令：`npm run progress:gen`（读取 dev-schedule.md 的任务表）
- * 生成时间：2026-10-30T01:40:22.462Z
- * 源码提交：2b40c26
+ * 生成时间：2026-10-31T15:29:26.349Z
+ * 源码提交：97cc442
  *
  * 作用：让「演示模式」与「正式模式」都能在网页上直接看到开发进度与最近交付的能力，
  * 夜间自动开发每完成一批任务后重新生成并提交，次日刷新页面即可看到新内容。
@@ -42,10 +42,10 @@ export interface DevStats {
 }
 
 /** 数据生成时间（ISO 字符串） */
-export const DEV_PROGRESS_GENERATED_AT = "2026-10-30T01:40:23.637Z"
+export const DEV_PROGRESS_GENERATED_AT = "2026-10-31T15:29:26.434Z"
 
 /** 数据对应的源码提交号（短 SHA） */
-export const DEV_PROGRESS_COMMIT = "2b40c26"
+export const DEV_PROGRESS_COMMIT = "97cc442"
 
 /** 全部任务（按 dev-schedule.md 顺序） */
 export const DEV_TASKS: DevTask[] = [
@@ -666,8 +666,8 @@ export const DEV_TASKS: DevTask[] = [
     "deliverable": "前端 PlatformCredentialsView（/platform-credentials，super 专属）：凭证列表（平台/状态/更新时间）+ 新增/编辑对话框（按平台动态字段：淘宝 appKey/appSecret/session；抖音 appKey/appSecret/accessToken；云途 customerCode/apiKey/apiSecret；DHL clientId/clientSecret/DHL-API-Key；4PX 客户号/密钥；燕文 商户号/密钥）+ 查看/轮转/删除（解密展示需二次确认，明文仅驻留内存）+ 演示/正式双路（platform-credentials.ts + mock-data 同口径内存实现）；router + menuNodes（系统设置 钥匙图标）+ AppIcon key 图标 + locales 注册；进度生成器 EXPLICIT_ROUTES 补 8.2→/platform-credentials。后端 8.1 已就绪（platform-credentials 模块 + 加密落库），本任务纯前端接入；并把承运商/渠道注册表里「真实 API 联调 TODO」桥接到凭证工厂（暂不强制联网，联调留 TODO 标注）。验收：web vue-tsc✅/eslint✅/vite build✅；server 若有改动 tsc✅/eslint✅/jest✅。",
     "deps": "8.1",
     "estimate": "1d",
-    "status": "todo",
-    "route": "/carriers"
+    "status": "done",
+    "route": "/platform-credentials"
   },
   {
     "id": "9.1",
@@ -754,16 +754,16 @@ export const DEV_TASKS: DevTask[] = [
 /** 统计汇总 */
 export const DEV_STATS: DevStats = {
   "total": 70,
-  "done": 64,
+  "done": 65,
   "doing": 0,
-  "todo": 6,
+  "todo": 5,
   "blocked": 0,
   "skipped": 0,
-  "percent": 91.4
+  "percent": 92.9
 }
 
 /** 阶段列表（去重，按出现顺序） */
 export const DEV_PHASES = ["阶段0","阶段1","阶段2","阶段3","阶段4","阶段5","阶段6","阶段7","阶段8","阶段9"]
 
 /** 最近交付的任务号（已完成中序号最大的若干个），用于「最近更新」高亮 */
-export const DEV_RECENT_IDS = ["8.1","9.1","9.2","9.3"]
+export const DEV_RECENT_IDS = ["8.2","9.1","9.2","9.3"]

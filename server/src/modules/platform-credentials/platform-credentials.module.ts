@@ -16,6 +16,7 @@ import {
 } from './credential-store.port'
 import { PlatformCredentialService } from './platform-credential.service'
 import { PlatformAdapterFactory } from './platform-adapter.factory'
+import { PlatformCredentialsController } from './platform-credentials.controller'
 
 @Module({
   providers: [
@@ -24,6 +25,7 @@ import { PlatformAdapterFactory } from './platform-adapter.factory'
     PlatformCredentialService,
     PlatformAdapterFactory,
   ],
+  controllers: [PlatformCredentialsController],
   exports: [PlatformCredentialService, PlatformAdapterFactory],
 })
 export class PlatformCredentialsModule {}
