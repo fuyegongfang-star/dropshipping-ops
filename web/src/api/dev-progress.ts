@@ -2,8 +2,8 @@
  * 开发进度数据 —— **本文件由 scripts/gen-progress.cjs 自动生成，请勿手工修改。**
  *
  * 生成命令：`npm run progress:gen`（读取 dev-schedule.md 的任务表）
- * 生成时间：2026-10-31T15:56:53.774Z
- * 源码提交：40acf86
+ * 生成时间：2026-10-31T16:10:19.250Z
+ * 源码提交：c5bd464
  *
  * 作用：让「演示模式」与「正式模式」都能在网页上直接看到开发进度与最近交付的能力，
  * 夜间自动开发每完成一批任务后重新生成并提交，次日刷新页面即可看到新内容。
@@ -42,10 +42,10 @@ export interface DevStats {
 }
 
 /** 数据生成时间（ISO 字符串） */
-export const DEV_PROGRESS_GENERATED_AT = "2026-10-31T15:56:54.358Z"
+export const DEV_PROGRESS_GENERATED_AT = "2026-10-31T16:10:20.265Z"
 
 /** 数据对应的源码提交号（短 SHA） */
-export const DEV_PROGRESS_COMMIT = "40acf86"
+export const DEV_PROGRESS_COMMIT = "c5bd464"
 
 /** 全部任务（按 dev-schedule.md 顺序） */
 export const DEV_TASKS: DevTask[] = [
@@ -716,7 +716,7 @@ export const DEV_TASKS: DevTask[] = [
     "deliverable": "`openapi` 模块客户端管理端点（clients 增删/rotate）当前仅 `@TenantId()`，补 `OpenApiGuard` 或 `JwtAuthGuard+super` 守卫；源码写死种子密钥（`secret_demo_full_2026` 等）改为首次启动随机生成并持久化（或明确标注为演示种子且仅 dev 注入）；`getClientByCredentials` 的 `!==` 改为 `crypto.timingSafeEqual` 恒定时间比较。验收：tsc/eslint/jest 绿；守卫单测覆盖。",
     "deps": "9.1",
     "estimate": "1d",
-    "status": "todo",
+    "status": "done",
     "route": null
   },
   {
@@ -754,16 +754,16 @@ export const DEV_TASKS: DevTask[] = [
 /** 统计汇总 */
 export const DEV_STATS: DevStats = {
   "total": 70,
-  "done": 66,
+  "done": 67,
   "doing": 0,
-  "todo": 4,
+  "todo": 3,
   "blocked": 0,
   "skipped": 0,
-  "percent": 94.3
+  "percent": 95.7
 }
 
 /** 阶段列表（去重，按出现顺序） */
 export const DEV_PHASES = ["阶段0","阶段1","阶段2","阶段3","阶段4","阶段5","阶段6","阶段7","阶段8","阶段9"]
 
 /** 最近交付的任务号（已完成中序号最大的若干个），用于「最近更新」高亮 */
-export const DEV_RECENT_IDS = ["9.1","9.2","9.3","9.4"]
+export const DEV_RECENT_IDS = ["9.2","9.3","9.4","9.5"]
