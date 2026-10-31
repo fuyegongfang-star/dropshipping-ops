@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config'
 import { OpenApiController } from './openapi.controller'
 import { OpenApiGuard } from './openapi.guard'
 import { OpenApiService } from './openapi.service'
+import { RolesGuard } from '../../common/auth/rbac/roles.guard'
 import type { OpenApiClientContext } from './openapi.types'
 
 /** 固定密钥：控制器签发与守卫验签使用同一 secret（与 ConfigService 提供的一致）。 */
@@ -21,6 +22,7 @@ describe('OpenApiController（§28 开放 API 端点）', () => {
       providers: [
         OpenApiService,
         OpenApiGuard,
+        RolesGuard,
         { provide: ConfigService, useValue: { get: () => TEST_SECRET } },
       ],
     }).compile()
@@ -35,16 +37,22 @@ describe('OpenApiController（§28 开放 API 端点）', () => {
   })
 
   it('令牌端点：正确凭据返回 Bearer 令牌，且可验签（aud=openapi）', () => {
+    // 运行时创建客户端（密钥随机生成，不再依赖源码硬编码种子密钥）
+    const created = controller.createClient('t_demo', {
+      name: '令牌测试',
+      scopes: ['orders', 'quotes', 'tracking', 'bills', 'erp'],
+    })
+    const client = created.data
     const res = controller.issueToken({
       grant_type: 'client_credentials',
-      client_id: 'cli_demo_full',
-      client_secret: 'secret_demo_full_2026',
+      client_id: client.clientId,
+      client_secret: client.clientSecret,
     })
     expect(res.token_type).toBe('Bearer')
     expect(res.expires_in).toBe(3600)
     const payload = jwt.verify(res.access_token)
     expect((payload as { aud: string }).aud).toBe('openapi')
-    expect((payload as { sub: string }).sub).toBe('cli_demo_full')
+    expect((payload as { sub: string }).sub).toBe(client.clientId)
   })
 
   it('令牌端点：错误凭据 / 不支持的授权类型 → 401', () => {

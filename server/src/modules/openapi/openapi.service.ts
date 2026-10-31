@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common'
+import * as crypto from 'crypto'
 import type {
   ApiClient,
   CreateApiClientDto,
@@ -64,7 +65,13 @@ export class OpenApiService {
   getClientByCredentials(clientId: string, clientSecret: string): ApiClient | null {
     const c = this.clients.find((x) => x.clientId === clientId)
     if (!c) return null
-    if (c.clientSecret !== clientSecret || c.status !== 'enabled') return null
+    // 恒定时间比较（crypto.timingSafeEqual），规避时序侧信道泄露密钥（review A6）。
+    // 长度不一致直接拒绝，且不进入逐字节比较（避免短路泄露长度）。
+    const a = Buffer.from(clientSecret)
+    const b = Buffer.from(c.clientSecret ?? '')
+    if (a.length !== b.length) return null
+    if (!crypto.timingSafeEqual(a, b)) return null
+    if (c.status !== 'enabled') return null
     return c
   }
 
@@ -249,14 +256,18 @@ export class OpenApiService {
   }
 
   private seedClients(): ApiClient[] {
+    // 安全（review A6）：生产环境不注入任何种子密钥，避免源码内硬编码后门密钥。
+    // 非生产环境仅用于本地演示，密钥在启动时随机生成（不再写死为可知字符串），
+    // 且 clientId 仍保留语义化前缀便于联调，但 secret 必须经由 createClient 流程或此处随机产出。
+    if (process.env.NODE_ENV === 'production') return []
     const now = new Date().toISOString()
     return [
       {
         id: 'oc_seed_1',
         tenantId: 't_demo',
-        name: 'ERP 全量集成',
+        name: 'ERP 全量集成（演示）',
         clientId: 'cli_demo_full',
-        clientSecret: 'secret_demo_full_2026',
+        clientSecret: this.rand(32),
         scopes: ['orders', 'quotes', 'tracking', 'bills', 'erp'],
         rateLimitPerMin: 120,
         status: 'enabled',
@@ -266,9 +277,9 @@ export class OpenApiService {
       {
         id: 'oc_seed_2',
         tenantId: 't_demo',
-        name: '查价机器人',
+        name: '查价机器人（演示）',
         clientId: 'cli_demo_quote',
-        clientSecret: 'secret_demo_quote_2026',
+        clientSecret: this.rand(32),
         scopes: ['quotes'],
         rateLimitPerMin: 60,
         status: 'enabled',

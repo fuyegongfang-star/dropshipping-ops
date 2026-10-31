@@ -15,6 +15,8 @@ import { ok } from '../../common/response/api-response'
 import { TenantId } from '../../common/tenant/tenant.decorator'
 import { Public } from '../../common/auth/public.decorator'
 import { OpenApiGuard } from './openapi.guard'
+import { RolesGuard } from '../../common/auth/rbac/roles.guard'
+import { Roles } from '../../common/auth/rbac/roles.decorator'
 import { OpenApiClient } from './openapi-client.decorator'
 import { OpenApiService } from './openapi.service'
 import {
@@ -153,28 +155,36 @@ export class OpenApiController {
     return ok<WebhookSubscription>(this.openApi.createWebhook(client.tenantId, dto))
   }
 
-  // ===== 平台侧客户端管理（super 运营，复用 JWT 用户鉴权）=====
+  // ===== 平台侧客户端管理（super 运营，复用 JWT 用户鉴权 + 角色守卫）=====
 
   /** 客户端列表（平台运营可见本租户全部客户端）。 */
   @Get('clients')
+  @UseGuards(RolesGuard)
+  @Roles('super', 'super_admin')
   listClients(@TenantId() tenantId: string) {
     return ok<ApiClient[]>(this.openApi.listClients(tenantId))
   }
 
   /** 创建开放客户端（分配 clientId/secret 与作用域）。 */
   @Post('clients')
+  @UseGuards(RolesGuard)
+  @Roles('super', 'super_admin')
   createClient(@TenantId() tenantId: string, @Body() dto: CreateApiClientDto) {
     return ok<ApiClient>(this.openApi.createClient(tenantId, dto))
   }
 
   /** 删除开放客户端。 */
   @Delete('clients/:id')
+  @UseGuards(RolesGuard)
+  @Roles('super', 'super_admin')
   deleteClient(@TenantId() tenantId: string, @Param('id') id: string) {
     return ok<{ deleted: boolean }>(this.openApi.deleteClient(tenantId, id))
   }
 
   /** 轮换客户端密钥（旧密钥立即失效）。 */
   @Post('clients/:id/rotate')
+  @UseGuards(RolesGuard)
+  @Roles('super', 'super_admin')
   rotateSecret(@TenantId() tenantId: string, @Param('id') id: string) {
     return ok<ApiClient>(this.openApi.rotateSecret(tenantId, id))
   }

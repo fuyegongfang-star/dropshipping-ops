@@ -13,9 +13,22 @@ describe('OpenApiService（§28 开放 API 与生态集成）', () => {
   })
 
   it('凭据校验：正确 client_id/secret → 命中；错误 → null；disabled 不计', () => {
-    expect(svc.getClientByCredentials('cli_demo_full', 'secret_demo_full_2026')).not.toBeNull()
-    expect(svc.getClientByCredentials('cli_demo_full', 'wrong')).toBeNull()
+    const c = svc.createClient('t_demo', { name: '凭证测试', scopes: ['orders'] })
+    expect(svc.getClientByCredentials(c.clientId, c.clientSecret)).not.toBeNull()
+    expect(svc.getClientByCredentials(c.clientId, 'wrong')).toBeNull()
     expect(svc.getClientByCredentials('not_exist', 'x')).toBeNull()
+  })
+
+  it('凭据校验：恒定时间比较（长度不一致 / 逐字节不符均拒绝，不泄露密钥）', () => {
+    const c = svc.createClient('t_demo', { name: '时序测试', scopes: ['orders'] })
+    // 长度不一致：直接拒绝
+    expect(svc.getClientByCredentials(c.clientId, c.clientSecret + 'x')).toBeNull()
+    expect(svc.getClientByCredentials(c.clientId, c.clientSecret.slice(0, -1))).toBeNull()
+    // 逐字节不符：拒绝
+    const mutated = c.clientSecret.slice(0, -1) + (c.clientSecret.slice(-1) === 'a' ? 'b' : 'a')
+    expect(svc.getClientByCredentials(c.clientId, mutated)).toBeNull()
+    // 完全一致：命中
+    expect(svc.getClientByCredentials(c.clientId, c.clientSecret)).not.toBeNull()
   })
 
   it('新建客户端：分配 clientId/secret 并归属当前租户', () => {
