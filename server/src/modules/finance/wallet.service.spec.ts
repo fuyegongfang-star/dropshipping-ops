@@ -10,6 +10,7 @@ import { Test } from '@nestjs/testing'
 import { WalletService } from './wallet.service'
 import { AppLogger } from '../../common/logger/app.logger'
 import { PrismaService } from '../../database/prisma.service'
+import { TENANT_PRISMA } from '../../common/tenant/tenant-prisma.service'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /** 内存桩：钱包按 id 与 (tenantId,currency) 双索引，ledger 存全部流水 */
@@ -60,7 +61,7 @@ describe('WalletService（§16 复式记账 / 预充值 / 信用账期）', () =
   beforeEach(async () => {
     prisma = makePrismaStub()
     const moduleRef = await Test.createTestingModule({
-      providers: [WalletService, AppLogger, { provide: PrismaService, useValue: prisma }],
+      providers: [WalletService, AppLogger, { provide: PrismaService, useValue: prisma }, { provide: TENANT_PRISMA, useValue: prisma }],
     }).compile()
     svc = moduleRef.get(WalletService)
   })

@@ -18,6 +18,7 @@ import { YanwenAdapter } from './adapters/yanwen/yanwen.adapter'
 import { RetryableHttpService } from '../../common/http/retryable-http.service'
 import { AppLogger } from '../../common/logger/app.logger'
 import { PrismaService } from '../../database/prisma.service'
+import { TENANT_PRISMA } from '../../common/tenant/tenant-prisma.service'
 import { CarrierCode, CarrierCapability } from './carrier.constants'
 import { GetRatesRequest } from './dto/rate.dto'
 import { CreateShipmentRequest } from './dto/shipment.dto'
@@ -41,6 +42,7 @@ describe('CarriersService', () => {
         RetryableHttpService,
         AppLogger,
         { provide: PrismaService, useValue: prismaStub },
+        { provide: TENANT_PRISMA, useValue: prismaStub },
       ],
     }).compile()
 

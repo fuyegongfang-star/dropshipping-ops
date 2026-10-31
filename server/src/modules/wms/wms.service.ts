@@ -12,8 +12,9 @@
  * 负责人：自动开发引擎 ｜ 创建：2026-10-23
  */
 
-import { Injectable, HttpStatus } from '@nestjs/common'
-import { Prisma, PrismaClient } from '@prisma/client'
+import { Injectable, HttpStatus, Inject } from '@nestjs/common'
+import { Prisma } from '@prisma/client'
+import { TENANT_PRISMA, TenantPrismaClient } from '../../common/tenant/tenant-prisma.service'
 import { BusinessException } from '../../common/response/business.exception'
 import { AppLogger } from '../../common/logger/app.logger'
 import {
@@ -73,7 +74,7 @@ export interface PickTaskDto {
 @Injectable()
 export class WmsService {
   constructor(
-    private readonly prisma: PrismaClient,
+    @Inject(TENANT_PRISMA) private readonly prisma: TenantPrismaClient,
     private readonly logger: AppLogger,
   ) {}
 

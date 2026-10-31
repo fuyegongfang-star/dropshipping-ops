@@ -8,9 +8,9 @@
  * 负责人：自动开发引擎 ｜ 最后修订：2026-10-11
  */
 
-import { Injectable, HttpStatus } from '@nestjs/common'
+import { Injectable, HttpStatus, Inject } from '@nestjs/common'
 import { BusinessException } from '../../common/response/business.exception'
-import { PrismaService } from '../../database/prisma.service'
+import { TENANT_PRISMA, TenantPrismaClient } from '../../common/tenant/tenant-prisma.service'
 import { CarrierRegistryService } from './carrier-registry.service'
 import { CarrierCode, CarrierHealth } from './carrier.constants'
 import { CarrierAdapter } from './carrier-adapter.interface'
@@ -29,7 +29,7 @@ export interface CarrierCatalogItem {
 export class CarriersService {
   constructor(
     private readonly registry: CarrierRegistryService,
-    private readonly prisma: PrismaService,
+    @Inject(TENANT_PRISMA) private readonly prisma: TenantPrismaClient,
   ) {}
 
   /** 承运商目录（运营维护的 Carrier 表；无记录时回退枚举清单，保证前端有可选项） */

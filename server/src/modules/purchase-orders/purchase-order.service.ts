@@ -5,9 +5,9 @@
  * 负责人：自动开发引擎 ｜ 创建：2026-10-24
  */
 
-import { Injectable } from '@nestjs/common'
+import { Injectable, Inject } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
-import { PrismaService } from '../../database/prisma.service'
+import { TENANT_PRISMA, TenantPrismaClient } from '../../common/tenant/tenant-prisma.service'
 import { BusinessException } from '../../common/response/business.exception'
 import { HttpStatus } from '@nestjs/common'
 import {
@@ -28,7 +28,7 @@ const STATUS_TRANSITIONS: Record<PurchaseOrderStatus, PurchaseOrderStatus[]> = {
 
 @Injectable()
 export class PurchaseOrderService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(@Inject(TENANT_PRISMA) private readonly prisma: TenantPrismaClient) {}
 
   /** 采购单列表（租户隔离），支持按 status / shopId / orderId 过滤。 */
   list(tenantId: string, filters: { status?: string; shopId?: string; orderId?: string } = {}) {

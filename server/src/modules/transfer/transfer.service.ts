@@ -9,9 +9,9 @@
  * 负责人：自动开发引擎 ｜ 创建：2026-10-25
  */
 
-import { Injectable } from '@nestjs/common'
+import { Injectable, Inject } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
-import { PrismaService } from '../../database/prisma.service'
+import { TENANT_PRISMA, TenantPrismaClient } from '../../common/tenant/tenant-prisma.service'
 import { AppLogger } from '../../common/logger/app.logger'
 import { BusinessException } from '../../common/response/business.exception'
 import { HttpStatus } from '@nestjs/common'
@@ -35,7 +35,7 @@ const PENDING_PO_STATUSES = ['arrived', 'matched', 'packed']
 @Injectable()
 export class TransferService {
   constructor(
-    private readonly prisma: PrismaService,
+    @Inject(TENANT_PRISMA) private readonly prisma: TenantPrismaClient,
     private readonly logger: AppLogger,
     private readonly poService: PurchaseOrderService,
     private readonly shipments?: ShipmentsService,

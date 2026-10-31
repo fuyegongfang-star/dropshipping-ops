@@ -13,9 +13,9 @@
  * 负责人：自动开发引擎 ｜ 2026-10-15
  */
 
-import { Injectable, HttpStatus } from '@nestjs/common'
+import { Injectable, HttpStatus, Inject } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
-import { PrismaService } from '../../database/prisma.service'
+import { TENANT_PRISMA, TenantPrismaClient } from '../../common/tenant/tenant-prisma.service'
 import { BusinessException } from '../../common/response/business.exception'
 import { AppLogger } from '../../common/logger/app.logger'
 import {
@@ -31,7 +31,7 @@ const DEFAULT_CURRENCY = 'CNY'
 @Injectable()
 export class WalletService {
   constructor(
-    private readonly prisma: PrismaService,
+    @Inject(TENANT_PRISMA) private readonly prisma: TenantPrismaClient,
     private readonly logger: AppLogger,
   ) {}
 

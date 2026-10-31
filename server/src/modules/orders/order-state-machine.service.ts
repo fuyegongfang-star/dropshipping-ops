@@ -6,8 +6,8 @@
  * 负责人：自动开发引擎 ｜ 最后修订：2026-10-10
  */
 
-import { Injectable, HttpStatus } from '@nestjs/common'
-import { PrismaClient } from '@prisma/client'
+import { Injectable, HttpStatus, Inject } from '@nestjs/common'
+import { TENANT_PRISMA, TenantPrismaClient } from '../../common/tenant/tenant-prisma.service'
 import { BusinessException } from '../../common/response/business.exception'
 import { AppLogger } from '../../common/logger/app.logger'
 import {
@@ -35,7 +35,7 @@ export interface ReverseResult {
 @Injectable()
 export class OrderStateMachineService {
   constructor(
-    private readonly prisma: PrismaClient,
+    @Inject(TENANT_PRISMA) private readonly prisma: TenantPrismaClient,
     private readonly logger: AppLogger,
   ) {}
 

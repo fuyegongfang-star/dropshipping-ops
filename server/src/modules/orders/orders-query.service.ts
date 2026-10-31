@@ -5,9 +5,9 @@
  * 负责人：人工补开发（可视化闭环）｜ 创建：2026-10-11
  */
 
-import { Injectable } from '@nestjs/common'
+import { Injectable, Inject } from '@nestjs/common'
 import { Prisma } from '@prisma/client'
-import { PrismaService } from '../../database/prisma.service'
+import { TENANT_PRISMA, TenantPrismaClient } from '../../common/tenant/tenant-prisma.service'
 
 /** 列表项（附带店铺简况，避免前端再查一次） */
 export interface OrderListItem {
@@ -49,7 +49,7 @@ export interface OrderDetail extends OrderListItem {
 
 @Injectable()
 export class OrdersQueryService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(@Inject(TENANT_PRISMA) private readonly prisma: TenantPrismaClient) {}
 
   /**
    * 订单列表（可按状态过滤），附带店铺简况。
