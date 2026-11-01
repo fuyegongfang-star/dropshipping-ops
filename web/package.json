@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
-    "build:prod": "vue-tsc --noEmit && VITE_USE_MOCK=false vite build",
+    "build:prod": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
     "serve": "node ../scripts/dev-keepalive.cjs",
     "lint": "eslint \"src/**/*.{ts,vue}\" --max-warnings 0",

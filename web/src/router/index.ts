@@ -33,6 +33,7 @@ import WarehouseView from '@/views/WarehouseView.vue'
 import PurchaseOrderView from '@/views/PurchaseOrderView.vue'
 import TransferView from '@/views/TransferView.vue'
 import PlatformCredentialsView from '@/views/PlatformCredentialsView.vue'
+import LoginView from '@/views/LoginView.vue'
 
 // 前端路由（方案 §11）：基础布局 + 业务模块页面（订单/商品SKU/渠道/承运商/定价/开发进度/租户）。
 // 菜单按「业务运营 / 物流履约 / 财务中心 / 系统设置」分组（见 BasicLayout.vue 的 menuNodes），
@@ -40,6 +41,8 @@ import PlatformCredentialsView from '@/views/PlatformCredentialsView.vue'
 const router = createRouter({
   history: createWebHistory(),
   routes: [
+    // 登录页：公开路由（非 mock 且未登录时全局守卫会跳到这里），独立于后台布局。
+    { path: '/login', name: 'login', component: LoginView, meta: { public: true, title: '登录' } },
     {
       path: '/',
       component: BasicLayout,
@@ -89,6 +92,19 @@ const router = createRouter({
 
 // 角色守卫：标记了 meta.roles 的路由，非对应角色访问时重定向首页（卖家租户看不到内部视图）。
 router.beforeEach((to) => {
+  // 演示模式（VITE_USE_MOCK）下不强制登录；正式模式无令牌则跳登录页（review 9.8 上线前置）。
+  const isMock = (import.meta.env.VITE_USE_MOCK ?? 'true') === 'true'
+  const token = localStorage.getItem('token')
+
+  // 已登录（或演示模式）访问登录页 → 直接进首页，避免回环。
+  if (to.path === '/login' && (isMock || token)) {
+    return { path: '/' }
+  }
+  // 受保护页面：非公开且非演示且未登录 → 跳登录页并携带回跳地址。
+  if (!to.meta.public && !isMock && !token) {
+    return { path: '/login', query: { redirect: to.fullPath } }
+  }
+
   const roles = to.meta.roles as string[] | undefined
   if (roles && roles.length) {
     const userStore = useUserStore()

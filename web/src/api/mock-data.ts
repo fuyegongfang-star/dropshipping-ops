@@ -3594,6 +3594,8 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
 
   // POST 集合
   if (method === 'POST') {
+    // 登录（任务 9.8）：演示模式返回占位 JWT，与后端 ok({token}) 解包后结构一致（auth.ts 的 LoginResult）。
+    if (url === '/auth/login') return delay(80).then(() => ({ token: 'mock-jwt-token' }))
     const review = url.match(/^\/orders\/([^/]+)\/review$/)
     if (review) return delay().then(() => doReview(review[1]))
     const trans = url.match(/^\/orders\/([^/]+)\/transition$/)

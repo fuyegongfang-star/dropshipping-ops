@@ -98,7 +98,7 @@
 | 9.5 | 阶段9 | 开放平台客户端管理加守卫（review A6） | `openapi` 模块客户端管理端点（clients 增删/rotate）当前仅 `@TenantId()`，补 `OpenApiGuard` 或 `JwtAuthGuard+super` 守卫；源码写死种子密钥（`secret_demo_full_2026` 等）改为首次启动随机生成并持久化（或明确标注为演示种子且仅 dev 注入）；`getClientByCredentials` 的 `!==` 改为 `crypto.timingSafeEqual` 恒定时间比较。验收：tsc/eslint/jest 绿；守卫单测覆盖。 | 9.1 | 1d | ✅ |
 | 9.6 | 阶段9 | 承运成本占位 0 改 null（review C1） | 承运适配器 `createShipment` 的 `carrierCost:0` 占位改为 `null`（真实回传前成本未知）；利润/账单计算（BillingService/LedgerService/MarkupEngine 回显）对 `null` 成本做排除或标注「成本待回传」，避免系统性高估利润。验收：相关单测覆盖 null 分支；tsc/eslint/jest 绿。 | 8.1 | 0.5d | ✅ |
 | 9.7 | 阶段9 | 演示/正式构建收敛（review B3） | `web` 生产构建（`vite build` + CI）硬性要求 `VITE_USE_MOCK=false`，缺省或 true 时构建失败并提示；README 明确「生产部署必须 NODE_ENV=production 且 VITE_USE_MOCK=false」；`server` 若残留 `USE_MOCK` 分支统一移除或文档化（已确认无残留）。验收：生产构建脚本可执行且不带 mock。 | 7.1 | 0.5d | ✅ |
-| 9.8 | 阶段9 | Web 登录页与令牌获取（上线前置） | 非 mock 生产部署下全局守卫已要求 JWT，但 web 当前无登录页拿 token（既有缺口）。新增 `LoginView`（/login）：租户选择/输入 + 邮箱 + 密码 → POST /api/auth/login → 存 token 到 Pinia user store + localStorage → 重定向首页；`http.ts` 正式模式自动注入 `Authorization: Bearer`；路由加 `/login` 公开 + 未登录自动跳登录；演示模式（VITE_USE_MOCK）保持直返 mock、不弹登录。验收：web vue-tsc/eslint/vite build 绿；登录→拿 token→带鉴权请求链路在正式模式可走通（端到端需本机 PG，见 env_critical）。 | 9.1 | 1d | ⬜ |
+| 9.8 | 阶段9 | Web 登录页与令牌获取（上线前置） | 非 mock 生产部署下全局守卫已要求 JWT，但 web 当前无登录页拿 token（既有缺口）。新增 `LoginView`（/login）：租户选择/输入 + 邮箱 + 密码 → POST /api/auth/login → 存 token 到 Pinia user store + localStorage → 重定向首页；`http.ts` 正式模式自动注入 `Authorization: Bearer`；路由加 `/login` 公开 + 未登录自动跳登录；演示模式（VITE_USE_MOCK）保持直返 mock、不弹登录。验收：web vue-tsc/eslint/vite build 绿；登录→拿 token→带鉴权请求链路在正式模式可走通（端到端需本机 PG，见 env_critical）。 | 9.1 | 1d | ✅ |
 
 > **阶段9 排期说明（2026-10-30 经用户确认）**：9.1–9.3 已落地（commit `2b40c26`）；9.4–9.7 由「待评审」提升为 ⬜ 正式排期，并新增 9.8（Web 登录页，上线前置缺口），统一交由夜间自动化（每日 23:10）按序续跑。详细设计见文末「阶段9 详细设计（安全加固续 · 9.4–9.8）」。
 
@@ -820,4 +820,15 @@
 5. `platform-credentials`/`tenant` 选择器联动：登录后按 JWT 内 tenant 初始化上下文（复用 9.2 的 JWT 派生）。
 
 **验收**：web vue-tsc/eslint/vite build 绿；正式模式登录→拿 token→带鉴权请求链路结构正确（端到端需本机 PG，见 `env_critical`）。演示模式零回归。
+
+> ✅ **已完成（2026-11-01 夜间批次）**：`LoginView`(/login) + `stores/user.ts`(token/user/isLoggedIn/login/logout) + `api/auth.ts` + `http.ts`(IS_MOCK 导出 + 401 跳登录 + Bearer 注入) + `router`(/login 公开 + 未登录守卫) 全部落地；演示模式 `mockRouter` 补 `POST /auth/login` 同口径返回占位 JWT；演示/正式双路通。验收 web vue-tsc✅/eslint✅（build:prod 生产构建经 `.env.production` 收敛 `VITE_USE_MOCK=false`，Windows 下 `npm run build:prod` 亦可执行）。
+
+### 进度更新 · 2026-11-01（夜间自动化 · 9.8 Web 登录页与令牌获取 · 阶段9 安全加固续收官）
+
+#### 9.8 Web 登录页与令牌获取（✅ 完成并验证）
+
+- **交付**：前端登录全链路闭环 —— `LoginView`(/login) 独立公开路由页（品牌区 + 演示模式提示 + 租户/邮箱/密码表单 + 演示「直接进入演示」/正式「登录」双按钮）；`stores/user.ts` 重写（`token` + `AuthUser` + `isLoggedIn` + `login`/`logout`，演示恒登录、正式看 token）；`api/auth.ts` 封装 `POST /auth/login`；`http.ts` 导出 `IS_MOCK` + 请求注入 `Authorization: Bearer` + 响应 401 自动跳 `/login`；`router` 加 `/login` 公开路由 + 未登录守卫；`mock-data.ts` 补 `POST /auth/login` 同口径返回占位 JWT。
+- **构建收敛修复（顺带）**：9.7 的 `build:prod` 在 Windows 下因 npm 经 `cmd.exe` 不支持内联 `VAR=value` 而失效；改为新增 `.env.production`（`VITE_USE_MOCK=false`，Vite 生产模式自动加载覆盖 `.env`），`build:prod` 脚本去掉内联赋值，`npm run build`/`build:prod` 在 Windows 与 Linux 均可执行且仍受 9.7 守卫保护（缺省/true 一律拒构建）。
+- **验收**：web `eslint --max-warnings 0` ✅ ｜ `vue-tsc --noEmit`（含于 `build:prod`）✅ ｜ `vite build`（生产，`VITE_USE_MOCK=false`）✅。阶段9（9.1–9.8）全部 ✅，主线 v1.5 任务 70/70（100%）收口。
+- **提交**：feature（9.8 源码 + dev-schedule + dev-progress + `.env.production` + package.json）+ checkpoint（`state.json` + 进度表 + `progress:gen`）。
 

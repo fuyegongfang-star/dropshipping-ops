@@ -2,8 +2,8 @@
  * 开发进度数据 —— **本文件由 scripts/gen-progress.cjs 自动生成，请勿手工修改。**
  *
  * 生成命令：`npm run progress:gen`（读取 dev-schedule.md 的任务表）
- * 生成时间：2026-10-31T16:10:19.250Z
- * 源码提交：c5bd464
+ * 生成时间：2026-11-01T15:50:21.550Z
+ * 源码提交：ff74970
  *
  * 作用：让「演示模式」与「正式模式」都能在网页上直接看到开发进度与最近交付的能力，
  * 夜间自动开发每完成一批任务后重新生成并提交，次日刷新页面即可看到新内容。
@@ -42,10 +42,10 @@ export interface DevStats {
 }
 
 /** 数据生成时间（ISO 字符串） */
-export const DEV_PROGRESS_GENERATED_AT = "2026-10-31T16:10:20.265Z"
+export const DEV_PROGRESS_GENERATED_AT = "2026-11-01T15:50:21.619Z"
 
 /** 数据对应的源码提交号（短 SHA） */
-export const DEV_PROGRESS_COMMIT = "c5bd464"
+export const DEV_PROGRESS_COMMIT = "ff74970"
 
 /** 全部任务（按 dev-schedule.md 顺序） */
 export const DEV_TASKS: DevTask[] = [
@@ -726,17 +726,17 @@ export const DEV_TASKS: DevTask[] = [
     "deliverable": "承运适配器 `createShipment` 的 `carrierCost:0` 占位改为 `null`（真实回传前成本未知）；利润/账单计算（BillingService/LedgerService/MarkupEngine 回显）对 `null` 成本做排除或标注「成本待回传」，避免系统性高估利润。验收：相关单测覆盖 null 分支；tsc/eslint/jest 绿。",
     "deps": "8.1",
     "estimate": "0.5d",
-    "status": "todo",
+    "status": "done",
     "route": null
   },
   {
     "id": "9.7",
     "phase": "阶段9",
     "name": "演示/正式构建收敛（review B3）",
-    "deliverable": "`web` 生产构建（`vite build` + CI）硬性要求 `VITE_USE_MOCK=false`，缺省或 true 时构建失败并提示；README 明确「生产部署必须 NODE_ENV=production 且 VITE_USE_MOCK=false」；`server` 若残留 `USE_MOCK` 分支统一移除或文档化。验收：生产构建脚本可执行且不带 mock。",
+    "deliverable": "`web` 生产构建（`vite build` + CI）硬性要求 `VITE_USE_MOCK=false`，缺省或 true 时构建失败并提示；README 明确「生产部署必须 NODE_ENV=production 且 VITE_USE_MOCK=false」；`server` 若残留 `USE_MOCK` 分支统一移除或文档化（已确认无残留）。验收：生产构建脚本可执行且不带 mock。",
     "deps": "7.1",
     "estimate": "0.5d",
-    "status": "todo",
+    "status": "done",
     "route": null
   },
   {
@@ -746,7 +746,7 @@ export const DEV_TASKS: DevTask[] = [
     "deliverable": "非 mock 生产部署下全局守卫已要求 JWT，但 web 当前无登录页拿 token（既有缺口）。新增 `LoginView`（/login）：租户选择/输入 + 邮箱 + 密码 → POST /api/auth/login → 存 token 到 Pinia user store + localStorage → 重定向首页；`http.ts` 正式模式自动注入 `Authorization: Bearer`；路由加 `/login` 公开 + 未登录自动跳登录；演示模式（VITE_USE_MOCK）保持直返 mock、不弹登录。验收：web vue-tsc/eslint/vite build 绿；登录→拿 token→带鉴权请求链路在正式模式可走通（端到端需本机 PG，见 env_critical）。",
     "deps": "9.1",
     "estimate": "1d",
-    "status": "todo",
+    "status": "done",
     "route": "/tenants"
   }
 ]
@@ -754,16 +754,16 @@ export const DEV_TASKS: DevTask[] = [
 /** 统计汇总 */
 export const DEV_STATS: DevStats = {
   "total": 70,
-  "done": 67,
+  "done": 70,
   "doing": 0,
-  "todo": 3,
+  "todo": 0,
   "blocked": 0,
   "skipped": 0,
-  "percent": 95.7
+  "percent": 100
 }
 
 /** 阶段列表（去重，按出现顺序） */
 export const DEV_PHASES = ["阶段0","阶段1","阶段2","阶段3","阶段4","阶段5","阶段6","阶段7","阶段8","阶段9"]
 
 /** 最近交付的任务号（已完成中序号最大的若干个），用于「最近更新」高亮 */
-export const DEV_RECENT_IDS = ["9.2","9.3","9.4","9.5"]
+export const DEV_RECENT_IDS = ["9.5","9.6","9.7","9.8"]
