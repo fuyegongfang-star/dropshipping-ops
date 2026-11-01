@@ -151,6 +151,20 @@ npm run progress:gen   # 生成 web/src/api/dev-progress.ts（任务清单 / 统
   ⚠️ 前端显隐只是体验层，**不替代后端鉴权**——接口侧仍须按角色做权限校验。
 - 一句话：**开发期能看到全部，是因为默认身份就是 `super`；交付给卖家后他们登录即自动只见业务功能。**
 
+## 生产部署（硬编码约束，review B3）
+
+> **生产构建必须 `VITE_USE_MOCK=false`**，否则 `vite build` 直接失败并给出明确提示，杜绝把「演示假数据」误上生产。
+
+- 前端：`web/vite.config.ts` 在 `mode==='production'` 时强制校验 `VITE_USE_MOCK`，缺省（未设置）或 `true` 一律拒绝。
+- 正确姿势（二选一）：
+  ```bash
+  npm run build:prod                 # 自动 VITE_USE_MOCK=false 生产构建
+  # 或显式指定：
+  VITE_USE_MOCK=false npm run build  # 等价于 build:prod
+  ```
+- 本地演示 / 预览仍用 `npm run dev`（开发模式不受限）。
+- 后端：当前 `server` 无 `USE_MOCK` 残留分支，生产即为真实链路（PostgreSQL + Redis + BullMQ + MinIO）；生产部署时请确认 `JWT_SECRET` / `APP_MASTER_KEY` 已配置（缺省会在启动期 fail-fast 拒绝，见方案 §31 / 安全加固 9.3）。
+
 ## 本地跑起来看成果（含演示数据）
 
 > 目标：在你本机把前后端跑起来，打开浏览器直观看到「订单中心 / 商品SKU / 渠道 / 租户」与状态机、审单、逆向等能力。

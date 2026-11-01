@@ -7,8 +7,8 @@
   "error_log": "D:/Workbuddy/2026-10-10-17-18-35/dropshipping-ops/.dev/errors.log",
   "current_phase": "阶段9(安全加固续 · 9.4-9.8)",
   "task_index": 56,
-  "last_completed_task": "9.6",
-  "next_task": "9.7",
+  "last_completed_task": "9.7",
+  "next_task": "9.8",
   "last_commit": "c5bd464",
   "last_run": "2026-11-01T00:18:00+08:00",
   "blocked_tasks": [],
@@ -44,5 +44,7 @@
   "updated_at": "2026-10-31T16:18:00Z",
   "batch_2026_10_31": "8.2 平台凭证管理 UI 完成：PlatformCredentialsView(/platform-credentials, super 专属) 网格卡片+动态表单+查看明文(二次确认,明文仅驻留内存)+删除；platform-credentials.ts 类型/定义/接口封装；mock-data 同口径内存实现(list/get/save/delete)+演示正式双路；router+menuNodes(系统设置 key 图标)+locales 注册；gen-progress EXPLICIT_ROUTES 补 8.2→/platform-credentials。后端 8.1 模块+8.2 controller/dto/spec 一并验证：server tsc✅/eslint✅/jest 378✅(53 suites)；web vue-tsc✅/eslint✅/vite build✅。9.4 租户隔离缺省拒绝(A4,⚠️高风险)已完成：TenantPrismaService(PrismaService.$extends 查询拦截器) 实现缺省拒绝——范围读/单条写自动注入租户、findUnique 改写 findFirst 注入、平台聚合透明、生产无上下文写抛 TenantScopeViolation；增量迁移 orders/purchase-orders/transfer/wms/carriers/billing/finance 到 TENANT_PRISMA 作用域客户端；隔离单测 12 例全绿。验收 server tsc✅/eslint --max-warnings 0✅/jest 390✅。9.5 OpenAPI 客户端管理加守卫(A6)已完成：新增 RolesGuard+@Roles 对 clients 增删/rotate 叠加超权403；种子密钥改为启动时随机生成且生产不注入；getClientByCredentials 改 crypto.timingSafeEqual 恒定时间比较。验收 server tsc✅/eslint --max-warnings 0✅/jest 396✅(55 suites)。下一步 9.6 承运成本占位0改null(C1)。",
   "batch_2026_11_01": "9.6 承运成本占位0改null(review C1)完成：4 个真实承运适配器(yunexpress/yanwen/fourpx/dhl) createShipment 的 carrierCost:0 占位改为 null（成本待回传，诚实不为 0）；CreateShipmentResult/ShipmentLegResult.carrierCost 类型 number→number|null，CarrierLegLite 同步；shipments.service 落库已判 null→Shipment.carrierCost 置 null（schema 本就 Decimal?）。修复核心高估利润风险：generateBills 增加 carrierCost:{not:null} 过滤，使成本待回传运单延迟入账（应收/应付双口径对称排除），避免「已售却无成本」虚高利润；billing reconciliation/利润明细本已 {not:null} 过滤。新增 billing 单测覆盖 null 分支(s6 已售无成本不计入利润/对账)。前端：ShipmentTrackingView/ShipmentsView 运费列 null 时显示「成本待回传」标签；mock-data 增 sh_seed3(运费 null)+bs6(对账 null) 演示同口径。验收 server tsc✅/eslint✅/jest 397✅(55 suites)；web vue-tsc✅/eslint✅/vite build✅。下一步 9.7 演示/正式构建收敛(B3)。",
+  "batch_2026_11_01_b": "9.7 演示/正式构建收敛(review B3)完成：web/vite.config.ts 在 mode==='production' 时强制校验 VITE_USE_MOCK，缺省或 true 一律 throw 明确拒绝(防 mock 假数据上生产)；新增 package.json build:prod(自动 VITE_USE_MOCK=false) 与 README 生产部署小节。server 已确认无 USE_MOCK 残留分支。验证：VITE_USE_MOCK=false npm run build ✅ 产出；VITE_USE_MOCK=true npm run build ❌ 按预期被拦截。下一步 9.8 Web 登录页与令牌获取。",
+  "updated_at": "2026-11-01T23:40:00Z"
   "updated_at": "2026-11-01T23:25:00Z"
 }
