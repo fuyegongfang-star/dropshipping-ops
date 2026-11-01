@@ -136,7 +136,7 @@ describe('DhlAdapter', () => {
     expect(res.waybillNo).toBe('DHL-TRK-1')
     expect(res.trackingNo).toBe('DHL-TRK-1')
     expect(res.labelZpl).toBe('JVBERi0x')
-    expect(res.carrierCost).toBe(0) // 成本占位，待费用回传（§9）
+    expect(res.carrierCost).toBeNull() // 成本待回传（§9 C1：严禁占位 0）
   })
 
   it('面单返回 PDF 内容与格式', async () => {

@@ -103,7 +103,7 @@ describe('YanwenAdapter', () => {
     expect(res.waybillNo).toBe('YW-WB-1')
     expect(res.trackingNo).toBe('YW-TRK-1')
     expect(res.labelUrl).toBe('https://yw.label/1.pdf')
-    expect(res.carrierCost).toBe(0) // 成本占位，待费用回传（§9）
+    expect(res.carrierCost).toBeNull() // 成本待回传（§9 C1：严禁占位 0）
   })
 
   it('面单返回 PDF 链接', async () => {

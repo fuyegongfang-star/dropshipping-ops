@@ -48,7 +48,7 @@ interface CarrierLegLite {
   carrierName?: string
   waybillNo?: string
   trackingNo?: string
-  carrierCost?: number
+  carrierCost?: number | null // 建单成本可能为 null（成本待回传，§9 C1）
   currency?: string
 }
 

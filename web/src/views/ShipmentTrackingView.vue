@@ -72,8 +72,8 @@
             </el-table-column>
             <el-table-column label="运费" width="110">
               <template #default="{ row }">
-                <span v-if="row.carrierCost != null">${{ row.carrierCost.toFixed(2) }}</span>
-                <span v-else>—</span>
+                <span v-if="row.carrierCost != null" class="cost-money">${{ row.carrierCost.toFixed(2) }}</span>
+                <el-tag v-else size="small" type="info" effect="plain">成本待回传</el-tag>
               </template>
             </el-table-column>
           </el-table>
@@ -354,6 +354,8 @@ onMounted(async () => {
 .ev-desc { font-size: 12.5px; color: var(--ink-700); }
 .ev-loc { font-size: 11.5px; color: var(--ink-400); }
 .form-hint code { background: var(--bg); padding: 1px 5px; border-radius: 4px; font-size: 12px; color: var(--brand-700); }
+/* 运费列：有成本时正常展示，无成本（待回传）时由 el-tag 承载 */
+.cost-money { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--brand-600); }
 .app-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 40px 0; color: var(--ink-400); }
 .app-empty-ico { color: var(--ink-300); }
 .app-empty-text { font-size: 13px; }

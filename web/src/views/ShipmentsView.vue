@@ -132,7 +132,11 @@
               <div class="leg-grid">
                 <div><span class="lbl">运单号</span><span class="val">{{ leg.waybillNo }}</span></div>
                 <div><span class="lbl">轨迹号</span><span class="val">{{ leg.trackingNo || '—' }}</span></div>
-                <div><span class="lbl">本段成本</span><span class="val cost">${{ leg.carrierCost.toFixed(2) }}</span></div>
+                <div>
+                  <span class="lbl">本段成本</span>
+                  <span v-if="leg.carrierCost != null" class="val cost">${{ leg.carrierCost.toFixed(2) }}</span>
+                  <span v-else class="val muted">成本待回传</span>
+                </div>
                 <div><span class="lbl">转运节点</span><span class="val">{{ leg.transitHub || '—' }}</span></div>
               </div>
             </div>
@@ -582,6 +586,7 @@ async function run(): Promise<void> {
 .leg-grid .lbl { display: block; font-size: 11px; color: var(--ink-400); margin-bottom: 2px; }
 .leg-grid .val { font-size: 13px; font-weight: 600; color: var(--ink-800); word-break: break-all; }
 .leg-grid .val.cost { color: var(--brand-600); }
+.leg-grid .val.muted { color: var(--ink-400); font-weight: 500; }
 .result-hint { margin: 6px 0 0; }
 .leg-print { margin-left: 12px; }
 .btn-ico { margin-right: 4px; }

@@ -182,7 +182,7 @@ describe('YunExpressAdapter', () => {
     expect(res.waybillNo).toBe('YT-WB-001')
     expect(res.trackingNo).toBe('YT-TRK-001')
     expect(res.labelUrl).toBe('https://yun.label/001.pdf')
-    expect(res.carrierCost).toBe(0) // 成本占位，待费用回传（§9）
+    expect(res.carrierCost).toBeNull() // 成本待回传（§9 C1：建单当下不可知，严禁占位 0）
   })
 
   it('面单返回 PDF 内容与链接', async () => {

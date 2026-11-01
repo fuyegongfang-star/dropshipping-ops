@@ -452,7 +452,7 @@ export interface MockShipment {
   waybillNo?: string
   status: string
   legType: string
-  carrierCost?: number
+  carrierCost?: number | null // 成本待回传为 null（§9 C1）
   sellPrice?: number
   currency?: string
   labelUrl?: string
@@ -503,6 +503,23 @@ const shipments: MockShipment[] = [
     currency: 'USD',
     createdAt: '2026-10-05T11:00:00.000Z',
     legs: [{ legType: 'direct', carrierCode: 'fourpx', carrierName: '4PX 递四方', trackingNo: 'TRK-4PX-SEED2', status: 'in_transit' }],
+  },
+  {
+    // 成本待回传示例（§9 C1）：建单后承运商费用尚未回传，carrierCost 为 null，
+    // 运费列应显示「成本待回传」而非 ¥0.00，避免利润被虚高统计。
+    id: 'sh_seed3',
+    orderId: 'o7',
+    carrierCode: 'dhl',
+    carrierName: 'DHL 快递',
+    trackingNo: 'TRK-DHL-SEED3',
+    waybillNo: 'WB-DHL-SEED3',
+    status: 'booked',
+    legType: 'direct',
+    carrierCost: null,
+    sellPrice: 88.4,
+    currency: 'USD',
+    createdAt: '2026-10-09T09:00:00.000Z',
+    legs: [{ legType: 'direct', carrierCode: 'dhl', carrierName: 'DHL 快递', trackingNo: 'TRK-DHL-SEED3', status: 'booked' }],
   },
 ]
 const trackingEvents: MockTrackingEvent[] = [
@@ -1269,7 +1286,7 @@ const billingShipments: {
   tenantId: string
   carrierCode: string
   sellPrice: number
-  carrierCost: number
+  carrierCost: number | null // 成本待回传为 null（§9 C1），财务聚合按后端口径跳过
   createdAt: string
 }[] = [
   { id: 'bs1', tenantId: TENANT_ID, carrierCode: 'yunexpress', sellPrice: 128.5, carrierCost: 78.0, createdAt: '2026-10-03T10:00:00.000Z' },
@@ -1277,6 +1294,8 @@ const billingShipments: {
   { id: 'bs3', tenantId: 't_demo2', carrierCode: 'yunexpress', sellPrice: 96.4, carrierCost: 60.0, createdAt: '2026-10-20T10:00:00.000Z' },
   { id: 'bs4', tenantId: TENANT_ID, carrierCode: '4px', sellPrice: 64.0, carrierCost: 42.0, createdAt: '2026-10-25T10:00:00.000Z' },
   { id: 'bs5', tenantId: TENANT_ID, carrierCode: 'dhl', sellPrice: 320.0, carrierCost: 240.0, createdAt: '2026-09-08T10:00:00.000Z' },
+  // 成本待回传示例（§9 C1）：建单后费用尚未回传，财务聚合将其延迟入账（skip），避免利润虚高
+  { id: 'bs6', tenantId: TENANT_ID, carrierCode: 'dhl', sellPrice: 88.4, carrierCost: null, createdAt: '2026-10-09T10:00:00.000Z' },
 ]
 
 let billSeq = 1
@@ -1302,7 +1321,7 @@ function parseQ(url: string): Record<string, string> {
 /** 按账期聚合各租户 sell_price → 商户账单（tenant + period 唯一） */
 function aggBills(period: string, tenantId?: string): GenerateResult {
   const rows = billingShipments.filter(
-    (s) => periodOf(s.createdAt) === period && (!tenantId || s.tenantId === tenantId),
+    (s) => periodOf(s.createdAt) === period && s.carrierCost != null && (!tenantId || s.tenantId === tenantId),
   )
   const byTenant = new Map<string, { totalSell: number; count: number }>()
   for (const s of rows) {
@@ -1338,9 +1357,10 @@ function aggBills(period: string, tenantId?: string): GenerateResult {
 
 /** 按账期聚合各承运商 carrier_cost → 承运商对账（carrierCode + period 唯一） */
 function aggRecons(period: string): GenerateResult {
-  const rows = billingShipments.filter((s) => periodOf(s.createdAt) === period && s.carrierCode)
+  const rows = billingShipments.filter((s) => periodOf(s.createdAt) === period && s.carrierCode && s.carrierCost != null)
   const byCarrier = new Map<string, { totalCost: number; count: number }>()
   for (const s of rows) {
+    if (s.carrierCost == null) continue // 成本待回传跳过（§9 C1）
     const c = byCarrier.get(s.carrierCode) || { totalCost: 0, count: 0 }
     c.totalCost += s.carrierCost
     c.count++
@@ -1459,6 +1479,7 @@ function doGetProfitBreakdown(url: string): ProfitBreakdown {
   const carrierAgg = new Map<string, number>()
   for (const s of billingShipments) {
     if (periodOf(s.createdAt) !== period) continue
+    if (s.carrierCost == null) continue // 成本待回传跳过，避免利润虚高（§9 C1，与后端同口径）
     const t = tenantAgg.get(s.tenantId) || { sell: 0, cost: 0 }
     t.sell += s.sellPrice
     t.cost += s.carrierCost

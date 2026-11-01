@@ -113,14 +113,15 @@ export class DhlAdapter extends AbstractCarrierAdapter {
     const data = await this.invoke<DhlShipmentResponse>('POST', DHL_ENDPOINTS.shipments, body)
     const currency = req.currency ?? 'USD'
     const waybillNo = data.shipmentTrackingNumber ?? data.shipmentId ?? ''
-    // 成本以建单后计费回传/对账为准（§9/§10），此处占位 0 并标记
+    // 成本以建单后计费回传/对账为准（§9/§10），建单当下不可知 → 返回 null（「成本待回传」）。
+    // 严禁占位 0：下游利润/对账以 carrierCost 为 null 过滤排除，避免系统性高估利润（review C1）。
     // TODO(ops): 2026-11 接入 DHL 费用回传后填充真实 carrierCost（§9 对账）
     return {
       waybillNo,
       trackingNo: data.shipmentTrackingNumber,
       labelUrl: undefined,
       labelZpl: data.labels?.[0]?.binaryData,
-      carrierCost: 0,
+      carrierCost: null,
       currency,
     }
   }

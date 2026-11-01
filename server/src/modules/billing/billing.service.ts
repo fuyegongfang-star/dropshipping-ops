@@ -59,12 +59,15 @@ export class BillingService {
   /**
    * 生成商户账单：按账期聚合各租户 Shipment.sellPrice。
    * tenantId 省略时对所有租户出账（平台级操作）。
+   * 成本待回传（carrierCost=null）的运单暂不计入财务聚合（§9 C1）：成本未知即无法确认利润，
+   * 延迟到费用回传后再入账，避免「已售却无成本」系统性高估利润。
    */
   async generateBills(period: string, tenantId?: string): Promise<GenerateResult> {
     const { gte, lt } = this.periodRange(period)
     const where: Prisma.ShipmentWhereInput = {
       createdAt: { gte, lt },
       sellPrice: { not: null },
+      carrierCost: { not: null },
     }
     if (tenantId) where.tenantId = tenantId
 

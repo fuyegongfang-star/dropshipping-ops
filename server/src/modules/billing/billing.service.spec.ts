@@ -25,6 +25,9 @@ const SHIPMENTS = [
   { id: 's4', tenantId: 't1', carrierId: 'c_dhl', sellPrice: 999, carrierCost: 999, createdAt: new Date('2026-09-30T10:00:00.000Z') },
   // 缺价的单子：聚合时应被忽略
   { id: 's5', tenantId: 't2', carrierId: null, sellPrice: null, carrierCost: null, createdAt: new Date('2026-10-25T10:00:00.000Z') },
+  // 已售但成本待回传（carrierCost=null）：此前若占位 0 会被计入成本 0 → 利润虚高；
+  // 现为 null，利润/对账聚合按 carrierCost:{not:null} 过滤，避免系统性高估利润（§9 C1）。
+  { id: 's6', tenantId: 't1', carrierId: 'c_yun', sellPrice: 100.0, carrierCost: null, createdAt: new Date('2026-10-18T10:00:00.000Z') },
 ]
 
 // ---- 内存桩 ------------------------------------------------------------
@@ -240,6 +243,21 @@ describe('BillingService', () => {
     expect(yun?.totalCost).toBeCloseTo(138.0, 5) // 78 + 60
     // 总览与 4.2 利润核算口径一致
     expect(bd.summary.profit).toBeCloseTo(146.9, 5)
+  })
+
+  it('承运成本待回传（null）的运单不计入成本也不虚高利润（§9 C1）', async () => {
+    const svc = makeService()
+    await svc.generateBills('2026-10')
+    await svc.generateReconciliations('2026-10')
+    // 对账：yunexpress 仅 78 + 60 = 138，s6(成本 null) 必须被排除，不得计入 0
+    const list = await svc.listReconciliations()
+    const yun = list.find((r) => r.carrierCode === 'yunexpress')
+    expect(yun?.totalCost).toBeCloseTo(138.0, 5)
+    // 利润明细：t1 仅 s1+s2（s6 因成本 null 被 byTenant 聚合过滤），利润应为 110.5 而非 210.5
+    const bd = await svc.getProfitBreakdown('2026-10')
+    const t1 = bd.byTenant.find((t) => t.tenantId === 't1')
+    expect(t1?.profit).toBeCloseTo(110.5, 5)
+    expect(t1?.totalCost).toBeCloseTo(228.0, 5)
   })
 
   it('利润趋势返回 N 个账期概览数组（结构正确）', async () => {

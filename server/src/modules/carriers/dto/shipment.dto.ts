@@ -125,7 +125,9 @@ export interface CreateShipmentResult {
   trackingNo?: string // 轨迹号（部分承运商与运单号不同）
   labelUrl?: string // 面单下载链接（落 MinIO，§2.1）
   labelZpl?: string // 面单 ZPL（热敏，§1.2.3）
-  carrierCost: number // 实际成本（落 shipment.carrierCost）
+  // 实际成本（落 shipment.carrierCost）。建单当下成本尚未回传时为 null（「成本待回传」），
+  // 避免被下游利润/对账误计为 0 而系统性高估利润（review C1，§9）。
+  carrierCost: number | null
   currency: string // 币种
   estimatedLeadDays?: number // 预计时效（工作日）
   /** 两段式运单（§14）：全程单常被平台拆分为「头程 + 尾程」两段，各自独立运单号。 */
@@ -144,7 +146,7 @@ export interface ShipmentLegResult {
   waybillNo: string // 该段运单号
   trackingNo?: string // 该段轨迹号
   labelUrl?: string // 该段面单（落 MinIO，§2.1）
-  carrierCost: number // 该段成本（落 shipment_legs.cost）
+  carrierCost: number | null // 该段成本（落 shipment_legs.cost；未回传时为 null，§9 C1）
   currency: string // 币种
   estimatedLeadDays?: number // 该段时效（工作日）
   transitHub?: string // 转运节点（头程终点 / 尾程起点，如海外仓代码）
