@@ -550,3 +550,25 @@
 - 业务侧无新增页面（8.1 为后端基础层），7.2/7.3 的可视化载体（采购单收货标签打印、PDA 桥接区块）仍是本次睡前可见的主要新界面。
 
 **下一步**：8.2 平台凭证管理 UI（凭证录入/查看/轮转页 + 菜单/路由 + 演示/正式双路）+ 真实 API 联调桥接承运商/渠道注册表（TODO 落地）；或先补 Prisma 持久化。
+
+---
+
+## 2026-11-01 夜间批次（23:10 启动 · 阶段9 安全加固续 9.6–9.8 收官 · 主线 v1.5 全收口）
+
+**完成（✅）**：
+- **9.6 承运成本占位 0 改 null（review C1）**：4 个真实承运适配器（yunexpress/yanwen/fourpx/dhl）`createShipment` 的 `carrierCost:0` 占位改为 `null`（成本待回传诚实不为 0）；`CreateShipmentResult`/`ShipmentLegResult`/`CarrierLegLite.carrierCost` 类型 `number→number|null`；核心修复 `billing.generateBills` 增加 `carrierCost:{not:null}` 过滤，使成本待回传运单延迟入账（应收/应付双口径对称排除），消除「已售却无成本」虚高利润；新增 billing 单测覆盖 null 分支（s6 已售无成本不计入利润/对账）。前端 ShipmentTrackingView/ShipmentsView 成本待回传显示「成本待回传」标签；mock-data 同口径演示（sh_seed3/bs6）。验收 server tsc✅/eslint✅/jest 397✅(55 suites)；web vue-tsc✅/eslint✅/vite build✅。
+- **9.7 演示/正式构建收敛（review B3）**：`web/vite.config.ts` 生产模式强制校验 `VITE_USE_MOCK`，缺省/true 一律 `throw` 拒绝（防 mock 假数据上生产）；新增 `package.json build:prod` 与 README 生产部署小节；server 确认无 `USE_MOCK` 残留分支。验证 `VITE_USE_MOCK=false npm run build` ✅ 产出、`=true` 按预期拦截。
+- **9.8 Web 登录页与令牌获取（上线前置）**：前端登录全链路闭环 —— `LoginView`(/login) 独立公开路由（演示/正式双按钮）、`stores/user.ts` 重写（`token`+`AuthUser`+`isLoggedIn`+`login`/`logout`）、`api/auth.ts` 封装 `POST /auth/login`、`http.ts` 导出 `IS_MOCK`+Bearer 注入+401 跳登录、`router` /login 公开+未登录守卫、`mock-data` 补 `POST /auth/login` 占位 JWT。**顺带修复** 9.7 `build:prod` 在 Windows 经 `cmd.exe` 不支持内联 `VAR=value` 失效：新增 `.env.production`（`VITE_USE_MOCK=false`，生产模式自动加载覆盖 `.env`）+ `.gitignore` 放开该文件（无密钥必须随仓库发布，否则守卫拒构建），`build`/`build:prod` 跨平台可执行且仍受守卫保护。验收 web eslint✅/vue-tsc✅/vite build(生产)✅。
+
+**质量门禁**：server `tsc --noEmit`✅ ｜ `eslint --max-warnings 0`✅ ｜ `jest` **397 passed / 55 suites** ✅；web `eslint --max-warnings 0`✅ ｜ `vue-tsc --noEmit`✅（含于 build:prod）｜ `vite build`（生产 `VITE_USE_MOCK=false`）✅；`progress:gen` **70 任务 / 70 完成（100%）**。
+
+**明天打开网页能看到什么**：
+- 阶段9 安全加固（9.1–9.8）全部✅，「开发进度」页可见 70/70（100%）；最近交付能力卡片含 9.6/9.7/9.8。
+- 正式部署（`VITE_USE_MOCK=false`）首屏为登录页 `/login`：租户 + 邮箱 + 密码 → 拿 JWT → Bearer 注入 → 401 自动跳登录；演示模式仍「直接进入演示」零回归。
+- 运费/对账页成本待回传的运单显示「成本待回传」标签，不再把未知成本当 0 虚高利润。
+
+**诚实备注**：① 9.8 正式模式登录→后端换取 JWT 的端到端链路结构已打通，但本机 PG 端到端需用户按 README 起库（沙箱无 Docker）；② 真实平台凭证（淘宝 TOP/抖音开放平台/云途·DHL·4PX·燕文）API 联调仍标注 TODO，未发起真实请求；③ 顺带修复了此前 `state.json` 重复 `updated_at`（且一处缺逗号）导致的非法 JSON，避免 `progress:gen` 解析失败。
+
+**下一步（主线 v1.5 70/70 与阶段9 9.1–9.8 均已收口，剩余三项非计划表任务）**：① 真实平台凭证工厂化联调（需真实密钥）；② 本机 PG 端到端验证（需用户起库）；③ §31 收尾文档对齐。次日若启动将从三项中推进。
+
+**提交**：9.6 `5714e9e`；9.7 `ff74970`；9.8 feature `6b12515` + 检查点 `8aa2f5a`。
