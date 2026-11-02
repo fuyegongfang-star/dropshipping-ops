@@ -9,7 +9,7 @@
   "task_index": 57,
   "last_completed_task": "10.1",
   "next_task": "主线 v1.5 已 71/71(100%) 收口；剩余为上线前技术债（真实API联调/凭证Prisma持久化/本机PG端到端，见 docs/DELIVERY.md），移交实施/联调排期，不再属夜间自动开发主线范围",
-  "last_commit": "77eadef",
+  "last_commit": "0f907c1",
   "last_run": "2026-11-02T23:10:00+08:00",
   "blocked_tasks": [],
   "skipped_tasks": [],
