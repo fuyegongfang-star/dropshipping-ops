@@ -28,6 +28,9 @@
             <el-tag :type="item.status === 'configured' ? 'success' : 'info'" size="small" effect="dark" class="status-tag">
               {{ item.status === 'configured' ? '已配置' : '未配置' }}
             </el-tag>
+            <el-tag :type="bridgeBadgeType(bridgeOf(item.platform))" size="small" effect="plain" class="bridge-tag">
+              {{ bridgeBadgeText(bridgeOf(item.platform)) }}
+            </el-tag>
           </div>
 
           <div class="caps">
@@ -37,6 +40,12 @@
           <div class="meta">
             <span v-if="item.status === 'configured'">更新时间：{{ fmt(item.updatedAt) }}</span>
             <span v-else class="empty">尚未录入凭证</span>
+            <div v-if="bridgeOf(item.platform)?.realApiTodo" class="bridge-note">
+              真实 API 联调：TODO（端点/字段待校正）
+            </div>
+            <div v-if="bridgeOf(item.platform)?.reason" class="bridge-reason">
+              {{ bridgeOf(item.platform)?.reason }}
+            </div>
           </div>
 
           <div class="actions">
@@ -142,6 +151,7 @@ import {
   type CredentialListItem,
   type CredentialDetail,
   type PlatformDefinition,
+  type IntegrationItem,
 } from '@/api/platform-credentials'
 import PageHeader from '@/components/PageHeader.vue'
 import AppIcon from '@/components/AppIcon.vue'
@@ -154,8 +164,25 @@ const list = ref<CredentialListItem[]>([])
 const saving = ref(false)
 const loading = ref(false)
 
+/** 桥接状态快照：platform → IntegrationItem（任务 10.1，凭证工厂 ↔ 注册表 真实桥接） */
+const bridgeMap = ref<Record<string, IntegrationItem>>({})
+
 const authLabel = (t: string) => (AUTH_TYPE_LABELS as Record<string, string>)[t] ?? t
 const capLabel = (c: string) => (CAPABILITY_LABELS as Record<string, string>)[c] ?? c
+
+/** 取某平台桥接状态（无则返回占位） */
+function bridgeOf(platform: string): IntegrationItem | undefined {
+  return bridgeMap.value[platform]
+}
+/** 桥接徽章：已桥接 / 待联调 / 未配置 */
+const bridgeBadgeType = (b?: IntegrationItem): 'success' | 'info' | 'warning' => {
+  if (!b || !b.hasCredential) return 'info'
+  return b.wired ? 'success' : 'warning'
+}
+const bridgeBadgeText = (b?: IntegrationItem): string => {
+  if (!b || !b.hasCredential) return '未配置'
+  return b.wired ? '已桥接适配器' : '待联调'
+}
 
 function fmt(iso?: string): string {
   if (!iso) return '—'
@@ -285,7 +312,16 @@ async function remove(item: CredentialListItem): Promise<void> {
 async function refresh(): Promise<void> {
   loading.value = true
   try {
-    list.value = (await platformCredentialsApi.list()) as unknown as CredentialListItem[]
+    const [listRes, integrationRes] = await Promise.all([
+      platformCredentialsApi.list(),
+      platformCredentialsApi.integration(),
+    ])
+    list.value = listRes as unknown as CredentialListItem[]
+    const map: Record<string, IntegrationItem> = {}
+    for (const item of integrationRes as unknown as IntegrationItem[]) {
+      map[item.platform] = item
+    }
+    bridgeMap.value = map
   } catch (e) {
     ElMessage.error('凭证列表加载失败：' + (e as Error).message)
   } finally {
@@ -349,6 +385,21 @@ onMounted(refresh)
 .status-tag {
   flex: none;
   font-weight: 600;
+}
+.bridge-tag {
+  flex: none;
+  font-weight: 600;
+  margin-left: 6px;
+}
+.bridge-note {
+  color: var(--amber-600, #d97706);
+  font-weight: 600;
+  margin-top: 4px;
+}
+.bridge-reason {
+  color: var(--ink-500);
+  margin-top: 2px;
+  line-height: 1.4;
 }
 .caps {
   display: flex;

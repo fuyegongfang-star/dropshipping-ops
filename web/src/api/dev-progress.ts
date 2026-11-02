@@ -2,8 +2,8 @@
  * 开发进度数据 —— **本文件由 scripts/gen-progress.cjs 自动生成，请勿手工修改。**
  *
  * 生成命令：`npm run progress:gen`（读取 dev-schedule.md 的任务表）
- * 生成时间：2026-11-01T15:50:21.550Z
- * 源码提交：ff74970
+ * 生成时间：2026-11-02T15:30:56.096Z
+ * 源码提交：77eadef
  *
  * 作用：让「演示模式」与「正式模式」都能在网页上直接看到开发进度与最近交付的能力，
  * 夜间自动开发每完成一批任务后重新生成并提交，次日刷新页面即可看到新内容。
@@ -42,10 +42,10 @@ export interface DevStats {
 }
 
 /** 数据生成时间（ISO 字符串） */
-export const DEV_PROGRESS_GENERATED_AT = "2026-11-01T15:50:21.619Z"
+export const DEV_PROGRESS_GENERATED_AT = "2026-11-02T15:30:56.660Z"
 
 /** 数据对应的源码提交号（短 SHA） */
-export const DEV_PROGRESS_COMMIT = "ff74970"
+export const DEV_PROGRESS_COMMIT = "77eadef"
 
 /** 全部任务（按 dev-schedule.md 顺序） */
 export const DEV_TASKS: DevTask[] = [
@@ -748,13 +748,23 @@ export const DEV_TASKS: DevTask[] = [
     "estimate": "1d",
     "status": "done",
     "route": "/tenants"
+  },
+  {
+    "id": "10.1",
+    "phase": "阶段10 收尾",
+    "name": "收尾文档对齐 + 真实平台凭证联调桥接",
+    "deliverable": "§31 文档对齐（docs/DELIVERY.md）；凭证工厂↔承运商/渠道注册表真实桥接：承运商侧 yunexpress/dhl/fourpx/yanwen 凭证→适配器实例、渠道侧 taobao/douyin 演示实例桥接；真实 API 联调标注 TODO；前端桥接徽章（演示/正式双路）",
+    "deps": "9.8",
+    "estimate": "1d",
+    "status": "done",
+    "route": "/platform-credentials"
   }
 ]
 
 /** 统计汇总 */
 export const DEV_STATS: DevStats = {
-  "total": 70,
-  "done": 70,
+  "total": 71,
+  "done": 71,
   "doing": 0,
   "todo": 0,
   "blocked": 0,
@@ -763,7 +773,7 @@ export const DEV_STATS: DevStats = {
 }
 
 /** 阶段列表（去重，按出现顺序） */
-export const DEV_PHASES = ["阶段0","阶段1","阶段2","阶段3","阶段4","阶段5","阶段6","阶段7","阶段8","阶段9"]
+export const DEV_PHASES = ["阶段0","阶段1","阶段2","阶段3","阶段4","阶段5","阶段6","阶段7","阶段8","阶段9","阶段10 收尾"]
 
 /** 最近交付的任务号（已完成中序号最大的若干个），用于「最近更新」高亮 */
-export const DEV_RECENT_IDS = ["9.5","9.6","9.7","9.8"]
+export const DEV_RECENT_IDS = ["9.6","9.7","9.8","10.1"]

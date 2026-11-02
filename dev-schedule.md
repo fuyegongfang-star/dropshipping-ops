@@ -99,6 +99,7 @@
 | 9.6 | 阶段9 | 承运成本占位 0 改 null（review C1） | 承运适配器 `createShipment` 的 `carrierCost:0` 占位改为 `null`（真实回传前成本未知）；利润/账单计算（BillingService/LedgerService/MarkupEngine 回显）对 `null` 成本做排除或标注「成本待回传」，避免系统性高估利润。验收：相关单测覆盖 null 分支；tsc/eslint/jest 绿。 | 8.1 | 0.5d | ✅ |
 | 9.7 | 阶段9 | 演示/正式构建收敛（review B3） | `web` 生产构建（`vite build` + CI）硬性要求 `VITE_USE_MOCK=false`，缺省或 true 时构建失败并提示；README 明确「生产部署必须 NODE_ENV=production 且 VITE_USE_MOCK=false」；`server` 若残留 `USE_MOCK` 分支统一移除或文档化（已确认无残留）。验收：生产构建脚本可执行且不带 mock。 | 7.1 | 0.5d | ✅ |
 | 9.8 | 阶段9 | Web 登录页与令牌获取（上线前置） | 非 mock 生产部署下全局守卫已要求 JWT，但 web 当前无登录页拿 token（既有缺口）。新增 `LoginView`（/login）：租户选择/输入 + 邮箱 + 密码 → POST /api/auth/login → 存 token 到 Pinia user store + localStorage → 重定向首页；`http.ts` 正式模式自动注入 `Authorization: Bearer`；路由加 `/login` 公开 + 未登录自动跳登录；演示模式（VITE_USE_MOCK）保持直返 mock、不弹登录。验收：web vue-tsc/eslint/vite build 绿；登录→拿 token→带鉴权请求链路在正式模式可走通（端到端需本机 PG，见 env_critical）。 | 9.1 | 1d | ✅ |
+| 10.1 | 阶段10 收尾 | 收尾文档对齐 + 真实平台凭证联调桥接 | §31 文档对齐（docs/DELIVERY.md）；凭证工厂↔承运商/渠道注册表真实桥接：承运商侧 yunexpress/dhl/fourpx/yanwen 凭证→适配器实例、渠道侧 taobao/douyin 演示实例桥接；真实 API 联调标注 TODO；前端桥接徽章（演示/正式双路） | 9.8 | 1d | ✅ |
 
 > **阶段9 排期说明（2026-10-30 经用户确认）**：9.1–9.3 已落地（commit `2b40c26`）；9.4–9.7 由「待评审」提升为 ⬜ 正式排期，并新增 9.8（Web 登录页，上线前置缺口），统一交由夜间自动化（每日 23:10）按序续跑。详细设计见文末「阶段9 详细设计（安全加固续 · 9.4–9.8）」。
 
@@ -831,4 +832,18 @@
 - **构建收敛修复（顺带）**：9.7 的 `build:prod` 在 Windows 下因 npm 经 `cmd.exe` 不支持内联 `VAR=value` 而失效；改为新增 `.env.production`（`VITE_USE_MOCK=false`，Vite 生产模式自动加载覆盖 `.env`），`build:prod` 脚本去掉内联赋值，`npm run build`/`build:prod` 在 Windows 与 Linux 均可执行且仍受 9.7 守卫保护（缺省/true 一律拒构建）。
 - **验收**：web `eslint --max-warnings 0` ✅ ｜ `vue-tsc --noEmit`（含于 `build:prod`）✅ ｜ `vite build`（生产，`VITE_USE_MOCK=false`）✅。阶段9（9.1–9.8）全部 ✅，主线 v1.5 任务 70/70（100%）收口。
 - **提交**：feature（9.8 源码 + dev-schedule + dev-progress + `.env.production` + package.json）+ checkpoint（`state.json` + 进度表 + `progress:gen`）。
+
+### 进度更新 · 2026-11-02（夜间自动化 · 10.1 收尾文档对齐 + 真实平台凭证联调桥接 · 主线全收口收官）
+
+#### 10.1 收尾文档对齐 + 真实平台凭证联调桥接（✅ 完成并验证）
+
+- **背景**：主线 v1.5（阶段0~9）已于 2026-11-01 夜间批次 70/70（100%）收口；唯一遗留为 `state.json.next_task` 指定的收尾项「§31 收尾文档对齐 + 真实平台凭证联调桥接（标注 TODO）」。8.1/8.2 已建成凭证工厂（加密落库 + 平台→适配器工厂 `resolveAdapter` 仅返回 `scaffold-todo`），但**凭证与真实适配器之间未打通**。
+- **交付（后端）**：新增 `server/src/modules/platform-credentials/integration-bridge.service.ts`（`PlatformIntegrationBridgeService`），注入 `PlatformCredentialService` + `CarrierRegistryService` + `ChannelRegistryService`；承运商侧 `yunexpress/dhl/fourpx/yanwen` 在凭证存在时经注册表工厂构建**真实适配器实例**（解密凭证注入 `authConfig`，与 3.2~3.4 构造约定一致）；渠道侧 `taobao/douyin` 经注册表取到演示实例（`Shopify/Amazon` 为店铺级凭证，超出平台凭证范畴，真实 OAuth 联调标 TODO）；`integrationStatus` 全平台快照统一 `realApiTodo=true`（诚实：真实端点/字段待 2026-11 联调校正）。新增 `GET /platform-credentials/integration`；`PlatformCredentialsModule` 引入 `CarriersModule` + `ChannelsModule` 完成桥接装配（无循环依赖）。新增 `integration-bridge.service.spec.ts`（5 例）。
+- **交付（前端）**：`platform-credentials.ts` 增 `IntegrationItem` 类型 + `integration()` 接口；`mock-data.ts` 增 `doIntegration()` 同口径（置于 `/:platform` 正则前避免误捕获）；`PlatformCredentialsView.vue` 每卡片新增**桥接徽章**（`已桥接适配器`绿/`待联调`黄/`未配置`灰）+「真实 API 联调：TODO」标注；演示/正式双路通。
+- **交付（§31 文档对齐）**：新增 `docs/DELIVERY.md` —— v1.5 主线交付总览、10.1 桥接状态表、诚实待办清单（真实 API 联调/承运成本回传/凭证 Prisma 持久化/Redis 缓存/PG 端到端/费用表落库）、演示与正式运行 SOP、真实凭证接入步骤。
+- **验收**：server `tsc --noEmit`✅ / `eslint --max-warnings 0`✅ / `jest`**402 passed**（55→56 suites，+5 桥接）；web `eslint --max-warnings 0`✅ / `vue-tsc --noEmit`✅ / `vite build`✅。
+- **进度表**：新增任务行 `10.1`（阶段10 收尾，✅）；`progress:gen` 解析为 **71 任务 / 71 完成（100%）**；`gen-progress.cjs` 补 `EXPLICIT_ROUTES['10.1']='/platform-credentials'`。
+- **提交**：feature（桥接服务 + 控制器 + 前端徽章 + docs/DELIVERY.md + dev-schedule 10.1 + dev-progress）+ checkpoint（`state.json` + 进度表 + `progress:gen`）。
+
+> **主线收官声明**：阶段0~阶段10 全部任务 ✅，方案 v1.5 任务 **71/71（100%）** 收口。后续仅剩「真实平台 API 联调 / 凭证持久化 / 本机 PG 端到端」等上线前技术债（见 `docs/DELIVERY.md` 诚实待办清单），按 §3 真实端点校正排期推进，不再属于夜间自动开发主线范围。
 

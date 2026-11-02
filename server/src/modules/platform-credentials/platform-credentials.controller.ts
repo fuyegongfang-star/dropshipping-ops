@@ -28,6 +28,7 @@ import { BusinessException } from '../../common/response/business.exception'
 import { TenantId } from '../../common/tenant/tenant.decorator'
 import { PlatformCredentialService } from './platform-credential.service'
 import { PlatformAdapterFactory, type PlatformAdapterDescriptor } from './platform-adapter.factory'
+import { PlatformIntegrationBridgeService, type PlatformBridgeStatus } from './integration-bridge.service'
 import { PLATFORM_META, PlatformKind } from './platform-credentials.constants'
 import { SaveCredentialDto } from './dtos/save-credential.dto'
 
@@ -60,6 +61,7 @@ export class PlatformCredentialsController {
   constructor(
     private readonly credentials: PlatformCredentialService,
     private readonly factory: PlatformAdapterFactory,
+    private readonly bridge: PlatformIntegrationBridgeService,
   ) {}
 
   /** 列出全部平台及其配置状态（脱敏，供网格卡片渲染） */
@@ -82,6 +84,20 @@ export class PlatformCredentialsController {
       }
     })
     return ok(list)
+  }
+
+  /**
+   * 集成桥接状态快照（任务 10.1）：返回各平台凭证 → 适配器注册表的桥接就绪情况。
+   * 前端「平台凭证管理」页据此渲染「已桥接 / 待联调 / 未配置」徽章；真实 API 联调统一标记 TODO。
+   */
+  @Get('integration')
+  async integration(
+    @TenantId() tenantId: string,
+  ): Promise<ApiResponse<PlatformBridgeStatus[]>> {
+    if (!tenantId) {
+      throw new BusinessException('TENANT_REQUIRED', '缺少租户上下文', HttpStatus.BAD_REQUEST)
+    }
+    return ok(this.bridge.integrationStatus(tenantId))
   }
 
   /** 解密返回某平台凭证字段（明文仅在此接口出现，前端查看需二次确认） */

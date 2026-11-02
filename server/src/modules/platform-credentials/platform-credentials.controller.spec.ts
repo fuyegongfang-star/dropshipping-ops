@@ -14,6 +14,7 @@ import {
 } from './credential-store.port'
 import { PlatformCredentialService } from './platform-credential.service'
 import { PlatformAdapterFactory } from './platform-adapter.factory'
+import { PlatformIntegrationBridgeService } from './integration-bridge.service'
 import { PlatformCredentialsController } from './platform-credentials.controller'
 import { PlatformKind } from './platform-credentials.constants'
 import { SaveCredentialDto } from './dtos/save-credential.dto'
@@ -31,6 +32,11 @@ describe('PlatformCredentialsController', () => {
         { provide: CREDENTIAL_STORE, useClass: InMemoryCredentialStore },
         PlatformCredentialService,
         PlatformAdapterFactory,
+        // 控制器集成测试仅验证 REST 层；桥接状态由 integration-bridge.service.spec 单独覆盖。
+        {
+          provide: PlatformIntegrationBridgeService,
+          useValue: { integrationStatus: () => [] },
+        },
       ],
     }).compile()
     controller = moduleRef.get(PlatformCredentialsController)

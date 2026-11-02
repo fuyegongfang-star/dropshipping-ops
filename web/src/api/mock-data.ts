@@ -2004,6 +2004,7 @@ import type {
   CredentialListItem,
   CredentialDetail,
   CredentialSaveResult,
+  IntegrationItem,
   PlatformCode,
 } from './platform-credentials'
 import { PLATFORM_DEFINITIONS, getPlatformDef } from './platform-credentials'
@@ -2075,6 +2076,48 @@ function doDeletePlatformCredential(platform: string): { deleted: boolean } {
   if (!platformCredentials[platform]) return reject('平台凭证不存在') as unknown as { deleted: boolean }
   delete platformCredentials[platform]
   return { deleted: true }
+}
+
+/**
+ * 集成桥接状态快照（任务 10.1，演示态同口径）：与后端 PlatformIntegrationBridgeService.integrationStatus 对齐。
+ * 承运商侧真实平台（yunexpress/dhl/fourpx/yanwen）凭证存在即视为已桥接注册表工厂；
+ * 渠道侧（taobao/douyin）凭证存在即视为已桥接演示实例；真实联网 API 调用统一标记 TODO。
+ */
+function doIntegration(): IntegrationItem[] {
+  const REAL_CARRIERS = ['yunexpress', 'dhl', 'fourpx', 'yanwen']
+  return PLATFORM_DEFINITIONS.map((def) => {
+    const hasCredential = !!platformCredentials[def.code]
+    let target: IntegrationItem['target'] = 'none'
+    let wired = false
+    let adapterCode: string | undefined
+    let reason = '无桥接目标（演示占位平台）'
+    if (def.carrierSide && REAL_CARRIERS.includes(def.code)) {
+      target = 'carrier'
+      adapterCode = def.code
+      wired = hasCredential
+      reason = hasCredential
+        ? `已桥接承运商适配器 ${def.code}（凭证经注册表工厂注入 authConfig）`
+        : '未配置平台凭证，无法桥接承运商适配器（请先录入凭证）'
+    } else if (!def.carrierSide) {
+      target = 'channel'
+      adapterCode = def.code
+      wired = hasCredential
+      reason = hasCredential
+        ? `已桥接渠道适配器 ${def.code}（演示实例；真实店铺级 OAuth 联调 TODO）`
+        : '未配置平台凭证，无法桥接渠道适配器（请先录入凭证）'
+    }
+    return {
+      platform: def.code,
+      label: def.label,
+      carrierSide: def.carrierSide,
+      hasCredential,
+      wired,
+      target,
+      adapterCode,
+      reason,
+      realApiTodo: true,
+    }
+  })
 }
 
 // ===== 路由分发 =====
@@ -3523,6 +3566,8 @@ export function mockRouter(method: string, url: string, body?: unknown): Promise
     if (url === '/openapi/webhooks') return delay().then(() => doListOpenWebhooks())
     // 平台凭证管理（§17.2，任务 8.2）：列表脱敏 / 查看明文（演示态同口径）
     if (url === '/platform-credentials') return delay().then(() => doListPlatformCredentials())
+    // 平台凭证集成桥接状态快照（任务 10.1）：必须置于 /:platform 正则之前，避免被当作平台编码捕获。
+    if (url === '/platform-credentials/integration') return delay().then(() => doIntegration())
     const pcGet = url.match(/^\/platform-credentials\/([^/]+)$/)
     if (pcGet) return delay(120).then(() => doGetPlatformCredential(pcGet[1]))
     const billId = url.match(/^\/billing\/bills\/([^/]+)$/)

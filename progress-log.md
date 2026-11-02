@@ -572,3 +572,22 @@
 **下一步（主线 v1.5 70/70 与阶段9 9.1–9.8 均已收口，剩余三项非计划表任务）**：① 真实平台凭证工厂化联调（需真实密钥）；② 本机 PG 端到端验证（需用户起库）；③ §31 收尾文档对齐。次日若启动将从三项中推进。
 
 **提交**：9.6 `5714e9e`；9.7 `ff74970`；9.8 feature `6b12515` + 检查点 `8aa2f5a`。
+
+---
+
+## 2026-11-02 夜间批次（23:10 启动 · 10.1 收尾文档对齐 + 真实平台凭证联调桥接 · 主线 v1.5 全收口收官）
+
+**完成（✅）**：
+- **10.1 收尾文档对齐 + 真实平台凭证联调桥接（标注 TODO）**：这是 `state.json.next_task` 指定的收尾项，也是主线 v1.5 的最后一棒。此前 8.1/8.2 建成的「平台凭证工厂」能加密落库密钥，但凭证与真实适配器未打通（`resolveAdapter` 仅返回 `scaffold-todo`）。本次落地 `PlatformIntegrationBridgeService`：承运商侧 `yunexpress/dhl/fourpx/yanwen` 在凭证存在时经 `CarrierRegistryService` 工厂构建**真实适配器实例**（解密凭证注入 `authConfig`，与 3.2~3.4 构造约定一致）；渠道侧 `taobao/douyin` 经 `ChannelRegistryService` 取到演示实例（`Shopify/Amazon` 为店铺级凭证，超出平台凭证范畴，真实 OAuth 联调标 TODO）；新增 `GET /platform-credentials/integration` 与 `integrationStatus` 快照（统一 `realApiTodo=true`，诚实标注真实端点/字段待 2026-11 联调校正）。`PlatformCredentialsModule` 引入 `CarriersModule` + `ChannelsModule` 完成装配（无循环依赖）；新增 `integration-bridge.service.spec.ts`（5 例）。前端 `PlatformCredentialsView` 每卡片新增**桥接徽章**（已桥接适配器/待联调/未配置）+「真实 API 联调：TODO」标注，`platform-credentials.ts`/`mock-data.ts` 双路同口径。`§31` 文档对齐新增 `docs/DELIVERY.md`（v1.5 交付总览、桥接状态表、诚实待办清单、演示/正式运行 SOP、真实凭证接入步骤）。
+
+**质量门禁**：server `tsc --noEmit`✅ ｜ `eslint --max-warnings 0`✅ ｜ `jest` **402 passed / 56 suites**（新增 5 桥接）✅；web `eslint --max-warnings 0`✅ ｜ `vue-tsc --noEmit`✅ ｜ `vite build`✅；`progress:gen` **71 任务 / 71 完成（100%）**；`gen-progress.cjs` 补 `EXPLICIT_ROUTES['10.1']='/platform-credentials'`。
+
+**明天打开网页能看到什么**：
+- 「开发进度」页可见 **71/71（100%）**，最近交付能力卡片含 10.1；仪表盘完成率环到顶。
+- 「平台凭证管理」页（`/platform-credentials`）每个平台卡片多一枚**桥接徽章**：云途/DHL/4PX/燕文/淘宝/抖音在「已配置」后显示「已桥接适配器」（绿），并统一标注「真实 API 联调：TODO」——直观呈现「凭证已通到适配器，但真实联网调用尚未联调」的诚实状态。
+
+**诚实备注**：① 本批次仅完成「凭证 → 适配器实例」装配与可达性判定，**未发起任何真实联网调用**；② 真实端点/字段校正（`TODO(ops): 2026-11 联调校正`）、承运成本回传回填、凭证 Prisma 持久化、Redis 缓存、本机 PG 端到端仍为上线前技术债，汇总于 `docs/DELIVERY.md`；③ 沙箱无 Docker，未跑真实 PG。
+
+**下一步（主线收官）**：阶段0~阶段10 全部 ✅，方案 v1.5 **71/71（100%）** 收口。剩余为上线前技术债（真实 API 联调 / 凭证持久化 / PG 端到端），移交实施与联调排期，不再属夜间自动开发主线范围。
+
+**提交**：feature（桥接服务 + 控制器 + 前端徽章 + docs/DELIVERY.md + dev-schedule 10.1 + dev-progress）`见本批次首提交`；检查点（state.json + 进度表 + progress:gen）`见末提交`。

@@ -81,6 +81,22 @@ export interface CredentialSaveResult {
   }
 }
 
+/** 单平台桥接状态（任务 10.1，凭证工厂 ↔ 注册表 真实桥接快照） */
+export interface IntegrationItem {
+  platform: PlatformCode
+  label: string
+  carrierSide: boolean
+  hasCredential: boolean
+  /** 适配器已通过注册表桥接（凭证 → 实例） */
+  wired: boolean
+  /** 桥接目标端：carrier=承运商注册表 / channel=渠道注册表 / none=无桥接目标 */
+  target: 'carrier' | 'channel' | 'none'
+  adapterCode?: string
+  reason: string
+  /** 真实联网 API 调用是否仍待联调（诚实标注） */
+  realApiTodo: boolean
+}
+
 /** 平台定义表（新增平台：后端 PLATFORM_META 登记一处，前端此处登记一处） */
 export const PLATFORM_DEFINITIONS: PlatformDefinition[] = [
   {
@@ -220,6 +236,8 @@ export const platformCredentialsApi = {
   /** 删除凭证 */
   remove: (platform: string) =>
     http.delete<{ deleted: boolean }>(`/platform-credentials/${platform}`),
+  /** 集成桥接状态快照（任务 10.1：凭证 → 适配器注册表 桥接就绪情况） */
+  integration: () => http.get<IntegrationItem[]>('/platform-credentials/integration'),
 }
 
 export default platformCredentialsApi
