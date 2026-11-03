@@ -9,7 +9,7 @@
   "task_index": 58,
   "last_completed_task": "11.1",
   "next_task": "阶段11 技术债清偿（主线 v1.5 已 72/72 收口）。下一优先项 ① 费用/对账持久化：quotes/markup_rules/fx_rates 落 PostgreSQL（当前为内存实现；同端口/适配器模式，沙箱可 mock 验证）。其余：真实平台 API 联调（需真实密钥）/ Redis 分布式缓存 / 本机 PG 端到端（见 docs/DELIVERY.md §3）",
-  "last_commit": "a29ad07",
+  "last_commit": "9e200f2",
   "last_run": "2026-11-03T23:10:00+08:00",
   "blocked_tasks": [],
   "skipped_tasks": [],
