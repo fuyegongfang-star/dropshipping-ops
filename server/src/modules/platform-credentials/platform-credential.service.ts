@@ -1,13 +1,14 @@
 /**
- * 平台凭证服务（任务 NEXT-1，方案 §17.2）。
+ * 平台凭证服务（任务 8.1 / 11.1，方案 §17.2）。
  *
  * 职责：① 凭证加密落库（AES-256-GCM，经 SecretEncryptionService，不存明文）；
  *      ② 按租户+平台读取并解密还原结构化凭证；③ 必填字段校验；
  *      ④ 列表/删除。真实 API 联调交由 platform-adapter.factory.ts（TODO）。
  *
  * 多租户：凭证以 tenantId 隔离（存储端口实现须保证租户维度）。
+ * 异步：存储端口（InMemory/Prisma）统一异步，本服务方法相应 await。
  *
- * 负责人：自动开发引擎 ｜ 新增于 2026-10-29 夜间批次
+ * 负责人：自动开发引擎 ｜ 新增于 2026-10-29 夜间批次，2026-11-03 下沉 Prisma
  */
 
 import { Inject, Injectable, HttpStatus } from '@nestjs/common'
@@ -28,11 +29,11 @@ export class PlatformCredentialService {
   ) {}
 
   /** 写入凭证：校验必填 → JSON 序列化 → 加密 → 落库（status=active） */
-  setCredential<T extends Record<string, unknown>>(
+  async setCredential<T extends Record<string, unknown>>(
     tenantId: string,
     platform: PlatformKind,
     credential: T,
-  ): void {
+  ): Promise<void> {
     this.assertRequired(platform, credential)
     const encryptedPayload = this.encryption.encrypt(JSON.stringify(credential))
     const value: PlatformCredentialValue = {
@@ -42,15 +43,15 @@ export class PlatformCredentialService {
       status: 'active',
       updatedAt: new Date().toISOString(),
     }
-    this.store.save(value)
+    await this.store.save(value)
   }
 
   /** 读取并解密凭证；缺失则抛业务异常（优雅失败，不返回 undefined 误导调用方） */
-  getCredential<T = Record<string, unknown>>(
+  async getCredential<T = Record<string, unknown>>(
     tenantId: string,
     platform: PlatformKind,
-  ): T {
-    const value = this.store.get(tenantId, platform)
+  ): Promise<T> {
+    const value = await this.store.get(tenantId, platform)
     if (!value) {
       throw new BusinessException(
         'PLATFORM_CREDENTIAL_MISSING',
@@ -63,23 +64,23 @@ export class PlatformCredentialService {
   }
 
   /** 是否存在有效凭证 */
-  hasCredential(tenantId: string, platform: PlatformKind): boolean {
-    return this.store.get(tenantId, platform) !== undefined
+  async hasCredential(tenantId: string, platform: PlatformKind): Promise<boolean> {
+    return (await this.store.get(tenantId, platform)) !== undefined
   }
 
   /** 读取凭证元信息（不解密，仅返回更新时间，供列表展示） */
-  getUpdatedAt(tenantId: string, platform: PlatformKind): string | undefined {
-    return this.store.get(tenantId, platform)?.updatedAt
+  async getUpdatedAt(tenantId: string, platform: PlatformKind): Promise<string | undefined> {
+    return (await this.store.get(tenantId, platform))?.updatedAt
   }
 
   /** 列出租户已配置的平台 */
-  listPlatforms(tenantId: string): PlatformKind[] {
-    return this.store.list(tenantId).map((v) => v.platform)
+  async listPlatforms(tenantId: string): Promise<PlatformKind[]> {
+    return (await this.store.list(tenantId)).map((v) => v.platform)
   }
 
   /** 删除凭证 */
-  removeCredential(tenantId: string, platform: PlatformKind): void {
-    this.store.delete(tenantId, platform)
+  async removeCredential(tenantId: string, platform: PlatformKind): Promise<void> {
+    await this.store.delete(tenantId, platform)
   }
 
   /** 校验平台必填字段（缺字段抛业务异常，避免下游拿到半截凭证） */

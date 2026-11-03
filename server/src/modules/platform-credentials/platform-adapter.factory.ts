@@ -56,9 +56,9 @@ export class PlatformAdapterFactory {
    * 渠道侧（carrierSide=false）→ ChannelRegistryService 解析渠道适配器。
    * 当前为 scaffold-todo，待真实 API 联调时在此注入对应注册表并实例化。
    */
-  resolveAdapter(platform: PlatformKind, tenantId: string): PlatformAdapterDescriptor {
+  async resolveAdapter(platform: PlatformKind, tenantId: string): Promise<PlatformAdapterDescriptor> {
     const meta = PLATFORM_META[platform]
-    const ok = this.credentials.hasCredential(tenantId, platform)
+    const ok = await this.credentials.hasCredential(tenantId, platform)
     return {
       platform,
       label: meta.label,

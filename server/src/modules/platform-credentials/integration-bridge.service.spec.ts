@@ -1,11 +1,12 @@
 /**
- * 平台凭证 ↔ 适配器注册表 桥接服务单测（任务 10.1）。
+ * 平台凭证 ↔ 适配器注册表 桥接服务单测（任务 10.1 / 11.1）。
  *
  * 覆盖：① 凭证缺失时不桥接（优雅降级）；② 凭证存在且注册表有工厂时返回真实实例；
  *       ③ 非承运商侧平台正确分流；④ 渠道侧（淘宝）演示实例桥接；
  *       ⑤ integrationStatus 全平台快照结构与 honest 标注（realApiTodo 恒为 true）。
  *
  * 不依赖真实 YunExpressAdapter 等实现，仅注册极简 fake 工厂/实例验证桥接调度逻辑。
+ * 凭证存储端口统一异步（11.1 下沉 Prisma），本测试相应 await。
  */
 
 import { Test } from '@nestjs/testing'
@@ -77,43 +78,43 @@ describe('PlatformIntegrationBridgeService', () => {
     channelRegistry.registerAdapter(fakeChannel)
   })
 
-  it('无凭证时承运商侧不桥接，返回可读原因', () => {
-    const res = bridge.resolveCarrierAdapter(TENANT, PlatformKind.YUNEXPRESS)
+  it('无凭证时承运商侧不桥接，返回可读原因', async () => {
+    const res = await bridge.resolveCarrierAdapter(TENANT, PlatformKind.YUNEXPRESS)
     expect(res.resolved).toBe(false)
     expect(res.reason).toContain('未配置')
   })
 
-  it('有凭证且注册表有工厂时返回真实承运商适配器实例', () => {
-    credentials.setCredential(TENANT, PlatformKind.YUNEXPRESS, {
+  it('有凭证且注册表有工厂时返回真实承运商适配器实例', async () => {
+    await credentials.setCredential(TENANT, PlatformKind.YUNEXPRESS, {
       appId: 'a',
       appKey: 'k',
       secret: 's',
     })
-    const res = bridge.resolveCarrierAdapter(TENANT, PlatformKind.YUNEXPRESS)
+    const res = await bridge.resolveCarrierAdapter(TENANT, PlatformKind.YUNEXPRESS)
     expect(res.resolved).toBe(true)
     expect(res.adapterCode).toBe('yunexpress')
     expect(res.adapter).toBe(fakeCarrier)
   })
 
-  it('非承运商侧平台（淘宝）经 resolveCarrierAdapter 正确拒绝', () => {
-    const res = bridge.resolveCarrierAdapter(TENANT, PlatformKind.TAOBAO)
+  it('非承运商侧平台（淘宝）经 resolveCarrierAdapter 正确拒绝', async () => {
+    const res = await bridge.resolveCarrierAdapter(TENANT, PlatformKind.TAOBAO)
     expect(res.resolved).toBe(false)
     expect(res.reason).toContain('非承运商侧')
   })
 
-  it('渠道侧（淘宝）演示实例桥接成功', () => {
-    const res = bridge.resolveChannelAdapter(TENANT, PlatformKind.TAOBAO)
+  it('渠道侧（淘宝）演示实例桥接成功', async () => {
+    const res = await bridge.resolveChannelAdapter(TENANT, PlatformKind.TAOBAO)
     expect(res.resolved).toBe(true)
     expect(res.adapterCode).toBe('taobao')
   })
 
-  it('integrationStatus 全平台快照：真实 API 联调恒为 TODO，且凭证存在时承运商侧 wired=true', () => {
-    credentials.setCredential(TENANT, PlatformKind.YUNEXPRESS, {
+  it('integrationStatus 全平台快照：真实 API 联调恒为 TODO，且凭证存在时承运商侧 wired=true', async () => {
+    await credentials.setCredential(TENANT, PlatformKind.YUNEXPRESS, {
       appId: 'a',
       appKey: 'k',
       secret: 's',
     })
-    const status = bridge.integrationStatus(TENANT)
+    const status = await bridge.integrationStatus(TENANT)
     // 平台数量与 PLATFORM_META 一致
     expect(status.length).toBeGreaterThanOrEqual(6)
     // honest：所有平台真实 API 联调均为 TODO

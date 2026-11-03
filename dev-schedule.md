@@ -100,6 +100,7 @@
 | 9.7 | 阶段9 | 演示/正式构建收敛（review B3） | `web` 生产构建（`vite build` + CI）硬性要求 `VITE_USE_MOCK=false`，缺省或 true 时构建失败并提示；README 明确「生产部署必须 NODE_ENV=production 且 VITE_USE_MOCK=false」；`server` 若残留 `USE_MOCK` 分支统一移除或文档化（已确认无残留）。验收：生产构建脚本可执行且不带 mock。 | 7.1 | 0.5d | ✅ |
 | 9.8 | 阶段9 | Web 登录页与令牌获取（上线前置） | 非 mock 生产部署下全局守卫已要求 JWT，但 web 当前无登录页拿 token（既有缺口）。新增 `LoginView`（/login）：租户选择/输入 + 邮箱 + 密码 → POST /api/auth/login → 存 token 到 Pinia user store + localStorage → 重定向首页；`http.ts` 正式模式自动注入 `Authorization: Bearer`；路由加 `/login` 公开 + 未登录自动跳登录；演示模式（VITE_USE_MOCK）保持直返 mock、不弹登录。验收：web vue-tsc/eslint/vite build 绿；登录→拿 token→带鉴权请求链路在正式模式可走通（端到端需本机 PG，见 env_critical）。 | 9.1 | 1d | ✅ |
 | 10.1 | 阶段10 收尾 | 收尾文档对齐 + 真实平台凭证联调桥接 | §31 文档对齐（docs/DELIVERY.md）；凭证工厂↔承运商/渠道注册表真实桥接：承运商侧 yunexpress/dhl/fourpx/yanwen 凭证→适配器实例、渠道侧 taobao/douyin 演示实例桥接；真实 API 联调标注 TODO；前端桥接徽章（演示/正式双路） | 9.8 | 1d | ✅ |
+| 11.1 | 阶段11 上线前技术债 | 平台凭证 Prisma 持久化 + 租户隔离 | 新增 `PlatformCredential` 模型 + `PrismaCredentialStore`（实现 `CredentialStorePort`，落库 PostgreSQL，租户行级隔离 + (tenantId,platform) 唯一约束 upsert 幂等覆盖）；模块绑定由 `InMemoryCredentialStore` 切换为 `PrismaCredentialStore`，上层服务/控制器/工厂仅增 `await` 零改动；新增 `prisma-credential-store.spec.ts`（mock PrismaService，验证租户隔离与查询形态）；关闭 DELIVERY.md §3 待办 #3。验证：server tsc✅/eslint✅/jest✅（407）。 | 8.1 | 1d | ✅ |
 
 > **阶段9 排期说明（2026-10-30 经用户确认）**：9.1–9.3 已落地（commit `2b40c26`）；9.4–9.7 由「待评审」提升为 ⬜ 正式排期，并新增 9.8（Web 登录页，上线前置缺口），统一交由夜间自动化（每日 23:10）按序续跑。详细设计见文末「阶段9 详细设计（安全加固续 · 9.4–9.8）」。
 
@@ -846,4 +847,17 @@
 - **提交**：feature（桥接服务 + 控制器 + 前端徽章 + docs/DELIVERY.md + dev-schedule 10.1 + dev-progress）+ checkpoint（`state.json` + 进度表 + `progress:gen`）。
 
 > **主线收官声明**：阶段0~阶段10 全部任务 ✅，方案 v1.5 任务 **71/71（100%）** 收口。后续仅剩「真实平台 API 联调 / 凭证持久化 / 本机 PG 端到端」等上线前技术债（见 `docs/DELIVERY.md` 诚实待办清单），按 §3 真实端点校正排期推进，不再属于夜间自动开发主线范围。
+
+### 进度更新 · 2026-11-03（夜间自动化 · 11.1 平台凭证 Prisma 持久化 + 租户隔离 · 阶段11 上线前技术债）
+
+#### 11.1 平台凭证 Prisma 持久化 + 租户隔离（✅ 完成并验证）
+
+- **背景**：DELIVERY.md §3 诚实待办 #3 —— `platform-credentials` 原进程级内存存储端口（`InMemoryCredentialStore`），生产前须下沉 Prisma 持久化 + 租户隔离。主线 v1.5 已于 2026-11-02 收官（71/71），本批次进入阶段11 技术债清偿。
+- **交付（后端）**：新增 Prisma 模型 `PlatformCredential`（tenantId + platform 唯一约束 + encryptedPayload + status + 时间）；实现 `PrismaCredentialStore`（实现 `CredentialStorePort`，落库 PostgreSQL，所有读写按 tenantId 过滤实现行级隔离，upsert 幂等覆盖）；模块 `CREDENTIAL_STORE` 绑定由 InMemory 切换为 Prisma；上层 `PlatformCredentialService` / 控制器 / `PlatformAdapterFactory` / `PlatformIntegrationBridgeService` 仅增 `await`，零业务逻辑改动；新增 `prisma-credential-store.spec.ts`（mock PrismaService，验证租户隔离与查询形态）。
+- **验收**：server `tsc --noEmit`✅ / `eslint --max-warnings 0`✅ / `jest` **407 passed**（56→57 suites，+5 新）；web `eslint --max-warnings 0`✅ / `npm run build:prod`（VITE_USE_MOCK=false）✅；`prisma generate` 已离线重新生成客户端。
+- **进度表**：新增任务行 `11.1`（阶段11 上线前技术债，✅）；`progress:gen` 解析为 **72 任务 / 72 完成（100%）**；`gen-progress.cjs` 补 `EXPLICIT_ROUTES['11.1']=null`（纯后端基础设施任务，无专属前端页面）。
+- **提交**：（feature 源码 + schema + 单测 + dev-schedule 11.1 + dev-progress）+ checkpoint（`state.json` + 进度表 + `progress:gen`）。
+- **诚实说明**：运行时依赖 PostgreSQL（沙箱无 Docker 未端到端验证，按 README `prisma db push` 后即可生效）；演示模式（VITE_USE_MOCK）前端不受影响，凭证仍走 mock-data。
+
+> **阶段11 技术债剩余（按沙箱可验证度排序）**：① 费用/对账持久化（quotes / markup_rules / fx_rates 落表，当前为内存）；② 真实平台 API 联调（需真实密钥，待 ops）；③ Redis 分布式缓存（令牌/FX，待基础设施）；④ 本机 PG 端到端验证（待用户起 Docker）。下一夜间批次可优先推进 ①。
 

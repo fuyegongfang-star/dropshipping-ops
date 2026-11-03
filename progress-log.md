@@ -591,3 +591,28 @@
 **下一步（主线收官）**：阶段0~阶段10 全部 ✅，方案 v1.5 **71/71（100%）** 收口。剩余为上线前技术债（真实 API 联调 / 凭证持久化 / PG 端到端），移交实施与联调排期，不再属夜间自动开发主线范围。
 
 **提交**：feature（桥接服务 + 控制器 + 前端徽章 + docs/DELIVERY.md + dev-schedule 10.1 + dev-progress）`见本批次首提交`；检查点（state.json + 进度表 + progress:gen）`见末提交`。
+
+## 2026-11-03（夜间自动化 · 11.1 平台凭证 Prisma 持久化 + 租户隔离 · 阶段11 上线前技术债）
+
+**背景**：主线 v1.5 已于 2026-11-02 收官（71/71）。`docs/DELIVERY.md` §3 诚实待办 #3 指出 `platform-credentials` 仍为进程级内存存储（`InMemoryCredentialStore`），生产前须下沉为 Prisma 持久化 + 租户隔离。本批次进入**阶段11 技术债清偿**，优先选择沙箱可验证项。
+
+**完成任务**：11.1 平台凭证 Prisma 持久化 + 租户隔离。
+
+**交付（后端）**：
+- 新增 Prisma 模型 `PlatformCredential`（`tenantId` + `platform` 唯一约束 + `encryptedPayload` + `status` + 时间；明文绝不落库，仅存 AES-256-GCM 加密 token）。
+- 实现 `PrismaCredentialStore`（实现 `CredentialStorePort`）：落库 PostgreSQL，所有读写按 `tenantId` 过滤实现行级隔离，`upsert` 以 (tenantId, platform) 唯一约束做幂等覆盖。
+- 模块 `CREDENTIAL_STORE` 绑定由 `InMemoryCredentialStore` 切换为 `PrismaCredentialStore`；`InMemoryCredentialStore` 保留供单测覆盖。
+- 上层 `PlatformCredentialService` / 控制器 / `PlatformAdapterFactory` / `PlatformIntegrationBridgeService` 仅增加 `await`，业务逻辑零改动。
+- 新增 `prisma-credential-store.spec.ts`（mock PrismaService，验证租户隔离与查询形态，零 DB 依赖）。
+
+**质量门禁**：server `tsc --noEmit`✅ ｜ `eslint --max-warnings 0`✅ ｜ `jest` **407 passed / 57 suites**（新增 5）✅；web `eslint --max-warnings 0`✅ ｜ `npm run build:prod`（VITE_USE_MOCK=false）✅；`prisma generate` 已离线重新生成客户端。
+
+**前端可见性**：本任务为纯后端基础设施任务（route=null），次日刷新网页可见：「开发进度」页进度由 71/71 → **72/72（100%）**，最近交付能力卡片新增 11.1；「平台凭证管理」页（`/platform-credentials`）行为不变（演示模式仍走 mock-data，不受后端存储切换影响）。
+
+**文档**：`docs/DELIVERY.md` §3 待办 #3 标记完成并注明运行时依赖 PG；`dev-schedule.md` 增 11.1 任务行 + 进度更新段；`progress:gen` 72/72；`gen-progress.cjs` 补 `EXPLICIT_ROUTES['11.1']=null`。
+
+**诚实备注**：① 运行时依赖 PostgreSQL（沙箱无 Docker 未端到端验证，按 README `prisma db push` 后即可生效）；② 其余技术债（真实 API 联调需密钥 / Redis 缓存 / 本机 PG 端到端）仍待基础设施与密钥就绪；③ 建议下一优先项：费用/对账持久化（quotes/markup_rules/fx_rates 落表，当前为内存实现，沙箱可 mock 验证）。
+
+**下一步（阶段11 续跑）**：① 费用/对账持久化（quotes/markup_rules/fx_rates 落 PostgreSQL）。
+
+**提交**：feature（PrismaCredentialStore + schema + 单测 + dev-schedule 11.1 + dev-progress + DELIVERY.md）+ 检查点（state.json + 进度表 + progress:gen）。

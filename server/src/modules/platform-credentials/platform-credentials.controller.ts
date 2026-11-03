@@ -70,19 +70,21 @@ export class PlatformCredentialsController {
     if (!tenantId) {
       throw new BusinessException('TENANT_REQUIRED', '缺少租户上下文', HttpStatus.BAD_REQUEST)
     }
-    const list: CredentialListItem[] = (Object.keys(PLATFORM_META) as PlatformKind[]).map((p) => {
-      const meta = PLATFORM_META[p]
-      const stored = this.credentials.hasCredential(tenantId, p)
-      return {
-        platform: p,
-        label: meta.label,
-        authType: meta.authType,
-        carrierSide: meta.carrierSide,
-        capabilities: meta.capabilities,
-        status: stored ? 'configured' : 'empty',
-        updatedAt: stored ? this.credentials.getUpdatedAt(tenantId, p) : undefined,
-      }
-    })
+    const list: CredentialListItem[] = await Promise.all(
+      (Object.keys(PLATFORM_META) as PlatformKind[]).map(async (p) => {
+        const meta = PLATFORM_META[p]
+        const stored = await this.credentials.hasCredential(tenantId, p)
+        return {
+          platform: p,
+          label: meta.label,
+          authType: meta.authType,
+          carrierSide: meta.carrierSide,
+          capabilities: meta.capabilities,
+          status: stored ? 'configured' : 'empty',
+          updatedAt: stored ? await this.credentials.getUpdatedAt(tenantId, p) : undefined,
+        }
+      }),
+    )
     return ok(list)
   }
 
@@ -97,7 +99,7 @@ export class PlatformCredentialsController {
     if (!tenantId) {
       throw new BusinessException('TENANT_REQUIRED', '缺少租户上下文', HttpStatus.BAD_REQUEST)
     }
-    return ok(this.bridge.integrationStatus(tenantId))
+    return ok(await this.bridge.integrationStatus(tenantId))
   }
 
   /** 解密返回某平台凭证字段（明文仅在此接口出现，前端查看需二次确认） */
@@ -112,7 +114,7 @@ export class PlatformCredentialsController {
     if (!PLATFORM_META[platform]) {
       throw new BusinessException('PLATFORM_UNKNOWN', `未知平台 ${platform}`, HttpStatus.BAD_REQUEST)
     }
-    const fields = this.credentials.getCredential<Record<string, string>>(tenantId, platform)
+    const fields = await this.credentials.getCredential<Record<string, string>>(tenantId, platform)
     return ok({ platform, fields })
   }
 
@@ -128,9 +130,9 @@ export class PlatformCredentialsController {
     if (!PLATFORM_META[dto.platform]) {
       throw new BusinessException('PLATFORM_UNKNOWN', `未知平台 ${dto.platform}`, HttpStatus.BAD_REQUEST)
     }
-    this.credentials.setCredential(tenantId, dto.platform, dto.fields)
+    await this.credentials.setCredential(tenantId, dto.platform, dto.fields)
     // 桥接：解析适配器描述符（真实实例经承运商/渠道注册表桥接为 TODO，不联网）
-    const binding = this.factory.resolveAdapter(dto.platform, tenantId)
+    const binding = await this.factory.resolveAdapter(dto.platform, tenantId)
     return ok(
       { platform: dto.platform, status: 'configured', binding },
       `平台 ${PLATFORM_META[dto.platform].label} 凭证已保存`,
@@ -149,7 +151,7 @@ export class PlatformCredentialsController {
     if (!PLATFORM_META[platform]) {
       throw new BusinessException('PLATFORM_UNKNOWN', `未知平台 ${platform}`, HttpStatus.BAD_REQUEST)
     }
-    this.credentials.removeCredential(tenantId, platform)
+    await this.credentials.removeCredential(tenantId, platform)
     return ok({ deleted: true }, `平台 ${PLATFORM_META[platform].label} 凭证已删除`)
   }
 }

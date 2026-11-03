@@ -701,3 +701,19 @@ model PurchaseOrderItem {
 
   @@index([purchaseOrderId])
 }
+
+// ---- 平台凭证持久化（§17.2 / 任务 8.1 凭证下沉；2026-11-03 夜间批次由内存存储替换为 Prisma）---
+// 一条「租户 + 平台」唯一对应一条凭证记录；encryptedPayload 为 AES-256-GCM 的 base64 token，明文绝不落库（§17.2）。
+// 租户隔离由行级 (tenantId, platform) 唯一约束 + 所有查询显式带 tenantId 实现（与 InMemoryCredentialStore 行为一致）。
+model PlatformCredential {
+  id               String   @id @default(cuid())
+  tenantId         String
+  platform         String // PlatformKind 字面量：taobao | douyin | yunexpress | dhl | fourpx | yanwen | mock
+  encryptedPayload String // base64(iv|tag|ciphertext)，由 SecretEncryptionService 产出
+  status           String   @default("active") // active | pending | error
+  updatedAt        DateTime @updatedAt
+  createdAt        DateTime @default(now())
+
+  @@unique([tenantId, platform]) // 租户内平台凭证唯一，save 幂等覆盖（upsert）
+  @@index([tenantId])
+}

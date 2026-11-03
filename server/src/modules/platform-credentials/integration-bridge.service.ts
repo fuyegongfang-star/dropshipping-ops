@@ -77,16 +77,16 @@ export class PlatformIntegrationBridgeService {
    * 仅当：① 平台为承运商侧；② 已配置凭证；③ 注册表存在对应工厂 时，才返回真实实例；
    * 否则返回 resolved=false 并给出人类可读原因（不抛异常，优雅降级）。
    */
-  resolveCarrierAdapter(tenantId: string, platform: PlatformKind): AdapterResolution {
+  async resolveCarrierAdapter(tenantId: string, platform: PlatformKind): Promise<AdapterResolution> {
     const carrierCode = PLATFORM_TO_CARRIER[platform]
     if (!carrierCode) {
       return { resolved: false, reason: '该平台非承运商侧，无承运商适配器可桥接' }
     }
-    if (!this.credentials.hasCredential(tenantId, platform)) {
+    if (!(await this.credentials.hasCredential(tenantId, platform))) {
       return { resolved: false, reason: '未配置平台凭证，无法桥接承运商适配器（请先 setCredential）' }
     }
     try {
-      const authConfig = this.credentials.getCredential<Record<string, unknown>>(tenantId, platform)
+      const authConfig = await this.credentials.getCredential<Record<string, unknown>>(tenantId, platform)
       const context: CarrierAccountContext = {
         id: `${tenantId}:${platform}`,
         tenantId,
@@ -131,10 +131,12 @@ export class PlatformIntegrationBridgeService {
   }
 
   /** 全平台桥接状态快照（驱动前端「集成桥接」徽章 + 后端联调进度追踪） */
-  integrationStatus(tenantId: string): PlatformBridgeStatus[] {
-    return (Object.keys(PLATFORM_META) as PlatformKind[]).map((platform) => {
+  async integrationStatus(tenantId: string): Promise<PlatformBridgeStatus[]> {
+    const platforms = Object.keys(PLATFORM_META) as PlatformKind[]
+    const items: PlatformBridgeStatus[] = []
+    for (const platform of platforms) {
       const meta = PLATFORM_META[platform]
-      const hasCredential = this.credentials.hasCredential(tenantId, platform)
+      const hasCredential = await this.credentials.hasCredential(tenantId, platform)
       const carrierCode = PLATFORM_TO_CARRIER[platform]
       const channelPlatform = PLATFORM_TO_CHANNEL[platform]
 
@@ -145,7 +147,7 @@ export class PlatformIntegrationBridgeService {
 
       if (carrierCode) {
         target = 'carrier'
-        const res = this.resolveCarrierAdapter(tenantId, platform)
+        const res = await this.resolveCarrierAdapter(tenantId, platform)
         wired = res.resolved
         adapterCode = res.adapterCode
         reason = res.reason
@@ -157,7 +159,7 @@ export class PlatformIntegrationBridgeService {
         reason = res.reason
       }
 
-      return {
+      items.push({
         platform,
         label: meta.label,
         carrierSide: meta.carrierSide,
@@ -167,7 +169,8 @@ export class PlatformIntegrationBridgeService {
         adapterCode,
         reason,
         realApiTodo: true, // 诚实：真实联网端点/字段待 2026-11 联调校正
-      }
-    })
+      })
+    }
+    return items
   }
 }

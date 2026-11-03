@@ -1,8 +1,9 @@
 /**
- * 平台凭证服务单元测试（任务 NEXT-1）。
+ * 平台凭证服务单元测试（任务 8.1 / 11.1）。
  *
  * 覆盖：加密落库不存明文、读取解密还原、缺失凭证抛错、必填校验、列表/删除、工厂描述符与客户端配置补全网关。
  * 使用真实 SecretEncryptionService + 内存存储端口，不依赖数据库。
+ * 注：凭证存储端口统一异步（11.1 下沉 Prisma），本测试相应 await。
  */
 
 import { Test } from '@nestjs/testing'
@@ -39,25 +40,25 @@ describe('PlatformCredentialService', () => {
     store = moduleRef.get(CREDENTIAL_STORE)
   })
 
-  it('写入后读取可还原结构化凭证', () => {
+  it('写入后读取可还原结构化凭证', async () => {
     const cred = { appKey: 'ak', appSecret: 'sk' }
-    service.setCredential('t1', PlatformKind.TAOBAO, cred)
-    expect(service.getCredential('t1', PlatformKind.TAOBAO)).toEqual(cred)
-    expect(service.hasCredential('t1', PlatformKind.TAOBAO)).toBe(true)
+    await service.setCredential('t1', PlatformKind.TAOBAO, cred)
+    expect(await service.getCredential('t1', PlatformKind.TAOBAO)).toEqual(cred)
+    expect(await service.hasCredential('t1', PlatformKind.TAOBAO)).toBe(true)
   })
 
-  it('明文绝不入库（存储中仅为加密 token）', () => {
-    service.setCredential('t1', PlatformKind.TAOBAO, { appKey: 'ak', appSecret: 'sk' })
-    const raw = store.get('t1', PlatformKind.TAOBAO)
+  it('明文绝不入库（存储中仅为加密 token）', async () => {
+    await service.setCredential('t1', PlatformKind.TAOBAO, { appKey: 'ak', appSecret: 'sk' })
+    const raw = await store.get('t1', PlatformKind.TAOBAO)
     expect(raw).toBeDefined()
     expect(raw!.encryptedPayload).not.toContain('ak')
     expect(raw!.encryptedPayload).not.toContain('sk')
   })
 
-  it('缺失凭证抛 PLATFORM_CREDENTIAL_MISSING', () => {
+  it('缺失凭证抛 PLATFORM_CREDENTIAL_MISSING', async () => {
     let err: BusinessException | undefined
     try {
-      service.getCredential('ghost', PlatformKind.DOUYIN)
+      await service.getCredential('ghost', PlatformKind.DOUYIN)
     } catch (e) {
       err = e as BusinessException
     }
@@ -66,10 +67,10 @@ describe('PlatformCredentialService', () => {
     expect(err!.getStatus()).toBe(HttpStatus.BAD_REQUEST)
   })
 
-  it('必填字段缺失抛 PLATFORM_CREDENTIAL_INCOMPLETE', () => {
+  it('必填字段缺失抛 PLATFORM_CREDENTIAL_INCOMPLETE', async () => {
     let err: BusinessException | undefined
     try {
-      service.setCredential('t1', PlatformKind.YUNEXPRESS, { appId: 'a' } as never)
+      await service.setCredential('t1', PlatformKind.YUNEXPRESS, { appId: 'a' } as never)
     } catch (e) {
       err = e as BusinessException
     }
@@ -77,19 +78,19 @@ describe('PlatformCredentialService', () => {
     expect(err!.getStatus()).toBe(HttpStatus.BAD_REQUEST)
   })
 
-  it('listPlatforms 仅返回已配置平台', () => {
-    service.setCredential('t1', PlatformKind.DOUYIN, { appKey: 'a', appSecret: 'b' })
-    service.setCredential('t1', PlatformKind.DHL, { apiKey: 'k', apiSecret: 's' })
-    expect(service.listPlatforms('t1').sort()).toEqual(
+  it('listPlatforms 仅返回已配置平台', async () => {
+    await service.setCredential('t1', PlatformKind.DOUYIN, { appKey: 'a', appSecret: 'b' })
+    await service.setCredential('t1', PlatformKind.DHL, { apiKey: 'k', apiSecret: 's' })
+    expect((await service.listPlatforms('t1')).sort()).toEqual(
       [PlatformKind.DHL, PlatformKind.DOUYIN].sort(),
     )
-    expect(service.listPlatforms('other')).toEqual([])
+    expect(await service.listPlatforms('other')).toEqual([])
   })
 
-  it('removeCredential 后不可读', () => {
-    service.setCredential('t1', PlatformKind.TAOBAO, { appKey: 'a', appSecret: 'b' })
-    service.removeCredential('t1', PlatformKind.TAOBAO)
-    expect(service.hasCredential('t1', PlatformKind.TAOBAO)).toBe(false)
+  it('removeCredential 后不可读', async () => {
+    await service.setCredential('t1', PlatformKind.TAOBAO, { appKey: 'a', appSecret: 'b' })
+    await service.removeCredential('t1', PlatformKind.TAOBAO)
+    expect(await service.hasCredential('t1', PlatformKind.TAOBAO)).toBe(false)
   })
 
   it('工厂：describe 返回平台元信息与默认网关', () => {
@@ -103,8 +104,8 @@ describe('PlatformCredentialService', () => {
     expect(cfg.gateway).toContain('dhl.com')
   })
 
-  it('工厂：resolveAdapter 产出 scaffold-todo 描述符', () => {
-    const desc = factory.resolveAdapter(PlatformKind.DOUYIN, 't1')
+  it('工厂：resolveAdapter 产出 scaffold-todo 描述符', async () => {
+    const desc = await factory.resolveAdapter(PlatformKind.DOUYIN, 't1')
     expect(desc.status).toBe('scaffold-todo')
     expect(desc.capabilities).toContain('pull')
   })

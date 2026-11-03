@@ -72,6 +72,7 @@ const EXPLICIT_ROUTES = {
   '8.1': null,
   '8.2': '/platform-credentials',
   '10.1': '/platform-credentials',
+  '11.1': null, // 凭证持久化：纯后端基础设施任务，无专属前端页面
 };
 
 /** 关键词 → 路由（兜底推断，命中即用）。 */

@@ -2,8 +2,8 @@
  * 开发进度数据 —— **本文件由 scripts/gen-progress.cjs 自动生成，请勿手工修改。**
  *
  * 生成命令：`npm run progress:gen`（读取 dev-schedule.md 的任务表）
- * 生成时间：2026-11-02T15:30:56.096Z
- * 源码提交：77eadef
+ * 生成时间：2026-11-03T15:20:11.608Z
+ * 源码提交：19ab030
  *
  * 作用：让「演示模式」与「正式模式」都能在网页上直接看到开发进度与最近交付的能力，
  * 夜间自动开发每完成一批任务后重新生成并提交，次日刷新页面即可看到新内容。
@@ -42,10 +42,10 @@ export interface DevStats {
 }
 
 /** 数据生成时间（ISO 字符串） */
-export const DEV_PROGRESS_GENERATED_AT = "2026-11-02T15:30:56.660Z"
+export const DEV_PROGRESS_GENERATED_AT = "2026-11-03T15:20:12.647Z"
 
 /** 数据对应的源码提交号（短 SHA） */
-export const DEV_PROGRESS_COMMIT = "77eadef"
+export const DEV_PROGRESS_COMMIT = "19ab030"
 
 /** 全部任务（按 dev-schedule.md 顺序） */
 export const DEV_TASKS: DevTask[] = [
@@ -758,13 +758,23 @@ export const DEV_TASKS: DevTask[] = [
     "estimate": "1d",
     "status": "done",
     "route": "/platform-credentials"
+  },
+  {
+    "id": "11.1",
+    "phase": "阶段11 上线前技术债",
+    "name": "平台凭证 Prisma 持久化 + 租户隔离",
+    "deliverable": "新增 `PlatformCredential` 模型 + `PrismaCredentialStore`（实现 `CredentialStorePort`，落库 PostgreSQL，租户行级隔离 + (tenantId,platform) 唯一约束 upsert 幂等覆盖）；模块绑定由 `InMemoryCredentialStore` 切换为 `PrismaCredentialStore`，上层服务/控制器/工厂仅增 `await` 零改动；新增 `prisma-credential-store.spec.ts`（mock PrismaService，验证租户隔离与查询形态）；关闭 DELIVERY.md §3 待办 #3。验证：server tsc✅/eslint✅/jest✅（407）。",
+    "deps": "8.1",
+    "estimate": "1d",
+    "status": "done",
+    "route": null
   }
 ]
 
 /** 统计汇总 */
 export const DEV_STATS: DevStats = {
-  "total": 71,
-  "done": 71,
+  "total": 72,
+  "done": 72,
   "doing": 0,
   "todo": 0,
   "blocked": 0,
@@ -773,7 +783,7 @@ export const DEV_STATS: DevStats = {
 }
 
 /** 阶段列表（去重，按出现顺序） */
-export const DEV_PHASES = ["阶段0","阶段1","阶段2","阶段3","阶段4","阶段5","阶段6","阶段7","阶段8","阶段9","阶段10 收尾"]
+export const DEV_PHASES = ["阶段0","阶段1","阶段2","阶段3","阶段4","阶段5","阶段6","阶段7","阶段8","阶段9","阶段10 收尾","阶段11 上线前技术债"]
 
 /** 最近交付的任务号（已完成中序号最大的若干个），用于「最近更新」高亮 */
-export const DEV_RECENT_IDS = ["9.6","9.7","9.8","10.1"]
+export const DEV_RECENT_IDS = ["9.7","9.8","10.1","11.1"]

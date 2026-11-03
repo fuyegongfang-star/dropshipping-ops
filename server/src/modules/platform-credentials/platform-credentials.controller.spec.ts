@@ -1,7 +1,8 @@
 /**
- * 平台凭证管理控制器单元测试（任务 8.2）。
+ * 平台凭证管理控制器单元测试（任务 8.2 / 11.1）。
  * 覆盖：列表脱敏/全平台展示、查看解密、写入加密落库、删除、未知平台拒绝。
  * 不依赖数据库，使用真实 SecretEncryptionService + 内存存储端口。
+ * 凭证存储端口统一异步（11.1 下沉 Prisma），本测试相应 await。
  */
 
 import { Test } from '@nestjs/testing'
@@ -44,7 +45,7 @@ describe('PlatformCredentialsController', () => {
   })
 
   it('list 返回全部平台且未配置项 status=empty', async () => {
-    service.setCredential(TENANT, PlatformKind.DHL, { apiKey: 'k', apiSecret: 's' })
+    await service.setCredential(TENANT, PlatformKind.DHL, { apiKey: 'k', apiSecret: 's' })
     const res = await controller.list(TENANT)
     const items = res.data as unknown as { platform: string; status: string }[]
     expect(items.length).toBeGreaterThanOrEqual(6)
@@ -55,7 +56,7 @@ describe('PlatformCredentialsController', () => {
   })
 
   it('get 解密返回明文凭证', async () => {
-    service.setCredential(TENANT, PlatformKind.DOUYIN, { appKey: 'a', appSecret: 'b' })
+    await service.setCredential(TENANT, PlatformKind.DOUYIN, { appKey: 'a', appSecret: 'b' })
     const res = await controller.get(TENANT, PlatformKind.DOUYIN)
     expect((res.data as { fields: Record<string, string> }).fields).toEqual({
       appKey: 'a',
@@ -81,13 +82,13 @@ describe('PlatformCredentialsController', () => {
     const data = res.data as { status: string; binding: { status: string } }
     expect(data.status).toBe('configured')
     expect(data.binding.status).toBe('scaffold-todo')
-    expect(service.hasCredential(TENANT, PlatformKind.DHL)).toBe(true)
+    expect(await service.hasCredential(TENANT, PlatformKind.DHL)).toBe(true)
   })
 
   it('remove 后凭证不可读', async () => {
-    service.setCredential(TENANT, PlatformKind.DHL, { apiKey: 'k', apiSecret: 's' })
+    await service.setCredential(TENANT, PlatformKind.DHL, { apiKey: 'k', apiSecret: 's' })
     await controller.remove(TENANT, PlatformKind.DHL)
-    expect(service.hasCredential(TENANT, PlatformKind.DHL)).toBe(false)
+    expect(await service.hasCredential(TENANT, PlatformKind.DHL)).toBe(false)
   })
 
   it('未知平台拒绝（list/get/save/remove 均校验 platform）', async () => {
