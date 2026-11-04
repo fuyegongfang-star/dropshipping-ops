@@ -616,3 +616,30 @@
 **下一步（阶段11 续跑）**：① 费用/对账持久化（quotes/markup_rules/fx_rates 落 PostgreSQL）。
 
 **提交**：feature（PrismaCredentialStore + schema + 单测 + dev-schedule 11.1 + dev-progress + DELIVERY.md）+ 检查点（state.json + 进度表 + progress:gen）。
+
+---
+
+## 2026-11-04（夜间自动化 23:10 启动 · 11.2 费用/对账持久化 · 阶段11 上线前技术债）
+
+**完成任务**：11.2 费用/对账持久化（quotes / markup_rules / fx_rates 落 PostgreSQL，清偿 DELIVERY.md §3 诚实待办 #1）。
+
+**交付（后端）**：三服务由进程级内存下沉 Prisma 持久化，DB 为唯一真相源、内存为热路径缓存，均实现 PG 不可达优雅降级（保留构造函数内存种子，不阻断启动）：
+- `FxService` → `fx_rates`：schema 增 (from,to) 唯一约束；`onModuleInit` 启动种子/载入内存缓存，运营覆盖 `updateRate` 经 upsert 落库 + 更新缓存；`getRate`/`toBase`/`listRates` 保持**同步零 await**，比价引擎热路径零影响。
+- `QuotesService` → `quotes`：schema 增 `status` + `selectedProductCode`；`create`/`get`/`select` 改**异步**落库（租户隔离 + 过期回写 `EXPIRED` + 渠道自选刷新锁定价）；完整报价 `results` 存 `rateSnapshot` 可重建。
+- `MarkupRulesService` → `markup_rules`（`source='engine'` 区分引擎默认规则与运营配置；平台级 `tenantId` 空串视为全局命中）；`onModuleInit` 启动载入运行期缓存 + 空则种子，`resolveRules` 保持**同步零 await**。
+
+**测试**：新增 `fx.service.persistence.spec.ts`(6)、`quotes.service.spec.ts` 重构异步(4)、`markup-rules.service.persistence.spec.ts`(4)，共 +14；同步修复 `platform-credential.service.spec.ts` 一处因随机 base64 偶发命中 `sk`/`ak` 子串的脆弱断言（改为校验结构化明文不入密文）。
+
+**质量门禁**：server `tsc --noEmit`✅ ｜ `eslint --max-warnings 0`✅ ｜ `jest` **416 passed / 59 suites**（+4 持久化套件）✅；web `eslint --max-warnings 0`✅ ｜ `npm run build:prod`（VITE_USE_MOCK=false）✅；`prisma generate` 已离线重新生成客户端。
+
+**前端可见性**：本任务为纯后端基础设施任务（route=null），次日刷新网页可见：「开发进度」页进度由 72/72 → **73/73（100%）**，最近交付能力卡片新增 11.2；「运费试算」(`/quotes`) 与「运营配置」(`/pricing` 含加价规则/汇率) 演示与正式双路行为不变，底层数据现已持久化（演示模式仍走 mock-data；正式模式直连已落库的 quotes/markup_rules/fx_rates）。
+
+**文档**：`dev-schedule.md` 增 11.2 任务行 + 进度更新段；`progress:gen` 73/73；`gen-progress.cjs` 补 `EXPLICIT_ROUTES['11.2']=null`；`docs/DELIVERY.md` §3 待办 #1 标记完成。
+
+**诚实备注**：① 运行时依赖 PostgreSQL（沙箱无 Docker 未端到端验证，按 README `prisma db push` 后新增列与表自动创建即可生效）；② 阶段11 剩余技术债（真实平台 API 联调需真实密钥 / Redis 分布式缓存 / 本机 PG 端到端）仍待基础设施与密钥就绪，**沙箱不可验证**，本批次不予虚假推进。
+
+**下一步（阶段11 续跑）**：② 真实平台 API 联调（需真实密钥，沙箱不可验证，建议标注 TODO 诚实留待 ops）／ ③ Redis 分布式缓存 ／ ④ 本机 PG 端到端（待用户起 Docker）。
+
+**提交**：feature `a966153`（三服务持久化 + schema + 单测 + dev-schedule 11.2 + dev-progress）＋ 检查点 `f62b9f4`（state.json.last_commit 对齐 a966153）。
+
+**本次新增/修改的后端文件**：`server/src/modules/pricing/markup/fx.service.ts`、`fx.controller.ts`、`quote/quotes.service.ts`、`quotes.controller.ts`、`markup/markup-rules.service.ts`、`platform-credentials/platform-credential.service.spec.ts`（脆弱断言修复）、`prisma/schema.prisma`；新增 `fx.service.persistence.spec.ts`、`markup-rules.service.persistence.spec.ts`、`quote/quotes.service.spec.ts`（重构异步）。
