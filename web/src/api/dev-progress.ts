@@ -2,8 +2,8 @@
  * 开发进度数据 —— **本文件由 scripts/gen-progress.cjs 自动生成，请勿手工修改。**
  *
  * 生成命令：`npm run progress:gen`（读取 dev-schedule.md 的任务表）
- * 生成时间：2026-11-03T15:20:11.608Z
- * 源码提交：19ab030
+ * 生成时间：2026-11-04T15:36:21.488Z
+ * 源码提交：f9e78a0
  *
  * 作用：让「演示模式」与「正式模式」都能在网页上直接看到开发进度与最近交付的能力，
  * 夜间自动开发每完成一批任务后重新生成并提交，次日刷新页面即可看到新内容。
@@ -42,10 +42,10 @@ export interface DevStats {
 }
 
 /** 数据生成时间（ISO 字符串） */
-export const DEV_PROGRESS_GENERATED_AT = "2026-11-03T15:20:12.647Z"
+export const DEV_PROGRESS_GENERATED_AT = "2026-11-04T15:36:21.576Z"
 
 /** 数据对应的源码提交号（短 SHA） */
-export const DEV_PROGRESS_COMMIT = "19ab030"
+export const DEV_PROGRESS_COMMIT = "f9e78a0"
 
 /** 全部任务（按 dev-schedule.md 顺序） */
 export const DEV_TASKS: DevTask[] = [
@@ -768,13 +768,23 @@ export const DEV_TASKS: DevTask[] = [
     "estimate": "1d",
     "status": "done",
     "route": null
+  },
+  {
+    "id": "11.2",
+    "phase": "阶段11 上线前技术债",
+    "name": "费用/对账持久化（quotes/markup_rules/fx_rates 落 PostgreSQL）",
+    "deliverable": "三服务由内存态下沉 Prisma 持久化，关闭 DELIVERY.md §3 待办 #1：① `FxService`→`fx_rates`（新增 from_to 唯一约束；内存热缓存 + onModuleInit 启动种子/载入 + 运营覆盖 upsert 落库；getRate/toBase/listRates 保持同步零 await，热路径不受影响）；② `QuotesService`→`quotes`（schema 增 status/selectedProductCode；create/get/select 异步落库 + 租户隔离 + 过期回写 EXPIRED + 渠道自选刷新锁定价；results 完整存 rateSnapshot 可重建）；③ `MarkupRulesService`→`markup_rules`(source=engine，平台级 tenantId 空串；onModuleInit 启动载入运行期缓存 + 空则种子，resolveRules 保持同步零 await)。三者均优雅降级（PG 不可达保留内存种子，不阻断启动）。前端 QuotesView/PricingRulesView 演示与正式双路不变。验证：server tsc✅/eslint --max-warnings 0✅/jest 416✅；web eslint✅/build:prod✅。",
+    "deps": "11.1",
+    "estimate": "1d",
+    "status": "done",
+    "route": null
   }
 ]
 
 /** 统计汇总 */
 export const DEV_STATS: DevStats = {
-  "total": 72,
-  "done": 72,
+  "total": 73,
+  "done": 73,
   "doing": 0,
   "todo": 0,
   "blocked": 0,
@@ -786,4 +796,4 @@ export const DEV_STATS: DevStats = {
 export const DEV_PHASES = ["阶段0","阶段1","阶段2","阶段3","阶段4","阶段5","阶段6","阶段7","阶段8","阶段9","阶段10 收尾","阶段11 上线前技术债"]
 
 /** 最近交付的任务号（已完成中序号最大的若干个），用于「最近更新」高亮 */
-export const DEV_RECENT_IDS = ["9.7","9.8","10.1","11.1"]
+export const DEV_RECENT_IDS = ["9.8","10.1","11.1","11.2"]

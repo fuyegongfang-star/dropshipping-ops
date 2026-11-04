@@ -48,11 +48,14 @@ describe('PlatformCredentialService', () => {
   })
 
   it('明文绝不入库（存储中仅为加密 token）', async () => {
-    await service.setCredential('t1', PlatformKind.TAOBAO, { appKey: 'ak', appSecret: 'sk' })
+    const cred = { appKey: 'ak', appSecret: 'sk' }
+    await service.setCredential('t1', PlatformKind.TAOBAO, cred)
     const raw = await store.get('t1', PlatformKind.TAOBAO)
     expect(raw).toBeDefined()
-    expect(raw!.encryptedPayload).not.toContain('ak')
-    expect(raw!.encryptedPayload).not.toContain('sk')
+    // 结构化明文（含字段名）绝不出现在密文中；避免对短子串(base64 偶发命中)做脆弱断言
+    expect(raw!.encryptedPayload).not.toContain(JSON.stringify(cred))
+    expect(raw!.encryptedPayload).not.toContain('appSecret')
+    expect(raw!.encryptedPayload).not.toContain('appKey')
   })
 
   it('缺失凭证抛 PLATFORM_CREDENTIAL_MISSING', async () => {

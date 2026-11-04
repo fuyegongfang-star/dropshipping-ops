@@ -10,10 +10,19 @@ import { MarkupRulesService } from './markup-rules.service'
 import { MarkupEngineService } from './markup-engine.service'
 import { RateQuote } from '../../carriers/dto/rate.dto'
 import { MarkupScope, MarkupRuleType } from './markup.types'
+import { PrismaService } from '../../../database/prisma.service'
 
 type StubLogger = { debug: jest.Mock; warn: jest.Mock; error: jest.Mock; log: jest.Mock; verbose: jest.Mock }
 function stubLogger(): StubLogger {
   return { debug: jest.fn(), warn: jest.fn(), error: jest.fn(), log: jest.fn(), verbose: jest.fn() }
+}
+
+/** 空 mock PrismaService（markup 引擎单测不调用 onModuleInit，无需真实 DB） */
+function stubPrisma(): PrismaService {
+  return {
+    fxRate: { findMany: jest.fn(), upsert: jest.fn().mockResolvedValue(undefined) },
+    markupRule: { findMany: jest.fn(), create: jest.fn().mockResolvedValue(undefined) },
+  } as unknown as PrismaService
 }
 
 function quote(over: Partial<RateQuote> = {}): RateQuote {
@@ -36,8 +45,8 @@ describe('MarkupEngineService (3.6 加价引擎)', () => {
   let rules: MarkupRulesService
   let svc: MarkupEngineService
   beforeEach(() => {
-    fx = new FxService(stubLogger() as unknown as never)
-    rules = new MarkupRulesService(stubLogger() as unknown as never)
+    fx = new FxService(stubLogger() as unknown as never, stubPrisma())
+    rules = new MarkupRulesService(stubLogger() as unknown as never, stubPrisma())
     svc = new MarkupEngineService(fx, rules, stubLogger() as unknown as never)
   })
 

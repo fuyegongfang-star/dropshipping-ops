@@ -28,13 +28,13 @@ export class FxController {
     return ok(this.fx.listRates())
   }
 
-  /** 手动覆盖某币种对的汇率；汇率必须为正数（诚实失败，避免 0/负汇率误算）。 */
+  /** 手动覆盖某币种对的汇率；汇率必须为正数（诚实失败，避免 0/负汇率误算）。落库 + 更新缓存。 */
   @Put(':base/:quote')
-  update(
+  async update(
     @Param('base') base: string,
     @Param('quote') quote: string,
     @Body() body: { rate?: number },
-  ): ApiResponse<FxRateView> {
-    return ok(this.fx.updateRate(base, quote, Number(body?.rate)))
+  ): Promise<ApiResponse<FxRateView>> {
+    return ok(await this.fx.updateRate(base, quote, Number(body?.rate)))
   }
 }

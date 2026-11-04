@@ -7,10 +7,16 @@
 import 'reflect-metadata'
 import { MarkupRulesService } from './markup-rules.service'
 import { MarkupContext, MarkupScope, MarkupRuleType } from './markup.types'
+import { PrismaService } from '../../../database/prisma.service'
 
 type StubLogger = { debug: jest.Mock; warn: jest.Mock; error: jest.Mock; log: jest.Mock; verbose: jest.Mock }
 function stubLogger(): StubLogger {
   return { debug: jest.fn(), warn: jest.fn(), error: jest.fn(), log: jest.fn(), verbose: jest.fn() }
+}
+
+/** 空 mock PrismaService（markup 单测不调用 onModuleInit，无需真实 DB） */
+function stubPrisma(): PrismaService {
+  return { markupRule: { findMany: jest.fn(), create: jest.fn().mockResolvedValue(undefined) } } as unknown as PrismaService
 }
 
 function ctx(over: Partial<MarkupContext> = {}): MarkupContext {
@@ -20,7 +26,7 @@ function ctx(over: Partial<MarkupContext> = {}): MarkupContext {
 describe('MarkupRulesService (3.6 规则解析)', () => {
   let svc: MarkupRulesService
   beforeEach(() => {
-    svc = new MarkupRulesService(stubLogger() as unknown as never)
+    svc = new MarkupRulesService(stubLogger() as unknown as never, stubPrisma())
   })
 
   it('默认载入全局 15% + 最低毛利 ¥5', () => {

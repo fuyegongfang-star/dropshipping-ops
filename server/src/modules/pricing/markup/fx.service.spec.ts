@@ -5,16 +5,22 @@
 
 import 'reflect-metadata'
 import { FxService, MARKUP_BASE_CURRENCY } from './fx.service'
+import { PrismaService } from '../../../database/prisma.service'
 
 type StubLogger = { debug: jest.Mock; warn: jest.Mock; error: jest.Mock; log: jest.Mock; verbose: jest.Mock }
 function stubLogger(): StubLogger {
   return { debug: jest.fn(), warn: jest.fn(), error: jest.fn(), log: jest.fn(), verbose: jest.fn() }
 }
 
+/** 空 mock PrismaService（fx 单测不调用 onModuleInit，无需真实 DB） */
+function stubPrisma(): PrismaService {
+  return { fxRate: { findMany: jest.fn(), upsert: jest.fn().mockResolvedValue(undefined) } } as unknown as PrismaService
+}
+
 describe('FxService (3.6 币种归一)', () => {
   let fx: FxService
   beforeEach(() => {
-    fx = new FxService(stubLogger() as unknown as never)
+    fx = new FxService(stubLogger() as unknown as never, stubPrisma())
   })
 
   it('基准币种常量为 CNY', () => {
@@ -42,8 +48,8 @@ describe('FxService (3.6 币种归一)', () => {
     expect(() => fx.getRate('JPY', 'CNY')).toThrow(/汇率缺失/)
   })
 
-  it('setRate 可覆盖汇率', () => {
-    fx.setRate('USD', 'CNY', 7.5)
+  it('updateRate 可覆盖汇率（写库 + 内存缓存即生效）', async () => {
+    await fx.updateRate('USD', 'CNY', 7.5)
     expect(fx.toBase(100, 'USD', 'CNY').amount).toBeCloseTo(750, 5)
   })
 })

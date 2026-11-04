@@ -26,14 +26,14 @@ export class QuotesController {
   async create(@TenantId() tenantId: string, @Body() req: CompareRequest): Promise<ApiResponse<Quote>> {
     const res = await this.engine.compare(tenantId, { ...req, trial: true })
     const currency = res.quotes[0]?.currency ?? 'CNY'
-    const quote = this.quotes.create(tenantId, req, res.quotes, currency)
+    const quote = await this.quotes.create(tenantId, req, res.quotes, currency)
     return ok(quote)
   }
 
   /** 取试算单（租户隔离 + 过期校验，§4.6） */
   @Get(':id')
   async get(@TenantId() tenantId: string, @Param('id') id: string): Promise<ApiResponse<Quote>> {
-    return ok(this.quotes.get(tenantId, id))
+    return ok(await this.quotes.get(tenantId, id))
   }
 
   /** 商户渠道自选：标记 selectedProductCode（§4.0 模式B） */
@@ -43,6 +43,6 @@ export class QuotesController {
     @Param('id') id: string,
     @Body() body: { productCode: string },
   ): Promise<ApiResponse<Quote>> {
-    return ok(this.quotes.select(tenantId, id, body.productCode))
+    return ok(await this.quotes.select(tenantId, id, body.productCode))
   }
 }
