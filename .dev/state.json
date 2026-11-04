@@ -9,7 +9,7 @@
   "task_index": 59,
   "last_completed_task": "11.2",
   "next_task": "阶段11 技术债清偿剩余：② 真实平台 API 联调（需真实密钥，沙箱不可验证，建议标注 TODO 诚实留待 ops）；③ Redis 分布式缓存（令牌/FX 缓存，待基础设施）；④ 本机 PG 端到端验证（待用户起 Docker 按 README `prisma db push`）。11.2 已清偿 ① 费用/对账持久化（quotes/markup_rules/fx_rates 落 PostgreSQL）。",
-  "last_commit": "a29ad07",
+  "last_commit": "a966153",
   "last_run": "2026-11-03T23:10:00+08:00",
   "blocked_tasks": [],
   "skipped_tasks": [],
