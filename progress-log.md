@@ -643,3 +643,28 @@
 **提交**：feature `a966153`（三服务持久化 + schema + 单测 + dev-schedule 11.2 + dev-progress）＋ 检查点 `f62b9f4`（state.json.last_commit 对齐 a966153）。
 
 **本次新增/修改的后端文件**：`server/src/modules/pricing/markup/fx.service.ts`、`fx.controller.ts`、`quote/quotes.service.ts`、`quotes.controller.ts`、`markup/markup-rules.service.ts`、`platform-credentials/platform-credential.service.spec.ts`（脆弱断言修复）、`prisma/schema.prisma`；新增 `fx.service.persistence.spec.ts`、`markup-rules.service.persistence.spec.ts`、`quote/quotes.service.spec.ts`（重构异步）。
+
+---
+
+## 2026-11-06（夜间自动化 23:10 启动 · 收尾健康巡检 · 无 ⬜ 任务）
+
+**运行状态**：主线 v1.5 已于 2026-11-02 收官（71/71），阶段11 上线前技术债清偿已于 2026-11-04 完成 ① 凭证持久化(11.1) 与 ① 费用/对账持久化(11.2)，调度表 73/73（100%）全 ✅，无剩余 ⬜ 任务。本批次为**收尾健康巡检**：按主循环规则「若所有 ⬜ 任务都已完成，进入收尾」，无新功能可推进。
+
+**完成任务**：无新功能（无 ⬜ 任务可认领）。
+
+**健康巡检结果（全绿）**：
+- server `tsc --noEmit`✅ ｜ `eslint --max-warnings 0`✅ ｜ `jest` **416 passed / 59 suites**✅（与 2026-11-04 同位，无回归）。
+- web `eslint --max-warnings 0`✅ ｜ `npm run build:prod`（VITE_USE_MOCK=false）✅（vue-tsc + vite build，2376 模块，built in ~20s）。
+- `npm run progress:gen`：73/73（100%）稳定，无状态漂移。
+- `git status --short`：仅 `web/src/api/dev-progress.ts` 因生成器重写产生 4 行等价变更（benign regeneration），工作树除本巡检文档外干净。
+
+**前端可见性**：无新增/修改页面（纯巡检）。次日刷新网页：进度仍为 73/73（100%），「开发进度」页与仪表盘「最近交付能力」卡片状态不变。
+
+**诚实备注**：阶段11 剩余技术债仍待基础设施与密钥就绪，**沙箱不可验证，不予虚假推进**：
+- ② 真实平台 API 联调（淘宝 TOP / 抖音开放平台 / 云途·DHL·4PX·燕文 真实端点，需真实密钥）；
+- ③ Redis 分布式缓存（令牌 / FX 缓存，需 Redis 基础设施，已有 `ioredis` 依赖，待部署）；
+- ④ 本机 PG 端到端验证（需用户按 README `prisma db push` 起本地 PostgreSQL）。
+
+**下一步**：等待用户侧基础设施与密钥就绪后，即可推进 ②/③/④。引擎将持续在 23:10 巡检，发现新 ⬜ 任务立即续跑。
+
+**提交**：检查点（dev-progress.ts 重写 + 本进度文档 + state.json 检查点）＋ 终闸（last_commit 对齐）。
