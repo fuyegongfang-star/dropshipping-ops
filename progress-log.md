@@ -668,3 +668,33 @@
 **下一步**：等待用户侧基础设施与密钥就绪后，即可推进 ②/③/④。引擎将持续在 23:10 巡检，发现新 ⬜ 任务立即续跑。
 
 **提交**：检查点（dev-progress.ts 重写 + 本进度文档 + state.json 检查点）＋ 终闸（last_commit 对齐）。
+
+---
+
+## 2026-11-08 夜间自动化日报 · 11.3 分布式缓存（Redis 令牌/FX）
+
+**运行状态**：主线 v1.5 + 阶段11 上线前技术债 全部 ⬜ 已认领完毕（74/74，100%）。本批次推进 DELIVERY.md §3 诚实待办 #4「分布式缓存」，属可沙箱验证的纯后端技术债（ioredis 已声明依赖，采用懒加载 + 优雅降级，单测不依赖真实 Redis）。
+
+**完成任务**：
+- **11.3 分布式缓存（Redis 令牌/FX，方案 §10.3）✅**
+  - 新增 `server/src/common/cache/` 模块：`CacheService`（命名空间前缀 + JSON 透明 `getJSON/setJSON` + 读取回填 `getOrSet`）、`MemoryCacheBackend`（默认零依赖）、`RedisCacheBackend`（ioredis **懒加载**，多实例共享令牌/FX）、`CacheModule`（@Global，`REDIS_URL` 驱动后端选择，Redis 不可用**优雅降级内存**并告警）。
+  - 承运商 OAuth 令牌服务升级：云途 `YunExpressTokenService` / DHL `DhlTokenService` 构造注入可选 `CacheService`，令牌按 `appId`/`clientId` 维度写入**共享缓存**（TTL = 有效期 − 刷新缓冲）；未注入时回退实例内存，与历史行为完全兼容。`CarriersModule` 引入 `CacheModule` 并经工厂把共享 `CacheService` 传入适配器。
+  - 关闭 DELIVERY.md §3 待办 #4（代码就绪；生产启用共享缓存需部署 Redis 并配 `REDIS_URL`）。
+
+**测试结果（全绿）**：
+- server `tsc --noEmit`✅ ｜ `eslint --max-warnings 0`✅ ｜ `jest` **426 passed / 61 suites**（+10：cache.service.spec 内存/Redis 假实现/降级 + oauth-token-cache.spec 云途/DHL 跨实例去重）。
+- web `eslint --max-warnings 0`✅ ｜ `npm run build:prod`（VITE_USE_MOCK=false）✅（2376 模块）。
+- `npm run progress:gen`：74 任务 / 74 完成（100%）。
+
+**前端可见性**：纯后端基础设施任务，无新增/修改页面（进度路由显式 `null`）。次日刷新网页：进度仍为 74/74（100%），「开发进度」页与仪表盘「最近交付能力」卡片新增「11.3 分布式缓存」条目，但无新业务页面（符合纯后端任务定位）。
+
+**本次新增页面与菜单**：无（11.3 为基础设施任务）。
+
+**诚实备注**：剩余阶段11 技术债仍**沙箱不可验证，不予虚假推进**：
+- ② 真实平台 API 联调（淘宝 TOP / 抖音开放平台 / 云途·DHL·4PX·燕文 真实端点，需真实密钥）；
+- ④ 本机 PG 端到端验证（需用户按 README `prisma db push` 起本地 PostgreSQL）。
+- ③ 分布式缓存代码已投产就绪；生产真正启用共享缓存需部署 Redis 服务并配置 `REDIS_URL`（沙箱无 Redis，默认走内存，单测已覆盖内存/Redis 双路径）。
+
+**下一步**：等待用户侧基础设施与密钥就绪后，即可推进 ②/④。引擎将持续在 23:10 巡检，发现新 ⬜ 任务立即续跑。
+
+**提交**：feature `08c029f`（common/cache + 令牌服务 + CarriersModule + 单测 + dev-schedule 11.3 + DELIVERY.md §3 + dev-progress）＋ 检查点 `1d5cd55`（state.json.last_commit 对齐 08c029f）。
