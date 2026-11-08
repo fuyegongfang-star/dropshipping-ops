@@ -2,8 +2,8 @@
  * 开发进度数据 —— **本文件由 scripts/gen-progress.cjs 自动生成，请勿手工修改。**
  *
  * 生成命令：`npm run progress:gen`（读取 dev-schedule.md 的任务表）
- * 生成时间：2026-11-06T15:12:53.288Z
- * 源码提交：41d7cc2
+ * 生成时间：2026-11-08T15:23:09.951Z
+ * 源码提交：2d24105
  *
  * 作用：让「演示模式」与「正式模式」都能在网页上直接看到开发进度与最近交付的能力，
  * 夜间自动开发每完成一批任务后重新生成并提交，次日刷新页面即可看到新内容。
@@ -42,10 +42,10 @@ export interface DevStats {
 }
 
 /** 数据生成时间（ISO 字符串） */
-export const DEV_PROGRESS_GENERATED_AT = "2026-11-06T15:12:54.246Z"
+export const DEV_PROGRESS_GENERATED_AT = "2026-11-08T15:23:10.981Z"
 
 /** 数据对应的源码提交号（短 SHA） */
-export const DEV_PROGRESS_COMMIT = "41d7cc2"
+export const DEV_PROGRESS_COMMIT = "2d24105"
 
 /** 全部任务（按 dev-schedule.md 顺序） */
 export const DEV_TASKS: DevTask[] = [
@@ -778,13 +778,23 @@ export const DEV_TASKS: DevTask[] = [
     "estimate": "1d",
     "status": "done",
     "route": null
+  },
+  {
+    "id": "11.3",
+    "phase": "阶段11 上线前技术债",
+    "name": "分布式缓存（Redis 令牌/FX 缓存，方案 §10.3）",
+    "deliverable": "新增 `common/cache` 模块：`CacheService`（命名空间前缀 + JSON 透明 getJSON/setJSON + 读取回填 getOrSet）+ `MemoryCacheBackend`（默认零依赖）+ `RedisCacheBackend`（ioredis 懒加载，多实例共享令牌/FX）+ `CacheModule`（全局，REDIS_URL 驱动后端选择，Redis 不可用优雅降级内存）；承运商 OAuth 令牌服务（云途/DHL）由「实例内存」升级为「按账号共享缓存」（构造注入 CacheService，跨实例去重避免重复换取触发承运商限流，未注入时回退内存兼容历史）；CarriersModule 引入 CacheModule 并经工厂传入适配器。关闭 DELIVERY.md §3 待办 #4（代码就绪；生产启用共享缓存需部署 Redis 并配 REDIS_URL，沙箱默认走内存且单测覆盖双路径）。验证：server tsc✅/eslint✅/jest 426✅(+10 缓存套件)；web 无改动。",
+    "deps": "11.2",
+    "estimate": "1d",
+    "status": "done",
+    "route": null
   }
 ]
 
 /** 统计汇总 */
 export const DEV_STATS: DevStats = {
-  "total": 73,
-  "done": 73,
+  "total": 74,
+  "done": 74,
   "doing": 0,
   "todo": 0,
   "blocked": 0,
@@ -796,4 +806,4 @@ export const DEV_STATS: DevStats = {
 export const DEV_PHASES = ["阶段0","阶段1","阶段2","阶段3","阶段4","阶段5","阶段6","阶段7","阶段8","阶段9","阶段10 收尾","阶段11 上线前技术债"]
 
 /** 最近交付的任务号（已完成中序号最大的若干个），用于「最近更新」高亮 */
-export const DEV_RECENT_IDS = ["9.8","10.1","11.1","11.2"]
+export const DEV_RECENT_IDS = ["10.1","11.1","11.2","11.3"]

@@ -52,7 +52,7 @@
 1. **真实平台 API 联调**（2026-11，责任人：ops）：云途 HMAC / DHL OAuth2 / 4PX·燕文 MD5 / 淘宝 TOP Session / 抖音 OAuth2 的**真实端点与字段**校正；当前全部为占位（`TODO(ops): 2026-11 联调校正`）。
 2. **承运成本回传**（已做占位防御）：9.6 已将 `carrierCost` 占位 `0` 改为 `null`，成本待真实回传；`generateBills` 已对 `null` 做排除，避免利润虚高。待 §9 费用回传回填真实成本。
 3. **凭证持久化**：✅ **已完成（2026-11-03 夜间批次 11.1）**。`platform-credentials` 原进程级内存存储端口（`InMemoryCredentialStore`）已下沉为 **Prisma 持久化 + 租户行级隔离**——新增 `PlatformCredential` 模型（`(tenantId, platform)` 唯一约束 upsert 幂等覆盖），实现 `PrismaCredentialStore`（实现同一 `CredentialStorePort`，仅切换 `CREDENTIAL_STORE` 绑定即可，上层服务/控制器/工厂仅增 `await`）；运行时需 PostgreSQL（沙箱无 Docker 未端到端验证，本地 `prisma db push` 后即可生效）。单测 `prisma-credential-store.spec.ts`（mock PrismaService）验证租户隔离与查询形态。
-4. **分布式缓存**：令牌缓存（云途/DHL/OAuth2）为实例内存级；汇率（FX）为内存种子表。生产前须接入 **Redis** 共享缓存 + 真实 FX 源（§10.3）。
+4. **分布式缓存**：✅ **已完成（2026-11-08 夜间批次 11.3）**。新增 `common/cache` 模块（`CacheService` + `MemoryCacheBackend` 默认零依赖 + `RedisCacheBackend` ioredis 懒加载 + `CacheModule` 全局，REDIS_URL 驱动后端选择，Redis 不可用优雅降级内存）；承运商 OAuth 令牌（云途/DHL）已由实例内存升级为按账号共享缓存（跨实例去重避免重复换取触发承运商限流）。代码已就绪可投产；生产真正启用「共享缓存」需部署 Redis 并配置 `REDIS_URL`（沙箱无 Redis，默认走内存，单测覆盖内存/Redis 双路径）。FX 汇率仍走内存热缓存（§10.3 同步零 await 热路径不受影响，后续可经 CacheService 加二级缓存）。
 5. **本机 PG 端到端验证**：沙箱无 Docker，未跑起真实 PostgreSQL；用户需按 README 起库后做端到端验收。
 6. **费用/对账持久化**：quote 内存表、FX/加价规则内存表待落 `quotes` / `markup_rules` 等表（§7/§10.6）。
 

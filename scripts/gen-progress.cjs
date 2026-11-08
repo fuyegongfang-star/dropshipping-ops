@@ -74,6 +74,7 @@ const EXPLICIT_ROUTES = {
   '10.1': '/platform-credentials',
   '11.1': null, // 凭证持久化：纯后端基础设施任务，无专属前端页面
   '11.2': null, // 费用/对账持久化：quotes/markup_rules/fx_rates 落 PostgreSQL，纯后端基础设施任务
+  '11.3': null, // 分布式缓存：Redis 令牌/FX 缓存（CacheService + 内存/Redis 后端），纯后端基础设施任务
 };
 
 /** 关键词 → 路由（兜底推断，命中即用）。 */

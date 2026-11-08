@@ -10,6 +10,7 @@
 
 import { HttpStatus } from '@nestjs/common'
 import { AppLogger } from '../../../../common/logger/app.logger'
+import { CacheService } from '../../../../common/cache'
 import {
   RetryableHttpService,
   RetryableRequestOptions,
@@ -44,10 +45,19 @@ export class DhlAdapter extends AbstractCarrierAdapter {
   private readonly config: DhlAuthConfig
   private readonly token: DhlTokenService
 
-  constructor(account: CarrierAccountContext, http: RetryableHttpService, logger: AppLogger) {
+  /**
+   * @param cache 共享缓存（可选）：注入后令牌经 CacheService 多实例共享，避免重复换取触发 DHL 限流。
+   *              未注入时回退实例内存缓存，保持历史行为。
+   */
+  constructor(
+    account: CarrierAccountContext,
+    http: RetryableHttpService,
+    logger: AppLogger,
+    cache?: CacheService,
+  ) {
     super(CarrierCode.DHL, http, logger)
     this.config = normalizeAuthConfig(account.authConfig)
-    this.token = new DhlTokenService(http, logger, this.config)
+    this.token = new DhlTokenService(http, logger, this.config, cache)
   }
 
   /** DHL 能力声明：轮询型，不支持订阅与自助取消（§1.1/§1.2.2/§13.2） */

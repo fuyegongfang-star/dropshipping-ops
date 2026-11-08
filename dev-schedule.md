@@ -102,6 +102,7 @@
 | 10.1 | 阶段10 收尾 | 收尾文档对齐 + 真实平台凭证联调桥接 | §31 文档对齐（docs/DELIVERY.md）；凭证工厂↔承运商/渠道注册表真实桥接：承运商侧 yunexpress/dhl/fourpx/yanwen 凭证→适配器实例、渠道侧 taobao/douyin 演示实例桥接；真实 API 联调标注 TODO；前端桥接徽章（演示/正式双路） | 9.8 | 1d | ✅ |
 | 11.1 | 阶段11 上线前技术债 | 平台凭证 Prisma 持久化 + 租户隔离 | 新增 `PlatformCredential` 模型 + `PrismaCredentialStore`（实现 `CredentialStorePort`，落库 PostgreSQL，租户行级隔离 + (tenantId,platform) 唯一约束 upsert 幂等覆盖）；模块绑定由 `InMemoryCredentialStore` 切换为 `PrismaCredentialStore`，上层服务/控制器/工厂仅增 `await` 零改动；新增 `prisma-credential-store.spec.ts`（mock PrismaService，验证租户隔离与查询形态）；关闭 DELIVERY.md §3 待办 #3。验证：server tsc✅/eslint✅/jest✅（407）。 | 8.1 | 1d | ✅ |
 | 11.2 | 阶段11 上线前技术债 | 费用/对账持久化（quotes/markup_rules/fx_rates 落 PostgreSQL） | 三服务由内存态下沉 Prisma 持久化，关闭 DELIVERY.md §3 待办 #1：① `FxService`→`fx_rates`（新增 from_to 唯一约束；内存热缓存 + onModuleInit 启动种子/载入 + 运营覆盖 upsert 落库；getRate/toBase/listRates 保持同步零 await，热路径不受影响）；② `QuotesService`→`quotes`（schema 增 status/selectedProductCode；create/get/select 异步落库 + 租户隔离 + 过期回写 EXPIRED + 渠道自选刷新锁定价；results 完整存 rateSnapshot 可重建）；③ `MarkupRulesService`→`markup_rules`(source=engine，平台级 tenantId 空串；onModuleInit 启动载入运行期缓存 + 空则种子，resolveRules 保持同步零 await)。三者均优雅降级（PG 不可达保留内存种子，不阻断启动）。前端 QuotesView/PricingRulesView 演示与正式双路不变。验证：server tsc✅/eslint --max-warnings 0✅/jest 416✅；web eslint✅/build:prod✅。 | 11.1 | 1d | ✅ |
+| 11.3 | 阶段11 上线前技术债 | 分布式缓存（Redis 令牌/FX 缓存，方案 §10.3） | 新增 `common/cache` 模块：`CacheService`（命名空间前缀 + JSON 透明 getJSON/setJSON + 读取回填 getOrSet）+ `MemoryCacheBackend`（默认零依赖）+ `RedisCacheBackend`（ioredis 懒加载，多实例共享令牌/FX）+ `CacheModule`（全局，REDIS_URL 驱动后端选择，Redis 不可用优雅降级内存）；承运商 OAuth 令牌服务（云途/DHL）由「实例内存」升级为「按账号共享缓存」（构造注入 CacheService，跨实例去重避免重复换取触发承运商限流，未注入时回退内存兼容历史）；CarriersModule 引入 CacheModule 并经工厂传入适配器。关闭 DELIVERY.md §3 待办 #4（代码就绪；生产启用共享缓存需部署 Redis 并配 REDIS_URL，沙箱默认走内存且单测覆盖双路径）。验证：server tsc✅/eslint✅/jest 426✅(+10 缓存套件)；web 无改动。 | 11.2 | 1d | ✅ |
 
 > **阶段9 排期说明（2026-10-30 经用户确认）**：9.1–9.3 已落地（commit `2b40c26`）；9.4–9.7 由「待评审」提升为 ⬜ 正式排期，并新增 9.8（Web 登录页，上线前置缺口），统一交由夜间自动化（每日 23:10）按序续跑。详细设计见文末「阶段9 详细设计（安全加固续 · 9.4–9.8）」。
 
@@ -879,5 +880,25 @@
 - **提交**：（feature 源码 + schema + 单测 + dev-schedule 11.2 + dev-progress）+ checkpoint（`state.json` + 进度表 + `progress:gen`）。
 - **诚实说明**：运行时依赖 PostgreSQL（沙箱无 Docker 未端到端验证，按 README `prisma db push` 后即可生效，新增列由迁移/推送自动创建）；演示模式（VITE_USE_MOCK）前端不受影响。
 
-> **阶段11 技术债剩余（更新）**：① ✅ 费用/对账持久化（11.2 已清偿）；② 真实平台 API 联调（需真实密钥，待 ops）；③ Redis 分布式缓存（令牌/FX，待基础设施）；④ 本机 PG 端到端验证（待用户起 Docker）。下一夜间批次可优先推进 ②（需真实密钥，沙箱不可验证，建议标注 TODO 后转 ③ 或收尾）。
+> **阶段11 技术债剩余（更新）**：① ✅ 费用/对账持久化（11.2 已清偿）；② 真实平台 API 联调（需真实密钥，待 ops）；③ ✅ Redis 分布式缓存（令牌/FX，11.3 已清偿代码，生产启用需部署 Redis 并配 REDIS_URL）；④ 本机 PG 端到端验证（待用户起 Docker）。剩余 ② ④ 均沙箱不可验证，不予虚假推进。
+
+---
+
+### 进度更新 · 2026-11-08（夜间自动化 23:10 启动 · 11.3 分布式缓存 Redis 令牌/FX · 阶段11 上线前技术债）
+
+#### 11.3 分布式缓存（Redis 令牌/FX 缓存，方案 §10.3）（✅ 完成并验证）
+
+- **背景**：DELIVERY.md §3 诚实待办 #4 —— 承运商 OAuth 令牌（云途/DHL）原仅「实例内存级」缓存，多实例部署会重复换取触发承运商限流；FX 汇率亦为内存种子表。本批次交付统一的 `CacheService` 抽象 + Redis 共享后端（优雅降级内存），并把令牌缓存升级为按账号共享。
+- **交付（后端 `common/cache` 新模块）**：
+  - `CacheService`：命名空间前缀（`namespace:`）+ JSON 透明（`getJSON/setJSON`）+ 读取回填（`getOrSet`）；后端按选项选择——`redisUrl` 配置 → `RedisCacheBackend`（ioredis **懒加载**，仅配置且 ioredis 可用时才实例化，未安装/连不上不报导入错误），否则 `MemoryCacheBackend`（零依赖默认后端）；工厂抛错时**优雅降级内存**并告警，不阻断启动。
+  - `MemoryCacheBackend`：纯 Map + TTL 惰性过期（默认后端，单实例/开发/沙箱/单测零依赖）。
+  - `RedisCacheBackend` + `RedisLike` 最小接口：ioredis 真实实例满足，单测注入内存假实现验证逻辑，**无需真实 Redis 服务**。
+  - `CacheModule`（@Global）：`REDIS_URL` 驱动后端选择，全局 `inject(CacheService)` 即用。
+  - 承运商令牌服务升级：云途 `YunExpressTokenService` / DHL `DhlTokenService` 构造注入可选 `CacheService`，令牌按 `appId`/`clientId` 维度写入共享缓存（TTL = 有效期 − 刷新缓冲，提前过期促刷新）；未注入时**回退实例内存**，与历史行为完全兼容。`CarriersModule` 引入 `CacheModule` 并经工厂把共享 `CacheService` 传入适配器。
+- **前端**：纯后端基础设施任务，无专属前端页面（演示/正式双路不受影响，进度路由显式 `null`）。
+- **验收**：server `tsc --noEmit`✅ / `eslint --max-warnings 0`✅ / `jest`**426 passed**（59→61 suites，+10 缓存套件：CacheService 内存/Redis/降级 + 云途/DHL 跨实例去重）；web `eslint --max-warnings 0`✅ / `npm run build:prod`（VITE_USE_MOCK=false）✅；`progress:gen` 解析为 **74 任务 / 74 完成（100%）**；`gen-progress.cjs` 补 `EXPLICIT_ROUTES['11.3']=null`。
+- **提交**：feature（common/cache + 令牌服务 + CarriersModule + 单测 + dev-schedule 11.3 + DELIVERY.md §3 #4 + dev-progress）+ checkpoint（state.json + 进度表 + progress:gen）。
+- **诚实说明**：代码已投产就绪；生产真正启用「共享缓存」需部署 Redis 服务并配置 `REDIS_URL`（沙箱无 Redis，默认走内存，单测已覆盖内存/Redis 双路径）。剩余 ② 真实 API 联调（需真实密钥）、④ PG 端到端（待 Docker）仍沙箱不可验证，不予虚假推进。
+
+> **阶段11 技术债剩余（再更新）**：① ✅ 费用/对账持久化（11.2）；③ ✅ 分布式缓存（11.3）。仅余 ② 真实平台 API 联调（需真实密钥，待 ops 联调校正）、④ 本机 PG 端到端验证（待用户起 Docker），均沙箱不可验证。引擎持续 23:10 巡检，发现新 ⬜ 任务即续跑。
 

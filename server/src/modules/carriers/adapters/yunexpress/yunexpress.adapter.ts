@@ -9,6 +9,7 @@
 
 import { HttpStatus } from '@nestjs/common'
 import { AppLogger } from '../../../../common/logger/app.logger'
+import { CacheService } from '../../../../common/cache'
 import {
   RetryableHttpService,
   RetryableRequestOptions,
@@ -53,10 +54,19 @@ export class YunExpressAdapter extends AbstractCarrierAdapter {
   private readonly config: YunExpressAuthConfig
   private readonly token: YunExpressTokenService
 
-  constructor(account: CarrierAccountContext, http: RetryableHttpService, logger: AppLogger) {
+  /**
+   * @param cache 共享缓存（可选）：注入后令牌经 CacheService 多实例共享，避免重复换取触发云途限流。
+   *              未注入时回退实例内存缓存，保持历史行为。
+   */
+  constructor(
+    account: CarrierAccountContext,
+    http: RetryableHttpService,
+    logger: AppLogger,
+    cache?: CacheService,
+  ) {
     super(CarrierCode.YUNEXPRESS, http, logger)
     this.config = normalizeAuthConfig(account.authConfig)
-    this.token = new YunExpressTokenService(http, logger, this.config)
+    this.token = new YunExpressTokenService(http, logger, this.config, cache)
   }
 
   /** 当前使用的基地址（自定义优先，否则按沙箱开关选择，§1.1） */
