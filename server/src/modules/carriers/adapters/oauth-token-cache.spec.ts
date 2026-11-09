@@ -14,6 +14,8 @@ import {
 } from '../../../common/http/retryable-http.service'
 import { YunExpressTokenService } from './yunexpress/yunexpress-token.service'
 import { DhlTokenService } from './dhl/dhl-token.service'
+import { YunExpressAuthConfig } from './yunexpress/yunexpress-auth.config'
+import { DhlAuthConfig } from './dhl/dhl-auth.config'
 
 /** 计数型假 HTTP：仅令牌端点返回 OAuth 报文，记录换取次数 */
 function makeFakeHttp() {
@@ -45,20 +47,20 @@ const fakeLogger = {
   error() {},
 } as unknown as AppLogger
 
-const yunConfig = {
+const yunConfig: YunExpressAuthConfig = {
   appId: 'app1',
   apiKey: 'key1',
   sandbox: true,
   baseUrl: 'https://yun.test',
-} as any
+}
 
-const dhlConfig = {
+const dhlConfig: DhlAuthConfig = {
   clientId: 'c1',
   clientSecret: 's1',
   apiKey: 'k1',
   sandbox: true,
   baseUrl: 'https://dhl.test',
-} as any
+}
 
 describe('OAuth 令牌缓存（云途）', () => {
   it('未注入 CacheService：同实例命中缓存仅换 1 次；不同实例各自换取', async () => {
