@@ -698,3 +698,27 @@
 **下一步**：等待用户侧基础设施与密钥就绪后，即可推进 ②/④。引擎将持续在 23:10 巡检，发现新 ⬜ 任务立即续跑。
 
 **提交**：feature `08c029f`（common/cache + 令牌服务 + CarriersModule + 单测 + dev-schedule 11.3 + DELIVERY.md §3 + dev-progress）＋ 检查点 `1d5cd55`（state.json.last_commit 对齐 08c029f）。
+
+---
+
+## 2026-11-09 夜间自动化日报 · 收尾健康巡检（无 ⬜ 任务）
+
+**运行状态**：主线 v1.5 + 阶段11 上线前技术债（11.1/11.2/11.3）已 **74/74（100%）全 ✅**，dev-schedule.md 无剩余 ⬜ 行。按主循环规则「若所有 ⬜ 任务都已完成，进入收尾」，本批次为**收尾健康巡检**，无新功能、无前端可见变更。
+
+**完成情况（质量门禁全绿）**：
+- **类型修复**：11.3 批次遗留的 `oauth-token-cache.spec.ts` 两处 `no-explicit-any` 警告（违反 `--max-warnings 0` 门禁），改为 `YunExpressAuthConfig` / `DhlAuthConfig` 显式类型，server eslint 恢复零警告。
+- **全绿验收**：server `tsc --noEmit`✅ ｜ `eslint --max-warnings 0`✅ ｜ `jest` **426 passed / 61 suites**（无回归）；web `eslint --max-warnings 0`✅ ｜ `npm run build:prod`（VITE_USE_MOCK=false）✅（2376 模块）；`npm run progress:gen` **74 任务 / 74 完成（100%）**。
+
+**数据修正**：校正 `.dev/state.json` 的 `last_commit` 旧值 `3d00018` → 实际 HEAD `97cb594`（前批次终闸未对齐，本次补齐，确保 last_commit 与 HEAD 一致）。
+
+**测试结果（全绿）**：全仓 426/426 ✅；web 构建 ✅（仅 chunk >500kB 体积提示，非错误）。
+
+**前端可见性**：本次为纯巡检，未改动前端，无新增页面 / 菜单。次日刷新网页：进度仍为 **74/74（100%）**，不变。
+
+**本次新增页面与菜单**：无。
+
+**诚实备注**：阶段11 剩余 ② 真实平台 API 联调（需真实密钥）、④ 本机 PG 端到端（待 Docker）仍**沙箱不可验证，不予虚假推进**。引擎将持续 23:10 巡检，发现新 ⬜ 任务即续跑；亦可接受用户新排期后即时推进。
+
+**下一步**：无 ⬜ 任务，维持巡检态。待用户基础设施 / 密钥就绪后推进 ②/④，或排期新需求。
+
+**提交**：feature（spec 类型修复）＋ 检查点（state.json + dev-schedule 进度段 + 日报）＋ 终闸（last_commit 对齐 HEAD）。
