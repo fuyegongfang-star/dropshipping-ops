@@ -234,7 +234,7 @@ npm run progress:gen   # 生成 web/src/api/dev-progress.ts（任务清单 / 统
 | `npm run build:prod`（`VITE_USE_MOCK=false`） | ✅ 通过（2376 模块，仅 chunk >500kB 体积提示） |
 | `progress:gen` | ✅ 74 任务 / 74 完成 |
 | GitHub Actions CI（lint + typecheck + prisma generate） | ✅ 首次 push 自动运行 `success` |
-| `deploy/*.sh` 语法 / LF / 无 BOM | ✅ `sh -n` 通过 |
+| `deploy/*.sh` 语法 / `--env-only` / LF 无 BOM | ✅ `sh -n` 通过；实跑生成 `.env`（0 占位符残留、密钥长度与 MinIO 四键一致性校验通过） |
 | 真实 PostgreSQL / Redis / MinIO 端到端 | ⚠️ **待环境**，本机 PG 停服、沙箱无 Docker |
 | Docker 镜像构建与 compose 启动 | ⚠️ **待环境**，首次上线按核验清单逐条验证 |
 | 真实平台 API 联调 | ⚠️ **未完成**，端点与字段为占位，明确标注 `realApiTodo=true` |

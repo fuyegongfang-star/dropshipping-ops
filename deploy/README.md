@@ -3,7 +3,7 @@
 > 适用：`docker-compose.prod.yml`（nginx 前端 + NestJS API + PostgreSQL 16 + Redis 7 + MinIO）+ `deploy/bootstrap.sh` 一键部署。
 > **诚实前置声明**：本项目此前从未在真实 PostgreSQL / Redis / MinIO 上跑通完整链路（开发沙箱无 Docker、本机 PG 停服）。
 > `prisma db push` 建表、登录 round-trip、BullMQ 消费、Docker 镜像构建与 compose 启动**全部属于首次上线验证项**。
-> 一键脚本本机已验证：shell 语法（`sh -n`）、`--env-only` 配置生成、占位符清空与 LF / 无 BOM。真机首次上线请仍按第六节逐条核验。
+> 一键脚本本机已实跑验证：`sh -n` 语法通过；`--env-only` 成功生成 `.env`（0 占位符残留、JWT 96 位 / `APP_MASTER_KEY` 64 位 / 库口令 48 位、MinIO 四键同值、`DATABASE_URL` 口令一致）；LF 无 BOM。真机首次上线请仍按第六节逐条核验。
 
 ---
 
