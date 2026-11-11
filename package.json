@@ -2,6 +2,7 @@
   "name": "dropshipping-ops",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "description": "一件代发货代运营 SaaS —— Node 全栈（NestJS + Vue3），多租户 + 全渠道 + 国际物流",
   "workspaces": [
     "server",

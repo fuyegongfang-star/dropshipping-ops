@@ -33,3 +33,10 @@ coverage/
 
 # WorkBuddy 项目记忆（非仓库产物）
 .workbuddy/
+
+# 私钥 / 证书 / 凭证文件（防误提交）
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*

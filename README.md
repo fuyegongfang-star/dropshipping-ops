@@ -215,3 +215,13 @@ npm run dev --workspace web
 - 提交：Conventional Commits（feat/fix/refactor/docs… + 中文简述）。
 
 > 本仓库由「夜间自动开发」自动化驱动，全程无人值守、自恢复（看门狗：429/异常指数退避重试）。
+
+## 开源许可
+
+本项目采用 [MIT License](LICENSE) 开源。
+
+> **部署安全提示**：`server/.env.example` 与 `deploy/docker-compose.yml` 中的
+> `postgres/postgres`、`minioadmin/minioadmin`、`JWT_SECRET=change-me-in-prod` 等均为
+> **本地开发占位默认值**，只用于一键启动本地环境。**上线前必须全部替换**，并配置强随机的
+> `JWT_SECRET` / `APP_MASTER_KEY`（生产环境缺失时服务会拒绝启动）。真实凭证、平台 API 密钥、
+> 私钥文件一律不要写入任何受版本控制的文件。
