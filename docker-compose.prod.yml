@@ -1,0 +1,106 @@
+# 生产编排：一条命令拉起 web / api / postgres / redis / minio
+# 由 deploy/bootstrap.sh 调用；手工使用见 deploy/README.md
+# 数据库 / 缓存 / 对象存储均不暴露宿主端口，只有 compose 内网可达。
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ds-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-dropshipping}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?必须在 .env 配置 POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-dropshipping}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-dropshipping} -d ${POSTGRES_DB:-dropshipping}']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: ds-redis
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  minio:
+    image: minio/minio:latest
+    container_name: ds-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?必须在 .env 配置 MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?必须在 .env 配置 MINIO_ROOT_PASSWORD}
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: ds-api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: ${DATABASE_URL:?必须在 .env 配置 DATABASE_URL}
+      REDIS_URL: redis://redis:6379
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      MINIO_BUCKET: ${MINIO_BUCKET:-dropshipping}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    # 当前仓库用 prisma db push 管理表结构（无 migrations 目录），该命令幂等可重复执行
+    command: sh -c "npx prisma db push --skip-generate && node dist/main.js"
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1:3000/api/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    container_name: ds-web
+    restart: unless-stopped
+    ports:
+      - '${WEB_HOST:-0.0.0.0}:${WEB_PORT:-8080}:80'
+    depends_on:
+      api:
+        condition: service_started
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q -O /dev/null http://127.0.0.1/api/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  pgdata:
+    name: ds_pgdata
+  redisdata:
+    name: ds_redisdata
+  miniodata:
+    name: ds_miniodata

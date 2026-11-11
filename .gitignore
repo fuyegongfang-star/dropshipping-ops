@@ -11,6 +11,8 @@ build/
 # 生产构建环境（review B3）：仅含 VITE_USE_MOCK=false，无密钥，必须随仓库发布，
 # 否则 `npm run build` 在生产模式下无此文件会被 9.7 守卫拒绝（见 web/.env.production 注释）。
 !.env.production
+# 生产部署模板（仅占位符，无真实密钥，必须随仓库发布）
+!deploy/.env.prod.example
 
 # 日志
 logs/

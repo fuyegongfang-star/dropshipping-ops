@@ -1,189 +1,169 @@
-# 一件代发货代运营系统（dropshipping-ops）
+<div align="center">
 
-> 多租户 SaaS：一件代发 + 货代运营，全渠道（跨境 + 国内 + 独立站），国际物流段对接云途 / DHL / 4PX / 燕文。
-> 关联架构方案：`../dropshipping-fulfillment-architecture-plan.md`（v1.5）
-> 开发进度：`dev-schedule.md` ｜ 夜间自动开发日报：`progress-log.md`
+# 🚢 一件代发货代运营系统 · dropshipping-ops
 
-## 技术栈
+**把「渠道拉单 → 审单 → 采购收货 → 中转仓扫码 → 打包核对 → 面单 → 出库 → 跨境轨迹 → 账单对账」串成一条多租户履约流水线**
 
-- **后端**：Node 20 + NestJS + TypeScript + PostgreSQL + Redis + BullMQ + MinIO + Prisma
-- **前端**：Vue3 + Vite + TypeScript + Element Plus + Pinia + ECharts
-- **基础设施**：Docker Compose（PG / Redis / MinIO / server / web）
-- **规范**：方案 §31 —— 注释清晰、代码整齐（Prettier + ESLint + Stylelint + Conventional Commits）
+[![License: MIT](https://img.shields.io/badge/License-MIT-16a34a?style=flat-square)](LICENSE)
+[![Node 20+](https://img.shields.io/badge/Node-20%2B-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org/)
+[![NestJS 10](https://img.shields.io/badge/NestJS-10-E0234E?style=flat-square&logo=nestjs&logoColor=white)](https://nestjs.com/)
+[![Vue 3](https://img.shields.io/badge/Vue-3-42B883?style=flat-square&logo=vue.js&logoColor=white)](https://vuejs.org/)
+[![PostgreSQL 16](https://img.shields.io/badge/PostgreSQL-16-4169E1?style=flat-square&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![426 unit tests](https://img.shields.io/badge/tests-426-16a34a?style=flat-square)](server/src/)
+[![CI](https://github.com/fuyegongfang-star/dropshipping-ops/actions/workflows/ci.yml/badge.svg)](https://github.com/fuyegongfang-star/dropshipping-ops/actions/workflows/ci.yml)
 
-## 目录结构
+[⚡ 先看成果](#-先看成果30-秒无需-docker)　·　[🚀 一键部署](#-一键部署)　·　[🗺 功能地图](#-功能地图)　·　[🛠 本地开发](#-本地开发点击展开)　·　[📚 文档索引](#-文档索引)
 
-```
-dropshipping-ops/
-├── server/                 # NestJS 后端
-│   ├── src/
-│   │   ├── common/         # 跨模块公共能力：多租户、鉴权、统一响应/异常、日志
-│   │   ├── config/         # 环境变量配置
-│   │   ├── modules/        # 业务模块（按 feature 切分）
-│   │   ├── database/       # Prisma 连接
-│   │   ├── main.ts
-│   │   └── app.module.ts
-│   ├── prisma/
-│   │   └── schema.prisma   # 全量数据模型（含多租户 tenantId）
-│   └── ...
-├── web/                    # Vue3 前端
-├── deploy/
-│   └── docker-compose.yml  # 本地一体化基础设施
-└── dev-schedule.md         # 开发进度表（唯一进度真相源）
-```
+</div>
 
-## UI 设计体系
+> [!IMPORTANT]
+> **诚实前置声明**：本项目已通过前后端 `lint` / `typecheck`、426 个 Jest 单测（61 suites）与生产构建，**但从未在真实 PostgreSQL / Redis / MinIO 上跑通完整链路**（开发沙箱无 Docker，本机 PG 亦停服）。真实平台 API 联调（云途 HMAC、DHL OAuth2、4PX / 燕文 MD5、淘宝 TOP、抖音 OAuth2）目前仍是**合理占位并标注 `TODO(ops)`**，适配器不会发起真实联网调用；承运成本 `carrierCost` 在回传前为 `null`，不伪造利润。Docker 镜像构建与 compose 启动**未在本机端到端执行过**，首次上线请按 [部署指南第六节](deploy/README.md#六首次上线核验清单逐条打勾再正式用) 逐条验收。
+>
+> 文中 `§xx` 编号指向内部架构方案 v1.5（未随本仓库发布）；关键约定已在本文档与 [`docs/DELIVERY.md`](docs/DELIVERY.md) 自包含，不影响运行。
 
-> 前端遵循统一设计系统，所有页面共用同一套设计令牌（集中在 `web/src/styles/theme.css`）。
-> 采用纯 CSS 方案：在 Element Plus 官方样式**之后**覆盖其 CSS 变量，因此无需引入 sass 或额外构建插件。
+---
 
-- **品牌主色**：靛蓝渐变家族（`#4F6EF7 → #3047C4`），辅以青 / 橘 / 紫作语义强调；中性灰阶采用现代 Slate 色板。
-- **布局**：深色渐变侧边栏（图标菜单 + 可折叠）＋ 白底轻阴影顶栏 ＋ 浅灰主内容区，层级分明。
-- **圆角与阴影**：卡片 16px 圆角、柔和分层阴影、悬停上浮，摒弃 Element Plus 默认扁平观感。
-- **状态分级**：订单 / 租户 / 平台状态统一使用柔和胶囊标签（绿 / 琥珀 / 红 / 蓝 / 青），语义清晰不刺眼。
-- **图标**：`web/src/components/AppIcon.vue` 提供零依赖内联 SVG 线性图标集（不引入图标字体包）。
-- **统一页头**：`web/src/components/PageHeader.vue`（图标徽章 + 标题/副标题 + 右侧操作插槽），五张业务页共用。
-- **动效**：路由切换 fade-slide 过渡、按钮与卡片悬停位移，克制统一。
+## ⚡ 先看成果（30 秒，无需 Docker）
 
-改版涉及文件：`styles/theme.css`、`layouts/BasicLayout.vue`、`components/AppIcon.vue`、
-`components/PageHeader.vue`、`views/{Dashboard,Orders,Catalog,Channels,Tenants}View.vue`。
-
-> 约定：新增页面请沿用上述令牌（颜色用 `var(--*)` 变量），避免散落的硬编码色值。
-
-## 快速开始（需联网安装依赖）
+只想打开浏览器看到界面与交互、不装数据库？用**演示模式**：前端内置一套 mock 数据，纯前端渲染，审单 / 状态转移 / 逆向 / 拉单 / 加价规则都可操作。
 
 ```bash
-# 1. 安装依赖（根目录，workspaces 会一并装 server / web）
-npm install
-
-# 2. 生成 Prisma Client
-npm run prisma:generate
-
-# 3. 启动基础设施（PG / Redis / MinIO）
-docker compose -f deploy/docker-compose.yml up -d
-
-# 4. 后端开发
-npm run start:dev --workspace server
-
-# 5. 前端开发
-npm run dev --workspace web
-```
-
-## 零依赖快速预览（演示模式，推荐先看这个）
-
-> 只想**立刻在浏览器看到成果**、先不装 Docker / 数据库？用演示模式即可。
-> 前端内置一套 mock 数据（`web/src/api/mock-data.ts`），由 `web/.env` 的 `VITE_USE_MOCK=true` 开启，
-> 所有页面（订单 / 商品SKU / 渠道 / 租户 / 看板）纯前端渲染，且审单 / 状态转移 / 逆向 / 拉单都可交互。
-
-```bash
-# 1. 安装依赖（已装可跳过）
+git clone https://github.com/fuyegongfang-star/dropshipping-ops.git
+cd dropshipping-ops
 npm install --ignore-scripts
-
-# 2. 启动前端（演示模式默认开启，无需后端 / 数据库）
 npm run dev --workspace web
-# 或构建后用静态服务预览：npm run build --workspace web && npm run preview --workspace web
+# 打开 http://localhost:5173
 ```
 
-打开 **http://localhost:5173** 即可。顶部右上角已默认选中 `demo` 租户。
-确认无误后，想接真实后端再看「本地跑起来看成果」章节（需 Docker + PostgreSQL）。
+由 `web/.env` 的 `VITE_USE_MOCK=true` 开启（默认值）。改回真实后端：删除该文件或设为 `false`，前端即走 `/api` 代理。演示模式下运营配置 / 站点设置的改动写入 `localStorage`，刷新保留，两页都提供「重置演示数据」。
 
-> 关闭演示模式：删除 `web/.env` 或将其改为 `VITE_USE_MOCK=false`，此时前端走真实 `/api` 代理到后端。
+> [!NOTE]
+> **生产构建强制 `VITE_USE_MOCK=false`**。`vite.config.ts` 在 `mode=production` 时校验该值，缺省或 `true` 直接抛错拒绝构建，杜绝把演示假数据整站上线。用 `npm run build:prod` 即可。
 
-### 页面一览（演示模式下均可直接交互）
+---
+
+## 🚀 一键部署
+
+`clone` 之后一条命令，前端 / API / PostgreSQL / Redis / MinIO **全部起来**：
+
+```bash
+git clone https://github.com/fuyegongfang-star/dropshipping-ops.git /opt/dropshipping-ops
+cd /opt/dropshipping-ops
+./deploy/bootstrap.sh
+```
+
+脚本自动完成：生成 64 位 `APP_MASTER_KEY`、96 位 `JWT_SECRET`、48 位数据库口令与 MinIO 凭据 → 清空模板里所有 `<CHANGE_ME>` 占位符 → `.env` 权限 600 → `up -d --build` → API 容器启动时执行 `prisma db push` → 轮询 `/api/health` → 打印访问地址与一次性凭据。
+
+**依赖只有** Docker Engine 24+、Compose v2、openssl、GNU sed；**不需要宿主机 Node / psql / nginx**（编译在镜像内，建表在容器内）。已存在 `.env` 时绝不覆盖，避免密钥轮换导致库里已加密的平台凭证不可解密。
+
+| 场景 | 命令 |
+| :--- | :--- |
+| 挂宝塔 / nginx 反代 + HTTPS | `./deploy/bootstrap.sh --local` |
+| 改对外端口 | `./deploy/bootstrap.sh --port 9000` |
+| 只生成配置自检，不启动 | `./deploy/bootstrap.sh --env-only` |
+| 已有镜像，快速重启 | `./deploy/bootstrap.sh --no-build` |
+| 更新版本 | `git pull && ./deploy/bootstrap.sh` |
+| 完整备份（库 + 附件卷） | `./deploy/backup.sh` |
+
+> [!WARNING]
+> 默认绑 `0.0.0.0` 且是 **HTTP 明文**。公网部署请在前面挂反代并启用 HTTPS；**端口放行两道缺一不可** —— 宝塔「安全」防火墙 + 云厂商安全组，只开 80/443，勿暴露 8080 / 5432 / 6379 / 9000。请离线备份 `.env`（`APP_MASTER_KEY` 丢失则已加密凭证不可解密）。
+
+完整步骤、宝塔 Docker 管理器逐步操作、首次上线核验清单、故障对照表与回滚见 **[`deploy/README.md`](deploy/README.md)**。
+
+---
+
+## 🏗 架构：一次拉起五个服务
+
+![生产部署架构：浏览器、nginx 前端、NestJS API、PostgreSQL、Redis、MinIO 与持久卷](docs/architecture.svg)
+
+| 🚀 一键起全套 | 🔗 全链路可追溯 | 🔐 密钥不落地 |
+| :--- | :--- | :--- |
+| `bootstrap.sh` 自动生成密钥、构建镜像、建表、等健康检查；PG / Redis / MinIO 仅内网可达 | 订单事件时间线、轨迹节点、汇率快照、比价痕迹均留痕，多租户 `tenantId` 行级隔离 | 密钥只走环境变量与 `*.example` 模板；平台凭证 AES-256-GCM 加密落库，日志与仓库里看不到明文 |
+
+---
+
+## 🔄 端到端履约流水线
+
+![履约流水线：渠道拉单、审单、采购、中转仓扫码、打包核对、面单、出库、跨境轨迹、账单对账](docs/pipeline.svg)
+
+---
+
+## 🖥 界面与功能地图
+
+![界面功能地图：五组侧栏菜单与主要业务页面](docs/interface.svg)
+
+---
+
+## 🗺 功能地图
 
 | 菜单 | 路由 | 主要能力 |
-|---|---|---|
+| :--- | :--- | :--- |
 | 仪表盘 | `/` | 核心指标统计卡、订单状态分布、**最近交付能力** |
 | 订单中心 | `/orders` | 审单 / 状态转移 / 逆向、明细抽屉与事件时间线 |
-| 商品 / SKU | `/catalog` | 平台↔内部↔供应商三段映射、计费重 |
+| 商品 / SKU | `/catalog` | 平台 ↔ 内部 ↔ 供应商三段映射、扫码建档、计费重 |
 | 渠道 / 店铺 | `/channels` | 店铺列表、Mock 店一键拉单 |
+| 采购单 | `/purchase-orders` | 关联订单、状态机推进、**Code128 收货标签打印** |
+| 中转仓 | `/transfer` | 区-架-层库位、扫码入库、打包核对、出库回传 |
 | 承运商管理 | `/carriers` | 云途 / DHL / 4PX / 燕文 · 六能力矩阵 + 健康状态 |
-| 运费试算 | `/quotes` | 四层比价引擎痕迹 + 成本/售价双价列 + 渠道自选 |
-| 运营配置 | `/pricing` | **加价规则可自定义增删改**（幅度行内改）+ 汇率调整 + 效果预览 |
-| 站点设置 | `/settings/site` | **站点名称 / 品牌标识 / 首页 TDK / 页面 TDK 规则 / 统计代码 / 效果预览**（`super` 专属） |
+| 运费试算 | `/quotes` | 四层比价引擎痕迹 + 成本 / 售价双价列 + 渠道自选 |
+| 运营配置 | `/pricing` | 加价规则可增删改、汇率调整、效果预览 |
+| 站点设置 | `/settings/site` | 站点名称 / 品牌 / 首页与页面 TDK / 统计代码 / SERP 预览 |
 | 租户管理 | `/tenants` | 多租户切换与隔离验证 |
 | 开发进度 | `/progress` | 任务清单 / 完成度 / 最近交付（自动开发产出可视化） |
 
-> 「运营配置」「站点设置」页的改写在演示模式下写入浏览器 `localStorage`，**刷新后仍保留**；两页均提供「重置演示数据」恢复初始种子。
+---
 
-### 站点设置（站点名称 / TDK / 统计代码）
+## 🧰 技术栈
 
-`系统设置 → 站点设置`，四大页签：
+| 层 | 选型 |
+| :--- | :--- |
+| 后端 | Node 20 + NestJS 10 + TypeScript，按 feature 切模块 |
+| 数据 | PostgreSQL 16 + Prisma 5（`prisma db push`，暂无 migrations 目录） |
+| 队列 / 缓存 | BullMQ + Redis 7；`common/cache` 支持内存 / Redis 双后端，Redis 不可用优雅降级 |
+| 对象存储 | MinIO（面单 PDF / ZPL / 附件） |
+| 前端 | Vue 3 + Vite 5 + TypeScript + Element Plus + Pinia + ECharts |
+| 部署 | Docker 多阶段构建 + nginx（SPA + `/api` 反代） |
+| 规范 | Prettier + ESLint + Stylelint + Conventional Commits |
 
-- **基础信息**：站点名称（必填）、副标题 Slogan、域名、备案号、Logo / Favicon、版权、客服邮箱与电话、默认语言与时区；
-  右侧「品牌预览」实时展示 LOGO 与站点名的实际观感。
-- **SEO / TDK**：首页 Title / Description / Keywords（带字数提示，超长标红）+ 标题拼接规则（分隔符、是否追加站点名，
-  已含站点名时自动去重）+ **页面 TDK 规则表**（首页 / 商品详情 / 品类 / 运费试算 / 资讯 / 自定义，可增删改与启停，
-  模板支持 `{site}` `{name}` `{category}` 变量）。
-- **统计与代码**：头部 / 底部第三方代码注入、站长验证 meta、Sitemap 开关、`robots.txt`。
-- **效果预览**：浏览器标签页效果 + 搜索结果片段（SERP）实时渲染。
+---
 
-站点名称保存后**立即联动后台侧栏 LOGO 与浏览器标签页标题**（`web/src/stores/site.ts`），改完即可见。
+<details>
+<summary><b>🎨 UI 设计体系（点击展开）</b></summary>
 
-### 开发进度可视化（每天都能看到新功能）
+前端遵循统一设计系统，令牌集中在 `web/src/styles/theme.css`，在 Element Plus 官方样式**之后**覆盖其 CSS 变量，因此无需 sass 或额外构建插件。
 
-夜间自动开发每完成一批任务后，会运行进度生成器把 `dev-schedule.md` 的任务表同步到前端：
+- **品牌主色**：靛蓝渐变家族（`#4F6EF7 → #3047C4`），辅以青 / 橘 / 紫作语义强调；中性灰阶采用 Slate 色板。
+- **布局**：深色渐变侧边栏（图标菜单 + 可折叠）＋ 白底轻阴影顶栏 ＋ 浅灰主内容区。
+- **圆角与阴影**：卡片 16px 圆角、柔和分层阴影、悬停上浮。
+- **状态分级**：订单 / 租户 / 平台状态统一使用柔和胶囊标签（绿 / 琥珀 / 红 / 蓝 / 青）。
+- **图标**：`web/src/components/AppIcon.vue` 零依赖内联 SVG 线性图标集，不引入图标字体。
+- **统一页头**：`web/src/components/PageHeader.vue`（图标徽章 + 标题 / 副标题 + 右侧操作插槽）。
+- **动效**：路由 fade-slide 过渡、按钮与卡片悬停位移，克制统一。
 
-```bash
-npm run progress:gen   # 生成 web/src/api/dev-progress.ts（任务清单 / 统计 / 最近交付）
-```
+涉及文件：`styles/theme.css`、`layouts/BasicLayout.vue`、`components/AppIcon.vue`、`components/PageHeader.vue`、`views/{Dashboard,Orders,Catalog,Channels,Tenants}View.vue`。
+约定：新增页面请沿用 `var(--*)` 令牌，避免散落的硬编码色值。
 
-生成物是静态数据，**演示模式与正式模式都直接可读**，因此第二天刷新网页即可在：
+</details>
 
-- 左侧菜单 **开发进度**（`/progress`）—— 看到新完成的任务、NEW 高亮与「去查看」入口；
-- **仪表盘 → 最近交付能力** 卡片 —— 快速看到最近交付的几项；
-- 顶栏 **铃铛「本次更新」** —— 有新增产出时显示红点，点开即列出最新完成的能力。
+<details>
+<summary><b>🛠 本地开发（点击展开）</b></summary>
 
-> 该机制已写入夜间自动化提示词的「可视化交付铁律」：业务任务必须同时交付页面/菜单/路由与 mock 数据，纯后端任务至少在进度页有条目，且每批结束必须重新生成并提交进度数据。
-
-## 交付形态与角色隔离（上线时怎么切）
-
-本系统的「演示脚手架」与「内部视图」都做了隔离，**上线交付无需删代码**：
-
-| 组件 | 隔离方式 | 交付时动作 |
-|---|---|---|
-| Mock 演示数据 | 环境变量 `VITE_USE_MOCK`（默认 true） | 交付设 `VITE_USE_MOCK=false`，前端改走真实后端 `/api`；mock 分支不再执行 |
-| 加价规则本地持久化 | 仅 mock 分支写入 `localStorage` | 正式模式走后端 API 落库，无需处理 |
-| 站点设置（站点名称 / TDK）、开发进度页 `/progress`、本次更新提醒、租户管理页 | 角色 `super` 专属（菜单过滤 + 路由守卫 `meta.roles`） | 平台运营方（你）可见；外部卖家租户登录后自然看不到 |
-
-- **角色**：前端 `web/src/stores/user.ts` 定义 `super`（平台运营方）/ `seller`（卖家租户）。
-  演示模式下顶栏可切换身份以验证隔离效果；真实部署时角色应由登录接口返回并写入该 store。
-  ⚠️ 前端显隐只是体验层，**不替代后端鉴权**——接口侧仍须按角色做权限校验。
-- 一句话：**开发期能看到全部，是因为默认身份就是 `super`；交付给卖家后他们登录即自动只见业务功能。**
-
-## 生产部署（硬编码约束，review B3）
-
-> **生产构建必须 `VITE_USE_MOCK=false`**，否则 `vite build` 直接失败并给出明确提示，杜绝把「演示假数据」误上生产。
-
-- 前端：`web/vite.config.ts` 在 `mode==='production'` 时强制校验 `VITE_USE_MOCK`，缺省（未设置）或 `true` 一律拒绝。
-- 正确姿势（二选一）：
-  ```bash
-  npm run build:prod                 # 自动 VITE_USE_MOCK=false 生产构建
-  # 或显式指定：
-  VITE_USE_MOCK=false npm run build  # 等价于 build:prod
-  ```
-- 本地演示 / 预览仍用 `npm run dev`（开发模式不受限）。
-- 后端：当前 `server` 无 `USE_MOCK` 残留分支，生产即为真实链路（PostgreSQL + Redis + BullMQ + MinIO）；生产部署时请确认 `JWT_SECRET` / `APP_MASTER_KEY` 已配置（缺省会在启动期 fail-fast 拒绝，见方案 §31 / 安全加固 9.3）。
-
-## 本地跑起来看成果（含演示数据）
-
-> 目标：在你本机把前后端跑起来，打开浏览器直观看到「订单中心 / 商品SKU / 渠道 / 租户」与状态机、审单、逆向等能力。
-> 本机需已安装 **Docker**（用于 PG/Redis/MinIO）与 **Node 20+**。
+前置：Node.js 20+、npm、Docker（用于 PG / Redis / MinIO）。
 
 ```bash
-# 0. 仓库根目录安装依赖（workspaces 一并装 server / web；esbuild 在 Windows Git Bash 下需 --ignore-scripts）
+# 0. 仓库根目录安装依赖（workspaces 一并装 server / web）
 npm install --ignore-scripts
 
 # 1. 生成 Prisma Client
 npm run prisma:generate --workspace server
 
-# 2. 启动基础设施（PostgreSQL / Redis / MinIO）
+# 2. 启动基础设施
 docker compose -f deploy/docker-compose.yml up -d
 
 # 3. 建表（按 schema 直接推送，无需迁移历史，适合本地演示）
 cd server && cp .env.example .env && npx prisma db push && cd ..
 
-# 4. 写入演示数据：租户 demo + 店铺(Shopify/Amazon/Mock) + 商品/SKU + 多状态订单
+# 4. 写入演示数据：租户 demo + 店铺 + 商品 / SKU + 多状态订单
 npm run seed --workspace server
 
 # 5. 启动后端（:3000）
@@ -193,35 +173,130 @@ npm run start:dev --workspace server
 npm run dev --workspace web
 ```
 
-打开浏览器访问 **http://localhost:5173** 即可。顶部右上角已默认选中 `demo` 租户，所有数据按租户隔离展示。
+打开 **http://localhost:5173**，右上角已默认选中 `demo` 租户。
 
-**建议体验路径**
-- **订单中心**：点「详情」→ 试「审单」（待审单会转 approved / rejected）、「状态转移」（按合法转移表候选目标态）、「逆向」（撤单/拦截/改址/退货）。
-- **渠道中心**：对 **Mock 演示店** 点「拉单」，会实时生成 `pending_review` 订单（Shopify/Amazon 需配置真实凭证，否则返回错误，可观察异常处理）。
-- **商品/SKU**：查看平台↔内部↔供应商三段映射与「计费重」（实重 vs 体积重取大）。
-- **租户管理**：新建租户并「切换查看」，验证行级隔离。
+**建议体验路径**：订单中心点「详情」试审单 / 状态转移 / 逆向 → 渠道中心对 Mock 演示店点「拉单」→ 商品 / SKU 看三段映射与计费重 → 租户管理新建租户验证行级隔离。
 
-> 生产部署请用 `npx prisma migrate dev --name init` 管理迁移，而非 `db push`；并收紧 CORS 与 `x-tenant-id` 校验（见方案 §17）。
+> 生产部署请用 `npx prisma migrate dev --name init` 管理迁移，而非 `db push`；并收紧 CORS 与 `x-tenant-id` 校验。
 
-## 多租户约定
+**质量门禁**：
 
-- 所有业务表带 `tenantId`（行级隔离，见方案 §0 / §17）。
-- 租户上下文由 `common/tenant` 中间件从子域名或请求头 `x-tenant-id` 解析，注入 `AsyncLocalStorage`，供 Service 层自动过滤。
+```bash
+npm run lint                              # 两个 workspace
+npm run typecheck                         # server tsc --noEmit
+npx vue-tsc --noEmit -p web/tsconfig.json
+npm run test --workspace server           # 426 passed / 61 suites
+npm run build --workspace server
+npm run build:prod --workspace web        # 强制 VITE_USE_MOCK=false
+npm run progress:gen                      # 重新生成 web/src/api/dev-progress.ts
+```
 
-## 开发纪律（强制，方案 §31）
+</details>
 
-- 注释：业务逻辑 Why 优先、中文注释、字段带单位与业务含义、TODO 带责任人+日期。
-- 代码：函数 ≤50 行、文件 ≤400 行、按 feature 切分、禁 magic number、统一响应/异常/日志。
-- 提交：Conventional Commits（feat/fix/refactor/docs… + 中文简述）。
+<details>
+<summary><b>🔐 角色隔离与交付形态（点击展开）</b></summary>
 
-> 本仓库由「夜间自动开发」自动化驱动，全程无人值守、自恢复（看门狗：429/异常指数退避重试）。
+演示脚手架与内部视图都做了隔离，**上线交付无需删代码**。
 
-## 开源许可
+| 组件 | 隔离方式 | 交付时动作 |
+| :--- | :--- | :--- |
+| Mock 演示数据 | 环境变量 `VITE_USE_MOCK`（默认 true） | 交付设 `false`，前端改走真实后端 `/api` |
+| 加价规则本地持久化 | 仅 mock 分支写 `localStorage` | 正式模式走后端 API 落库 |
+| 站点设置 / 开发进度页 / 本次更新 / 租户管理 | 角色 `super` 专属（菜单过滤 + `meta.roles` 路由守卫） | 卖家租户登录后自然看不到 |
 
-本项目采用 [MIT License](LICENSE) 开源。
+- 角色定义见 `web/src/stores/user.ts`：`super`（平台运营方）/ `seller`（卖家租户）。演示模式顶栏可切换身份验证隔离；真实部署应由登录接口返回并写入该 store。
+- ⚠️ **前端显隐只是体验层，不替代后端鉴权** —— 接口侧仍须按角色做权限校验。
+- 多租户：所有业务表带 `tenantId`；租户上下文由 `common/tenant` 中间件从 JWT 派生（忽略客户端自报 `x-tenant-id`），注入 `AsyncLocalStorage` 供 Service 层自动过滤。
 
-> **部署安全提示**：`server/.env.example` 与 `deploy/docker-compose.yml` 中的
-> `postgres/postgres`、`minioadmin/minioadmin`、`JWT_SECRET=change-me-in-prod` 等均为
-> **本地开发占位默认值**，只用于一键启动本地环境。**上线前必须全部替换**，并配置强随机的
-> `JWT_SECRET` / `APP_MASTER_KEY`（生产环境缺失时服务会拒绝启动）。真实凭证、平台 API 密钥、
-> 私钥文件一律不要写入任何受版本控制的文件。
+</details>
+
+<details>
+<summary><b>📈 开发进度可视化（点击展开）</b></summary>
+
+夜间自动开发每完成一批任务，会运行进度生成器把 `dev-schedule.md` 的任务表同步到前端：
+
+```bash
+npm run progress:gen   # 生成 web/src/api/dev-progress.ts（任务清单 / 统计 / 最近交付）
+```
+
+生成物是静态数据，**演示模式与正式模式都直接可读**，次日刷新即可在左侧菜单「开发进度」（`/progress`）、仪表盘「最近交付能力」卡片、顶栏铃铛「本次更新」红点看到新产出。该机制已写入夜间自动化的「可视化交付铁律」：业务任务必须同时交付页面 / 菜单 / 路由与 mock 数据，纯后端任务至少在进度页有条目。
+
+</details>
+
+<details>
+<summary><b>🧪 验证状态（点击展开）</b></summary>
+
+| 项 | 结果 |
+| :--- | :--- |
+| `npm run lint`（server + web） | ✅ 通过（2026-11-10 巡检） |
+| `tsc --noEmit` / `vue-tsc --noEmit` | ✅ 通过 |
+| Jest 单元测试 | ✅ **426 / 426**（61 suites，本机实跑） |
+| `npm run build:prod`（`VITE_USE_MOCK=false`） | ✅ 通过（2376 模块，仅 chunk >500kB 体积提示） |
+| `progress:gen` | ✅ 74 任务 / 74 完成 |
+| GitHub Actions CI（lint + typecheck + prisma generate） | ✅ 首次 push 自动运行 `success` |
+| `deploy/*.sh` 语法 / LF / 无 BOM | ✅ `sh -n` 通过 |
+| 真实 PostgreSQL / Redis / MinIO 端到端 | ⚠️ **待环境**，本机 PG 停服、沙箱无 Docker |
+| Docker 镜像构建与 compose 启动 | ⚠️ **待环境**，首次上线按核验清单逐条验证 |
+| 真实平台 API 联调 | ⚠️ **未完成**，端点与字段为占位，明确标注 `realApiTodo=true` |
+
+CI 只覆盖 lint / typecheck / prisma generate，**426 个单测是本机实跑结果，不是流水线徽章**。
+
+</details>
+
+<details>
+<summary><b>📁 目录结构（点击展开）</b></summary>
+
+```
+dropshipping-ops/
+├── server/                    NestJS 后端（src / prisma / Dockerfile）
+│   ├── src/common/            多租户、鉴权、统一响应、缓存、加解密
+│   ├── src/modules/           按 feature 切分的业务模块
+│   └── prisma/schema.prisma   全量数据模型（含 tenantId）
+├── web/                       Vue3 前端（src / Dockerfile / .env.production）
+├── deploy/                    bootstrap.sh、backup.sh、nginx.conf、模板、本地 compose
+├── docs/                      架构图 / 流水线图 / 界面图（SVG）、交付状态总览
+├── scripts/                   进度生成器、保活等工具脚本
+├── .github/workflows/ci.yml   CI 基线
+├── docker-compose.prod.yml    生产编排（5 服务）
+├── dev-schedule.md            开发进度真相源
+└── progress-log.md            夜间自动开发日报
+```
+
+</details>
+
+---
+
+## 📚 文档索引
+
+| 文档 | 内容 |
+| :--- | :--- |
+| [`deploy/README.md`](deploy/README.md) | **生产部署指南**（一键部署 / 宝塔路线 / 核验清单 / 故障排查 / 回滚） |
+| [`docs/DELIVERY.md`](docs/DELIVERY.md) | 交付与集成状态总览、桥接状态表、**诚实待办清单** |
+| [`deploy/.env.prod.example`](deploy/.env.prod.example) | 生产环境变量模板（仅占位符） |
+| [`server/.env.example`](server/.env.example) | 本地后端环境变量模板 |
+| [`dev-schedule.md`](dev-schedule.md) | 开发进度表（唯一进度真相源） |
+| [`progress-log.md`](progress-log.md) | 夜间自动开发日报 |
+| [`中转仓流程审计.md`](中转仓流程审计.md) | 中转仓作业流程审计 |
+| [`docs/architecture.svg`](docs/architecture.svg) · [`pipeline.svg`](docs/pipeline.svg) · [`interface.svg`](docs/interface.svg) | 架构 / 流水线 / 界面自绘图 |
+
+---
+
+## 🔐 安全约定
+
+- 密钥与口令只走环境变量 + `*.example` 占位模板，禁止硬编码、禁止写入日志；平台凭证经 AES-256-GCM 加密落库，接口不返回明文。
+- 生产环境缺失 `JWT_SECRET` / `APP_MASTER_KEY`（或仍为 `change-me-in-prod`）时**服务直接拒绝启动**，不静默降级。
+- 租户上下文以 JWT 派生为准，忽略客户端自报 `x-tenant-id`；数据库查询参数绑定，用户输入统一转义。
+- `server/.env.example` 与 `deploy/docker-compose.yml` 中的 `postgres/postgres`、`minioadmin/minioadmin`、`change-me-in-prod` 都是**本地开发占位默认值**，**上线前必须全部替换**（一键脚本会自动随机化）。
+- 仓库不含 `.env`、`node_modules/`、`dist/`、私钥与任何真实密钥；`.gitattributes` 锁定全仓 LF，避免 Linux 容器脚本因 CRLF 启动失败。
+
+## 📄 许可证
+
+[MIT](LICENSE) © 2026 fuyegongfang-star —— 可自由使用、修改、商用，保留版权声明即可。
+
+---
+
+<div align="center">
+
+如果这个项目对你有用，点个 ⭐ 就是最大的支持；问题与建议欢迎提 Issue。
+
+</div>
